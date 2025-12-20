@@ -1,21 +1,29 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, ForbiddenException, HttpStatus } from '@nestjs/common';
+import { BusinessException, ErrorCode } from '../../common/exceptions/business.exception';
+import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
+import { UserCompany } from '../company/entities/user-company.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { PasswordUtil } from '../../common/utils/password.util';
+import { CompanyService } from '../company/company.service';
+import { UserRole } from '../../shared/enums/user-role.enum';
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(UserCompany)
+    private userCompanyRepository: Repository<UserCompany>,
+    private companyService: CompanyService,
   ) {}
 
-  async findAll(paginationQuery?: PaginationQueryDto): Promise<{
+  async findAll(companyId: string, paginationQuery?: PaginationQueryDto): Promise<{
     data: UserResponseDto[];
     pagination: {
       total: number;
@@ -28,18 +36,21 @@ export class UserService {
     const limit = paginationQuery?.limit || 10;
     const skip = (page - 1) * limit;
 
-    const [users, total] = await this.userRepository.findAndCount({
+    // Get users in the company via UserCompany join table
+    const [userCompanies, total] = await this.userCompanyRepository.findAndCount({
+      where: { companyId, isActive: true },
+      relations: ['user'],
       skip,
       take: limit,
       order: {
-        createdAt: 'DESC',
+        joinedAt: 'DESC',
       },
     });
 
     const totalPages = Math.ceil(total / limit);
 
     return {
-      data: users.map(this.toResponseDto),
+      data: userCompanies.map((uc) => this.toResponseDto(uc.user)),
       pagination: {
         total,
         page,
@@ -49,11 +60,32 @@ export class UserService {
     };
   }
 
-  async findById(id: string): Promise<UserResponseDto> {
+  async findById(id: string, companyId?: string): Promise<UserResponseDto> {
     const user = await this.userRepository.findOne({ where: { id } });
     if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
+      throw new BusinessException(
+        ErrorCode.USER_NOT_FOUND,
+        ERROR_MESSAGES.USER_NOT_FOUND,
+        HttpStatus.NOT_FOUND,
+        { field: 'userId', value: id },
+      );
     }
+
+    // If companyId provided, verify user belongs to company
+    if (companyId) {
+      const userCompany = await this.userCompanyRepository.findOne({
+        where: { userId: id, companyId, isActive: true },
+      });
+      if (!userCompany) {
+        throw new BusinessException(
+          ErrorCode.USER_NOT_IN_COMPANY,
+          ERROR_MESSAGES.USER_NOT_IN_COMPANY,
+          HttpStatus.NOT_FOUND,
+          { userId: id, companyId },
+        );
+      }
+    }
+
     return this.toResponseDto(user);
   }
 
@@ -61,11 +93,38 @@ export class UserService {
     return this.userRepository.findOne({ where: { email } });
   }
 
-  async create(createUserDto: CreateUserDto): Promise<UserResponseDto> {
+  async create(
+    createUserDto: CreateUserDto,
+    companyId?: string,
+    role: UserRole = UserRole.TENANT,
+  ): Promise<UserResponseDto> {
     // Check for duplicate email
     const existingUser = await this.findByEmail(createUserDto.email);
     if (existingUser) {
-      throw new ConflictException(`User with email ${createUserDto.email} already exists`);
+      // If user exists and companyId provided, add them to company
+      if (companyId) {
+        try {
+          await this.companyService.assignUserToCompany(existingUser.id, companyId, role);
+          return this.toResponseDto(existingUser);
+        } catch (error) {
+          if (error instanceof ConflictException || error instanceof BusinessException) {
+            throw new BusinessException(
+              ErrorCode.USER_ALREADY_IN_COMPANY,
+              ERROR_MESSAGES.USER_ALREADY_IN_COMPANY,
+              HttpStatus.CONFLICT,
+              { userId: existingUser.id, companyId },
+            );
+          }
+          throw error;
+        }
+      } else {
+        throw new BusinessException(
+          ErrorCode.EMAIL_ALREADY_EXISTS,
+          ERROR_MESSAGES.EMAIL_ALREADY_EXISTS,
+          HttpStatus.CONFLICT,
+          { field: 'email', value: createUserDto.email },
+        );
+      }
     }
 
     // Hash password
@@ -78,21 +137,46 @@ export class UserService {
     });
 
     const savedUser = await this.userRepository.save(user);
+
+    // Assign user to company if companyId provided
+    if (companyId) {
+      await this.companyService.assignUserToCompany(savedUser.id, companyId, role);
+    }
+
     return this.toResponseDto(savedUser);
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto): Promise<UserResponseDto> {
+  async update(
+    id: string,
+    updateUserDto: UpdateUserDto,
+    companyId?: string,
+  ): Promise<UserResponseDto> {
     // Check if user exists
     const existingUser = await this.userRepository.findOne({ where: { id } });
     if (!existingUser) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
 
+    // If companyId provided, verify user belongs to company
+    if (companyId) {
+      const userCompany = await this.userCompanyRepository.findOne({
+        where: { userId: id, companyId, isActive: true },
+      });
+      if (!userCompany) {
+        throw new NotFoundException('User not found in this company');
+      }
+    }
+
     // Check for duplicate email if email is being updated
     if (updateUserDto.email && updateUserDto.email !== existingUser.email) {
       const emailExists = await this.findByEmail(updateUserDto.email);
       if (emailExists) {
-        throw new ConflictException(`User with email ${updateUserDto.email} already exists`);
+        throw new BusinessException(
+          ErrorCode.EMAIL_ALREADY_EXISTS,
+          ERROR_MESSAGES.EMAIL_ALREADY_EXISTS,
+          HttpStatus.CONFLICT,
+          { field: 'email', value: updateUserDto.email },
+        );
       }
     }
 
@@ -107,18 +191,23 @@ export class UserService {
     return this.toResponseDto(updatedUser!);
   }
 
-  async delete(id: string): Promise<boolean> {
-    const user = await this.userRepository.findOne({ where: { id } });
-    if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
+  async delete(id: string, companyId: string): Promise<boolean> {
+    // Verify user belongs to company
+    const userCompany = await this.userCompanyRepository.findOne({
+      where: { userId: id, companyId },
+    });
+
+    if (!userCompany) {
+      throw new NotFoundException('User not found in this company');
     }
 
-    const result = await this.userRepository.delete(id);
-    return (result.affected ?? 0) > 0;
+    // Remove user from company (soft delete by setting isActive to false)
+    await this.userCompanyRepository.update(userCompany.id, { isActive: false });
+    return true;
   }
 
   private toResponseDto(user: User): UserResponseDto {
-    const { password, ...userResponse } = user;
+    const { password, userCompanies, ...userResponse } = user;
     return userResponse as UserResponseDto;
   }
 }

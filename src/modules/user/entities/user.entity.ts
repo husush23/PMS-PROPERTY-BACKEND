@@ -4,8 +4,9 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToMany,
 } from 'typeorm';
-import { UserRole } from '../../../shared/enums/user-role.enum';
+import { UserCompany } from '../../company/entities/user-company.entity';
 
 @Entity('users')
 export class User {
@@ -21,15 +22,11 @@ export class User {
   @Column({ nullable: true })
   name: string;
 
-  @Column({
-    type: 'enum',
-    enum: UserRole,
-    default: UserRole.TENANT,
-  })
-  role: UserRole;
-
   @Column({ default: true })
   isActive: boolean;
+
+  @OneToMany(() => UserCompany, (userCompany) => userCompany.user)
+  userCompanies: UserCompany[];
 
   @CreateDateColumn()
   createdAt: Date;

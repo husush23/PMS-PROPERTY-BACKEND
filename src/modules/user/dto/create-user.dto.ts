@@ -1,6 +1,5 @@
-import { IsEmail, IsString, MinLength, IsOptional, IsEnum } from 'class-validator';
+import { IsEmail, IsString, MinLength, IsOptional } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { UserRole } from '../../../shared/enums/user-role.enum';
 
 export class CreateUserDto {
   @ApiProperty({
@@ -26,15 +25,5 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   name?: string;
-
-  @ApiPropertyOptional({
-    description: 'User role',
-    enum: UserRole,
-    example: UserRole.TENANT,
-    default: UserRole.TENANT,
-  })
-  @IsOptional()
-  @IsEnum(UserRole, { message: 'Role must be a valid UserRole enum value' })
-  role?: UserRole;
 }
 

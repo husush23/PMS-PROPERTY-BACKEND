@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { SampleModule } from './modules/sample/sample.module';
+import { CompanyModule } from './modules/company/company.module';
 import appConfig from './config/app.config';
 import dbConfig from './config/db.config';
 import jwtConfig from './config/jwt.config';
@@ -19,6 +20,7 @@ import cacheConfig from './config/cache.config';
     }),
     DatabaseModule,
     AuthModule,
+    CompanyModule,
     SampleModule,
   ],
   controllers: [AppController],

@@ -1,7 +1,13 @@
 import { Controller } from '@nestjs/common';
 import { PropertyService } from './property.service';
 
-@Controller('properties')
+@Controller({ path: 'properties', version: '1' })
 export class PropertyController {
   constructor(private readonly propertyService: PropertyService) {}
 }
+
+
+
+
+
+

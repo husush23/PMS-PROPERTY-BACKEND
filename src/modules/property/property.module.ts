@@ -8,3 +8,9 @@ import { PropertyService } from './property.service';
   exports: [PropertyService],
 })
 export class PropertyModule {}
+
+
+
+
+
+

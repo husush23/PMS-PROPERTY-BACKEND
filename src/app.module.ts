@@ -1,29 +1,25 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
-import { UserModule } from './modules/user/user.module';
-import { PropertyModule } from './modules/property/property.module';
-import { UnitModule } from './modules/unit/unit.module';
-import { LeaseModule } from './modules/lease/lease.module';
-import { TenantModule } from './modules/tenant/tenant.module';
-import { PaymentModule } from './modules/payment/payment.module';
-import { MaintenanceModule } from './modules/maintenance/maintenance.module';
-import { DocumentModule } from './modules/document/document.module';
-import { NotificationModule } from './modules/notification/notification.module';
+import { SampleModule } from './modules/sample/sample.module';
+import appConfig from './config/app.config';
+import dbConfig from './config/db.config';
+import jwtConfig from './config/jwt.config';
+import mailConfig from './config/mail.config';
+import cacheConfig from './config/cache.config';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [appConfig, dbConfig, jwtConfig, mailConfig, cacheConfig],
+    }),
+    DatabaseModule,
     AuthModule,
-    UserModule,
-    PropertyModule,
-    UnitModule,
-    LeaseModule,
-    TenantModule,
-    PaymentModule,
-    MaintenanceModule,
-    DocumentModule,
-    NotificationModule,
+    SampleModule,
   ],
   controllers: [AppController],
   providers: [AppService],

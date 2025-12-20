@@ -5,3 +5,9 @@ export enum UserRole {
   TENANT = 'TENANT',
   MAINTENANCE = 'MAINTENANCE',
 }
+
+
+
+
+
+

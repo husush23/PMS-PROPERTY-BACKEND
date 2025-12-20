@@ -4,3 +4,9 @@ import { Injectable } from '@nestjs/common';
 export class PropertyService {
   // Property service implementation
 }
+
+
+
+
+
+

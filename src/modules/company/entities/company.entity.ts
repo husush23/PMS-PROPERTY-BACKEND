@@ -39,6 +39,11 @@ export class Company {
   @OneToMany(() => UserCompany, (userCompany) => userCompany.company)
   userCompanies: UserCompany[];
 
+  // OneToMany relation to Property entity
+  // Note: Using forwardRef to avoid circular dependency
+  // @OneToMany(() => Property, (property) => property.company)
+  // properties: Property[];
+
   @CreateDateColumn()
   createdAt: Date;
 

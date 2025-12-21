@@ -38,6 +38,9 @@ export const ERROR_MESSAGES = {
   USER_ALREADY_INVITED: "This user has already been invited to this company.",
   INVALID_INVITATION_TOKEN: "The invitation token is invalid or has expired.",
   
+  // Property
+  PROPERTY_NOT_FOUND: "The property you're looking for doesn't exist or you don't have access to it.",
+  
   // General
   INTERNAL_SERVER_ERROR: "Something went wrong on our end. Please try again later.",
   BAD_REQUEST: "The request you sent is invalid. Please check your input and try again.",

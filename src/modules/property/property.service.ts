@@ -10,6 +10,7 @@ import { Property } from './entities/property.entity';
 import { Company } from '../company/entities/company.entity';
 import { UserCompany } from '../company/entities/user-company.entity';
 import { User } from '../user/entities/user.entity';
+import { Unit } from '../unit/entities/unit.entity';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { PropertyResponseDto } from './dto/property-response.dto';
@@ -28,6 +29,8 @@ export class PropertyService {
     private userCompanyRepository: Repository<UserCompany>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(Unit)
+    private unitRepository: Repository<Unit>,
   ) {}
 
   async create(
@@ -81,7 +84,10 @@ export class PropertyService {
     });
 
     const savedProperty = await this.propertyRepository.save(property);
-    return this.toResponseDto(savedProperty, 0);
+    const unitCount = await this.unitRepository.count({
+      where: { propertyId: savedProperty.id, isActive: true },
+    });
+    return this.toResponseDto(savedProperty, unitCount);
   }
 
   async findAll(
@@ -229,7 +235,10 @@ export class PropertyService {
       }
     }
 
-    return this.toResponseDto(property, 0); // numberOfUnits will be 0 until Units module is implemented
+    const unitCount = await this.unitRepository.count({
+      where: { propertyId: id, isActive: true },
+    });
+    return this.toResponseDto(property, unitCount);
   }
 
   async update(
@@ -283,7 +292,10 @@ export class PropertyService {
       where: { id },
     });
 
-    return this.toResponseDto(updatedProperty!, 0); // numberOfUnits will be 0 until Units module is implemented
+    const unitCount = await this.unitRepository.count({
+      where: { propertyId: id, isActive: true },
+    });
+    return this.toResponseDto(updatedProperty!, unitCount);
   }
 
   async delete(id: string, userId: string): Promise<void> {

@@ -96,8 +96,9 @@ export class Property {
   @JoinColumn({ name: 'companyId' })
   company: Company;
 
-  // OneToMany relation to Unit entity (will be used when Units module is implemented)
-  // @OneToMany(() => Unit, (unit) => unit.property)
+  // OneToMany relation to Unit entity
+  // Note: Using forward reference to avoid circular dependency
+  // @OneToMany(() => import('../../unit/entities/unit.entity').then(m => m.Unit), (unit) => unit.property)
   // units: Unit[];
 
   @CreateDateColumn()

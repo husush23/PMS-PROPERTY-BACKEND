@@ -3,20 +3,15 @@ import { BusinessException, ErrorCode } from '../exceptions/business.exception';
 import { ERROR_MESSAGES } from '../constants/error-messages.constant';
 
 @Injectable()
-export class CompanyAccessGuard implements CanActivate {
+export class SuperAdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
-    // Super admin bypasses company context requirement
-    if (user?.isSuperAdmin) {
-      return true;
-    }
-
-    if (!user || !user.companyId) {
+    if (!user || !user.isSuperAdmin) {
       throw new BusinessException(
-        ErrorCode.COMPANY_CONTEXT_REQUIRED,
-        ERROR_MESSAGES.COMPANY_CONTEXT_REQUIRED,
+        ErrorCode.SUPER_ADMIN_ACCESS_DENIED,
+        ERROR_MESSAGES.SUPER_ADMIN_ACCESS_DENIED,
         403,
       );
     }

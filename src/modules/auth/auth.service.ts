@@ -62,9 +62,28 @@ export class AuthService {
       email: user.email,
       name: user.name,
       isActive: user.isActive,
+      isSuperAdmin: user.isSuperAdmin,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
+
+    // Super admin bypasses company selection - always return token without companyId
+    if (user.isSuperAdmin) {
+      const access_token = this.jwtService.sign({
+        sub: user.id,
+        email: user.email,
+      });
+      
+      // Get companies for display purposes (super admin can see all companies anyway)
+      const companies = await this.companyService.getUserCompanies(user.id);
+      
+      return {
+        access_token,
+        user: userResponse,
+        companies,
+        requiresCompanySelection: false,
+      };
+    }
 
     // Get user's companies
     const companies = await this.companyService.getUserCompanies(user.id);
@@ -113,7 +132,34 @@ export class AuthService {
   }
 
   async selectCompany(userId: string, companyId: string): Promise<AuthResponseDto> {
-    // Verify user belongs to company
+    // Get user to check if super admin
+    const user = await this.userService.findById(userId);
+    const userEntity = await this.userService.findByEmail(user.email);
+    
+    if (!userEntity) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Super admin can select any company (optional company context for specific views)
+    if (userEntity.isSuperAdmin) {
+      const role = await this.companyService.getUserRoleInCompany(userId, companyId);
+      // Generate token with companyId if super admin wants company-specific view
+      // But super admin doesn't require being a member
+      const access_token = role
+        ? this.generateCompanyScopedToken(user, companyId, role)
+        : this.jwtService.sign({
+            sub: user.id,
+            email: user.email,
+            companyId, // Include companyId for context but no role requirement
+          });
+      
+      return {
+        access_token,
+        user,
+      };
+    }
+
+    // Regular user - verify user belongs to company
     const role = await this.companyService.getUserRoleInCompany(userId, companyId);
     
     if (!role) {
@@ -124,9 +170,6 @@ export class AuthService {
         { companyId },
       );
     }
-
-    // Get user
-    const user = await this.userService.findById(userId);
     
     // Generate company-scoped token
     const access_token = this.generateCompanyScopedToken(user, companyId, role);

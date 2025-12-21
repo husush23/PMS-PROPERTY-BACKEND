@@ -25,6 +25,9 @@ export class User {
   @Column({ default: true })
   isActive: boolean;
 
+  @Column({ default: false })
+  isSuperAdmin: boolean;
+
   @OneToMany(() => UserCompany, (userCompany) => userCompany.user)
   userCompanies: UserCompany[];
 

@@ -17,6 +17,7 @@ import { CompanyResponseDto } from './dto/company-response.dto';
 import { AddUserToCompanyDto } from './dto/add-user-to-company.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { UserRole } from '../../shared/enums/user-role.enum';
+import { User } from '../user/entities/user.entity';
 
 @Injectable()
 export class CompanyService {
@@ -25,6 +26,8 @@ export class CompanyService {
     private companyRepository: Repository<Company>,
     @InjectRepository(UserCompany)
     private userCompanyRepository: Repository<UserCompany>,
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
   ) {}
 
   async create(
@@ -85,6 +88,22 @@ export class CompanyService {
   }
 
   async findOne(id: string, userId: string): Promise<CompanyResponseDto> {
+    // Check if user is super admin
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (user?.isSuperAdmin) {
+      // Super admin can access any company
+      const company = await this.companyRepository.findOne({ where: { id } });
+      if (!company) {
+        throw new BusinessException(
+          ErrorCode.COMPANY_NOT_FOUND,
+          ERROR_MESSAGES.COMPANY_NOT_FOUND,
+          HttpStatus.NOT_FOUND,
+          { companyId: id },
+        );
+      }
+      return this.toResponseDto(company);
+    }
+
     // Verify user belongs to company
     const userCompany = await this.userCompanyRepository.findOne({
       where: { companyId: id, userId, isActive: true },
@@ -108,23 +127,29 @@ export class CompanyService {
     updateCompanyDto: UpdateCompanyDto,
     userId: string,
   ): Promise<CompanyResponseDto> {
-    // Verify user is COMPANY_ADMIN of this company
-    const userCompany = await this.userCompanyRepository.findOne({
-      where: {
-        companyId: id,
-        userId,
-        role: UserRole.COMPANY_ADMIN,
-        isActive: true,
-      },
-    });
+    // Check if user is super admin
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    const isSuperAdmin = user?.isSuperAdmin || false;
 
-    if (!userCompany) {
-      throw new BusinessException(
-        ErrorCode.NOT_COMPANY_ADMIN,
-        ERROR_MESSAGES.NOT_COMPANY_ADMIN,
-        HttpStatus.FORBIDDEN,
-        { companyId: id },
-      );
+    if (!isSuperAdmin) {
+      // Verify user is COMPANY_ADMIN of this company
+      const userCompany = await this.userCompanyRepository.findOne({
+        where: {
+          companyId: id,
+          userId,
+          role: UserRole.COMPANY_ADMIN,
+          isActive: true,
+        },
+      });
+
+      if (!userCompany) {
+        throw new BusinessException(
+          ErrorCode.NOT_COMPANY_ADMIN,
+          ERROR_MESSAGES.NOT_COMPANY_ADMIN,
+          HttpStatus.FORBIDDEN,
+          { companyId: id },
+        );
+      }
     }
 
     if (updateCompanyDto.slug) {
@@ -179,25 +204,31 @@ export class CompanyService {
     addUserDto: AddUserToCompanyDto,
     requesterUserId: string,
   ): Promise<void> {
-    // Verify requester has permission (COMPANY_ADMIN or MANAGER)
-    const requester = await this.userCompanyRepository.findOne({
-      where: {
-        companyId,
-        userId: requesterUserId,
-        isActive: true,
-      },
-    });
+    // Check if requester is super admin
+    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
-    if (
-      !requester ||
-      ![UserRole.COMPANY_ADMIN, UserRole.MANAGER].includes(requester.role)
-    ) {
-      throw new BusinessException(
-        ErrorCode.INSUFFICIENT_PERMISSIONS,
-        'Only company administrators and managers can add users to the company.',
-        HttpStatus.FORBIDDEN,
-        { requiredRoles: [UserRole.COMPANY_ADMIN, UserRole.MANAGER] },
-      );
+    if (!isSuperAdmin) {
+      // Verify requester has permission (COMPANY_ADMIN or MANAGER)
+      const requester = await this.userCompanyRepository.findOne({
+        where: {
+          companyId,
+          userId: requesterUserId,
+          isActive: true,
+        },
+      });
+
+      if (
+        !requester ||
+        ![UserRole.COMPANY_ADMIN, UserRole.MANAGER].includes(requester.role)
+      ) {
+        throw new BusinessException(
+          ErrorCode.INSUFFICIENT_PERMISSIONS,
+          'Only company administrators and managers can add users to the company.',
+          HttpStatus.FORBIDDEN,
+          { requiredRoles: [UserRole.COMPANY_ADMIN, UserRole.MANAGER] },
+        );
+      }
     }
 
     await this.assignUserToCompany(addUserDto.userId, companyId, addUserDto.role);
@@ -209,23 +240,29 @@ export class CompanyService {
     updateRoleDto: UpdateUserRoleDto,
     requesterUserId: string,
   ): Promise<void> {
-    // Verify requester has permission (COMPANY_ADMIN only)
-    const requester = await this.userCompanyRepository.findOne({
-      where: {
-        companyId,
-        userId: requesterUserId,
-        role: UserRole.COMPANY_ADMIN,
-        isActive: true,
-      },
-    });
+    // Check if requester is super admin
+    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
-    if (!requester) {
-      throw new BusinessException(
-        ErrorCode.NOT_COMPANY_ADMIN,
-        ERROR_MESSAGES.NOT_COMPANY_ADMIN,
-        HttpStatus.FORBIDDEN,
-        { companyId },
-      );
+    if (!isSuperAdmin) {
+      // Verify requester has permission (COMPANY_ADMIN only)
+      const requester = await this.userCompanyRepository.findOne({
+        where: {
+          companyId,
+          userId: requesterUserId,
+          role: UserRole.COMPANY_ADMIN,
+          isActive: true,
+        },
+      });
+
+      if (!requester) {
+        throw new BusinessException(
+          ErrorCode.NOT_COMPANY_ADMIN,
+          ERROR_MESSAGES.NOT_COMPANY_ADMIN,
+          HttpStatus.FORBIDDEN,
+          { companyId },
+        );
+      }
     }
 
     const userCompany = await this.userCompanyRepository.findOne({
@@ -246,23 +283,29 @@ export class CompanyService {
     userId: string,
     requesterUserId: string,
   ): Promise<void> {
-    // Verify requester has permission (COMPANY_ADMIN only)
-    const requester = await this.userCompanyRepository.findOne({
-      where: {
-        companyId,
-        userId: requesterUserId,
-        role: UserRole.COMPANY_ADMIN,
-        isActive: true,
-      },
-    });
+    // Check if requester is super admin
+    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
-    if (!requester) {
-      throw new BusinessException(
-        ErrorCode.NOT_COMPANY_ADMIN,
-        ERROR_MESSAGES.NOT_COMPANY_ADMIN,
-        HttpStatus.FORBIDDEN,
-        { companyId },
-      );
+    if (!isSuperAdmin) {
+      // Verify requester has permission (COMPANY_ADMIN only)
+      const requester = await this.userCompanyRepository.findOne({
+        where: {
+          companyId,
+          userId: requesterUserId,
+          role: UserRole.COMPANY_ADMIN,
+          isActive: true,
+        },
+      });
+
+      if (!requester) {
+        throw new BusinessException(
+          ErrorCode.NOT_COMPANY_ADMIN,
+          ERROR_MESSAGES.NOT_COMPANY_ADMIN,
+          HttpStatus.FORBIDDEN,
+          { companyId },
+        );
+      }
     }
 
     const userCompany = await this.userCompanyRepository.findOne({

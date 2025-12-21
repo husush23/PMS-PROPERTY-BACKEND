@@ -93,6 +93,32 @@ export class UserService {
     return this.userRepository.findOne({ where: { email } });
   }
 
+  async isSuperAdmin(userId: string): Promise<boolean> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    return user?.isSuperAdmin || false;
+  }
+
+  async promoteToSuperAdmin(userId: string): Promise<void> {
+    await this.userRepository.update(userId, { isSuperAdmin: true });
+  }
+
+  async removeSuperAdmin(userId: string): Promise<void> {
+    // Check if this is the last super admin
+    const superAdminCount = await this.userRepository.count({
+      where: { isSuperAdmin: true },
+    });
+    
+    if (superAdminCount <= 1) {
+      throw new BusinessException(
+        ErrorCode.CANNOT_REMOVE_LAST_SUPER_ADMIN,
+        ERROR_MESSAGES.CANNOT_REMOVE_LAST_SUPER_ADMIN,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    
+    await this.userRepository.update(userId, { isSuperAdmin: false });
+  }
+
   async create(
     createUserDto: CreateUserDto,
     companyId?: string,

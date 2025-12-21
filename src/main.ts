@@ -10,6 +10,8 @@ import { DatabaseExceptionFilter } from './common/filters/database-exception.fil
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { seedSuperAdmin } from './database/seeds/super-admin.seed';
+import { DataSource } from 'typeorm';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -90,7 +92,15 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup(`${apiPrefix}/docs`, app, document);
 
-  const port = configService.get<number>('app.port') || 3000;
+  try{
+    const dataSource = app.get(DataSource);
+    await seedSuperAdmin(dataSource);
+    console.log('Super admin seeded successfully');
+  }catch(error){
+    console.error('Error seeding super admin', error);
+  }
+
+  const port = configService.get<number>('app.port') || 8000;
   await app.listen(port);
 
   console.log(`Application is running on: http://localhost:${port}/${apiPrefix}`);

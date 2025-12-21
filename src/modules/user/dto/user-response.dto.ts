@@ -27,6 +27,12 @@ export class UserResponseDto {
   isActive: boolean;
 
   @ApiProperty({
+    description: 'Super admin status',
+    example: false,
+  })
+  isSuperAdmin: boolean;
+
+  @ApiProperty({
     description: 'User creation timestamp',
     example: '2024-01-01T00:00:00.000Z',
   })

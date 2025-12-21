@@ -27,6 +27,8 @@ export const ERROR_MESSAGES = {
   NOT_COMPANY_MEMBER: "You are not a member of this company.",
   ROLE_REQUIRED: "You need a higher permission level to perform this action.",
   CAN_ONLY_UPDATE_OWN_PROFILE: "You can only update your own profile information.",
+  SUPER_ADMIN_ACCESS_DENIED: "This action requires super administrator privileges.",
+  CANNOT_REMOVE_LAST_SUPER_ADMIN: "Cannot remove the last super administrator. At least one super admin must exist.",
   
   // General
   INTERNAL_SERVER_ERROR: "Something went wrong on our end. Please try again later.",

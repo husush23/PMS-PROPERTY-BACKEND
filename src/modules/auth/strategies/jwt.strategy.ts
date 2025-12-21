@@ -64,6 +64,34 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         );
       }
 
+      // Super admin bypasses company context requirement
+      if (user.isSuperAdmin) {
+        // Super admin can work with or without company context
+        if (payload.companyId) {
+          // If companyId in token, validate but allow access even if not a member
+          const role = await this.companyService.getUserRoleInCompany(
+            user.id,
+            payload.companyId,
+          );
+          
+          return {
+            id: user.id,
+            email: user.email,
+            isSuperAdmin: true,
+            companyId: payload.companyId,
+            role: role || undefined, // Optional role if member of company
+          };
+        }
+        
+        // Super admin without company context - full system access
+        return {
+          id: user.id,
+          email: user.email,
+          isSuperAdmin: true,
+        };
+      }
+
+      // Regular user - requires company context
       // If token has companyId, validate user belongs to that company
       if (payload.companyId) {
         const role = await this.companyService.getUserRoleInCompany(

@@ -30,6 +30,14 @@ export const ERROR_MESSAGES = {
   SUPER_ADMIN_ACCESS_DENIED: "This action requires super administrator privileges.",
   CANNOT_REMOVE_LAST_SUPER_ADMIN: "Cannot remove the last super administrator. At least one super admin must exist.",
   
+  // Invitations
+  INVITATION_NOT_FOUND: "The invitation you're looking for doesn't exist or has been removed.",
+  INVITATION_EXPIRED: "This invitation has expired. Please request a new invitation.",
+  INVITATION_ALREADY_ACCEPTED: "This invitation has already been accepted.",
+  INVITATION_ALREADY_CANCELLED: "This invitation has been cancelled.",
+  USER_ALREADY_INVITED: "This user has already been invited to this company.",
+  INVALID_INVITATION_TOKEN: "The invitation token is invalid or has expired.",
+  
   // General
   INTERNAL_SERVER_ERROR: "Something went wrong on our end. Please try again later.",
   BAD_REQUEST: "The request you sent is invalid. Please check your input and try again.",

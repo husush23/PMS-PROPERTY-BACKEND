@@ -41,6 +41,10 @@ export const ERROR_MESSAGES = {
   // Property
   PROPERTY_NOT_FOUND: "The property you're looking for doesn't exist or you don't have access to it.",
   
+  // Unit
+  UNIT_NOT_FOUND: "The unit you're looking for doesn't exist or you don't have access to it.",
+  UNIT_NUMBER_EXISTS: "A unit with this number already exists in this property.",
+  
   // General
   INTERNAL_SERVER_ERROR: "Something went wrong on our end. Please try again later.",
   BAD_REQUEST: "The request you sent is invalid. Please check your input and try again.",

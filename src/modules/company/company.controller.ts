@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -25,6 +26,9 @@ import { UpdateCompanyDto } from './dto/update-company.dto';
 import { CompanyResponseDto } from './dto/company-response.dto';
 import { AddUserToCompanyDto } from './dto/add-user-to-company.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
+import { InviteUserDto } from './dto/invite-user.dto';
+import { AcceptInviteDto } from './dto/accept-invite.dto';
+import { MemberResponseDto } from './dto/member-response.dto';
 
 @ApiTags('companies')
 @Controller({ path: 'companies', version: '1' })
@@ -155,7 +159,89 @@ export class CompanyController {
     };
   }
 
-  @Put(':id/users/:userId')
+  @Post(':id/invite-user')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Invite user to company by email (COMPANY_ADMIN/MANAGER only)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({
+    status: 201,
+    description: 'Invitation sent successfully',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Insufficient permissions',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'User is already invited or is already a member',
+  })
+  async inviteUser(
+    @Param('id', ParseUUIDPipe) companyId: string,
+    @Body() inviteDto: InviteUserDto,
+    @AuthUser() user: { id: string },
+  ) {
+    await this.companyService.inviteUserToCompany(companyId, inviteDto, user.id);
+    return {
+      success: true,
+      message: 'Invitation sent successfully',
+    };
+  }
+
+  @Post(':id/accept-invite')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Accept company invitation (authenticated users only)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Invitation accepted successfully',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invitation expired, already accepted, or invalid',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Invitation not found',
+  })
+  async acceptInvite(
+    @Param('id', ParseUUIDPipe) companyId: string,
+    @Body() acceptInviteDto: AcceptInviteDto,
+    @AuthUser() user: { id: string },
+  ) {
+    await this.companyService.acceptInvitation(companyId, acceptInviteDto.token, user.id);
+    return {
+      success: true,
+      message: 'Invitation accepted successfully',
+    };
+  }
+
+  @Get(':id/members')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'List all company members (company members only)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Members retrieved successfully',
+    type: [MemberResponseDto],
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'You are not a member of this company',
+  })
+  async getMembers(
+    @Param('id', ParseUUIDPipe) companyId: string,
+    @AuthUser() user: { id: string },
+  ) {
+    const members = await this.companyService.getCompanyMembers(companyId, user.id);
+    return {
+      success: true,
+      data: members,
+    };
+  }
+
+  @Patch(':id/members/:userId/role')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Update user role in company (COMPANY_ADMIN only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -186,7 +272,7 @@ export class CompanyController {
     };
   }
 
-  @Delete(':id/users/:userId')
+  @Delete(':id/members/:userId')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Remove user from company (COMPANY_ADMIN only)' })

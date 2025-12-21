@@ -1150,7 +1150,7 @@ http://localhost:8000/api/docs
 
 ---
 
-**Last Updated**: [Current Date]  
+**Last Updated**: 12/21/2025  
 **API Version**: v1  
 **Documentation Version**: 1.0
 

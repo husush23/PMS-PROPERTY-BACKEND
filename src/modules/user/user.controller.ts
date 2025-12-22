@@ -46,7 +46,7 @@ export class UserController {
 
   @Get()
   @ApiBearerAuth('JWT-auth')
-  @Roles(UserRole.ADMIN, UserRole.COMPANY_ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: 'Get paginated list of users in current company' })
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
@@ -95,7 +95,6 @@ export class UserController {
   ) {
     // Allow if admin/manager OR if viewing own profile
     const isAdminOrManager = [
-      UserRole.ADMIN,
       UserRole.COMPANY_ADMIN,
       UserRole.MANAGER,
     ].includes(currentUser.role);
@@ -125,7 +124,7 @@ export class UserController {
 
   @Post()
   @ApiBearerAuth('JWT-auth')
-  @Roles(UserRole.ADMIN, UserRole.COMPANY_ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
   @UseGuards(RolesGuard)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new user in current company' })
@@ -189,7 +188,6 @@ export class UserController {
   ) {
     // Check permissions
     const isAdminOrManager = [
-      UserRole.ADMIN,
       UserRole.COMPANY_ADMIN,
       UserRole.MANAGER,
     ].includes(currentUser.role);
@@ -268,7 +266,7 @@ export class UserController {
 
   @Delete(':id')
   @ApiBearerAuth('JWT-auth')
-  @Roles(UserRole.ADMIN, UserRole.COMPANY_ADMIN)
+  @Roles(UserRole.COMPANY_ADMIN)
   @UseGuards(RolesGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Remove user from company (COMPANY_ADMIN only)' })

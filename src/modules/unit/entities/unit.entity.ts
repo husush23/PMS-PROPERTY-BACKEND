@@ -126,12 +126,14 @@ export class Unit {
   @JoinColumn({ name: 'companyId' })
   company: Company;
 
-  // OneToOne relation to Lease (current/active lease) - for future implementation
-  // @OneToOne(() => Lease, (lease) => lease.unit)
+  // OneToOne relation to Lease (current/active lease)
+  // Note: Using forward reference to avoid circular dependency
+  // @OneToOne(() => import('../../lease/entities/lease.entity').then(m => m.Lease), (lease) => lease.unit)
   // lease: Lease;
 
-  // OneToMany relation to Lease (lease history) - for future implementation
-  // @OneToMany(() => Lease, (lease) => lease.unit)
+  // OneToMany relation to Lease (lease history)
+  // Note: Using forward reference to avoid circular dependency
+  // @OneToMany(() => import('../../lease/entities/lease.entity').then(m => m.Lease), (lease) => lease.unit)
   // leases: Lease[];
 
   @CreateDateColumn()

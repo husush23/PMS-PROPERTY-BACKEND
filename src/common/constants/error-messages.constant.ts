@@ -45,6 +45,24 @@ export const ERROR_MESSAGES = {
   UNIT_NOT_FOUND: "The unit you're looking for doesn't exist or you don't have access to it.",
   UNIT_NUMBER_EXISTS: "A unit with this number already exists in this property.",
   
+  // Tenant
+  TENANT_NOT_FOUND: "The tenant you're looking for doesn't exist or you don't have access to it.",
+  TENANT_ALREADY_EXISTS: "This user is already a tenant in this company.",
+  TENANT_INVITATION_NOT_FOUND: "The tenant invitation you're looking for doesn't exist or has been removed.",
+  TENANT_INVITATION_EXPIRED: "This tenant invitation has expired. Please request a new invitation.",
+  TENANT_INVITATION_ALREADY_ACCEPTED: "This tenant invitation has already been accepted.",
+  CAN_ONLY_VIEW_OWN_TENANT_DATA: "You can only view your own tenant information.",
+  
+  // Lease
+  LEASE_NOT_FOUND: "The lease you're looking for doesn't exist or you don't have access to it.",
+  UNIT_ALREADY_LEASED: "This unit already has an active lease. Please terminate the existing lease first.",
+  CANNOT_DELETE_ACTIVE_LEASE: "Active leases cannot be deleted. Please terminate the lease first.",
+  CANNOT_UPDATE_ACTIVE_LEASE_FIELD: "This field cannot be updated for an active lease.",
+  INVALID_LEASE_DATES: "The lease end date must be after the start date.",
+  LEASE_ALREADY_ACTIVE: "This lease is already active.",
+  LEASE_NOT_ACTIVE: "This lease is not active. This operation can only be performed on active leases.",
+  CANNOT_ACTIVATE_UNAVAILABLE_UNIT: "Cannot activate lease for an unavailable unit. The unit must be available.",
+  
   // General
   INTERNAL_SERVER_ERROR: "Something went wrong on our end. Please try again later.",
   BAD_REQUEST: "The request you sent is invalid. Please check your input and try again.",

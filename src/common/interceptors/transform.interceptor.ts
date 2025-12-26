@@ -11,13 +11,22 @@ import { map } from 'rxjs/operators';
 export class TransformInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     return next.handle().pipe(
-      map((data) => ({
-        success: true,
-        data,
-      })),
+      map((data) => {
+        // If the response already has a success field, return it as-is (already wrapped by controller)
+        if (data && typeof data === 'object' && 'success' in data) {
+          return data;
+        }
+        // Otherwise, wrap it with the standard response format
+        return {
+          success: true,
+          data,
+        };
+      }),
     );
   }
 }
+
+
 
 
 

@@ -31,6 +31,53 @@
 $ pnpm install
 ```
 
+## Environment Variables
+
+### Required Environment Variables
+
+- `JWT_SECRET` - Secret key for signing JWT access tokens (required in production)
+- `JWT_REFRESH_SECRET` - Secret key for signing JWT refresh tokens (required in production)
+
+### Optional Environment Variables
+
+#### JWT Configuration
+- `JWT_EXPIRES_IN` - Access token expiration time (default: `15m`)
+- `JWT_REFRESH_EXPIRES_IN` - Refresh token expiration time (default: `7d`)
+
+#### Cookie Configuration
+- `COOKIE_NAME` - Name of the access token cookie (default: `access_token`)
+- `REFRESH_COOKIE_NAME` - Name of the refresh token cookie (default: `refresh_token`)
+- `COOKIE_SECURE` - Set to `true` to enable Secure flag (HTTPS only). Defaults to `true` in production, `false` in development
+- `COOKIE_SAME_SITE` - SameSite cookie policy: `strict`, `lax`, or `none` (default: `lax`)
+- `COOKIE_HTTP_ONLY` - Set to `false` to disable HttpOnly flag (default: `true` - **not recommended to change**)
+- `COOKIE_DOMAIN` - Cookie domain (optional, defaults to current domain)
+
+#### CORS Configuration
+- `CORS_ORIGIN` - Allowed CORS origin. Use specific domain in production (e.g., `https://yourdomain.com`). Defaults to `*` (allows all origins)
+
+### Example `.env` file
+
+```env
+# JWT Configuration
+JWT_SECRET=your-super-secret-jwt-key-change-in-production
+JWT_REFRESH_SECRET=your-super-secret-refresh-key-change-in-production
+JWT_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+
+# Cookie Configuration (optional - defaults are secure)
+COOKIE_SECURE=true
+COOKIE_SAME_SITE=lax
+COOKIE_DOMAIN=
+
+# CORS Configuration
+CORS_ORIGIN=http://localhost:3000
+```
+
+**Note**: In production, ensure:
+- `JWT_SECRET` and `JWT_REFRESH_SECRET` are strong, random strings
+- `COOKIE_SECURE=true` (enforced automatically in production)
+- `CORS_ORIGIN` is set to your frontend domain (not `*`)
+
 ## Compile and run the project
 
 ```bash

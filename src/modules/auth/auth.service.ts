@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException, ConflictException, NotFoundException
 import { BusinessException, ErrorCode } from '../../common/exceptions/business.exception';
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { UserService } from '../user/user.service';
 import { CompanyService } from '../company/company.service';
 import { RegisterDto } from './dto/register.dto';
@@ -19,6 +20,7 @@ export class AuthService {
     private userService: UserService,
     private companyService: CompanyService,
     private jwtService: JwtService,
+    private configService: ConfigService,
   ) {}
 
   async validateUser(email: string, password: string): Promise<User> {
@@ -53,7 +55,7 @@ export class AuthService {
     return user;
   }
 
-  async login(loginDto: LoginDto): Promise<LoginResponseDto> {
+  async login(loginDto: LoginDto): Promise<LoginResponseDto & { refresh_token: string }> {
     const user = await this.validateUser(loginDto.email, loginDto.password);
     
     // Convert User entity to UserResponseDto
@@ -67,6 +69,9 @@ export class AuthService {
       updatedAt: user.updatedAt,
     };
 
+    // Generate refresh token
+    const refresh_token = this.generateRefreshToken(user.id, user.email);
+
     // Super admin bypasses company selection - always return token without companyId
     if (user.isSuperAdmin) {
       const access_token = this.jwtService.sign({
@@ -79,6 +84,7 @@ export class AuthService {
       
       return {
         access_token,
+        refresh_token,
         user: userResponse,
         companies,
         requiresCompanySelection: false,
@@ -97,6 +103,7 @@ export class AuthService {
       
       return {
         access_token,
+        refresh_token,
         user: userResponse,
         companies: [],
         requiresCompanySelection: false,
@@ -111,6 +118,7 @@ export class AuthService {
       
       return {
         access_token,
+        refresh_token,
         user: userResponse,
         companies,
         requiresCompanySelection: false,
@@ -125,13 +133,14 @@ export class AuthService {
 
     return {
       access_token,
+      refresh_token,
       user: userResponse,
       companies,
       requiresCompanySelection: true,
     };
   }
 
-  async selectCompany(userId: string, companyId: string): Promise<AuthResponseDto> {
+  async selectCompany(userId: string, companyId: string): Promise<AuthResponseDto & { refresh_token: string }> {
     // Get user to check if super admin
     const user = await this.userService.findById(userId);
     const userEntity = await this.userService.findByEmail(user.email);
@@ -139,6 +148,9 @@ export class AuthService {
     if (!userEntity) {
       throw new NotFoundException('User not found');
     }
+
+    // Generate refresh token
+    const refresh_token = this.generateRefreshToken(user.id, user.email);
 
     // Super admin can select any company (optional company context for specific views)
     if (userEntity.isSuperAdmin) {
@@ -155,6 +167,7 @@ export class AuthService {
       
       return {
         access_token,
+        refresh_token,
         user,
       };
     }
@@ -176,11 +189,12 @@ export class AuthService {
 
     return {
       access_token,
+      refresh_token,
       user,
     };
   }
 
-  async register(registerDto: RegisterDto): Promise<LoginResponseDto> {
+  async register(registerDto: RegisterDto): Promise<LoginResponseDto & { refresh_token: string }> {
     // Check for duplicate email
     const existingUser = await this.userService.findByEmail(registerDto.email);
     if (existingUser) {
@@ -199,6 +213,9 @@ export class AuthService {
       name: registerDto.name,
     });
 
+    // Generate refresh token
+    const refresh_token = this.generateRefreshToken(user.id, user.email);
+
     // Return token without companyId (user has no companies yet)
     const access_token = this.jwtService.sign({
       sub: user.id,
@@ -207,6 +224,7 @@ export class AuthService {
 
     return {
       access_token,
+      refresh_token,
       user,
       companies: [], // Empty - no companies yet
       requiresCompanySelection: false,
@@ -264,6 +282,102 @@ export class AuthService {
     };
 
     return this.jwtService.sign(payload);
+  }
+
+  /**
+   * Generate refresh token using refresh secret
+   */
+  generateRefreshToken(userId: string, email: string): string {
+    const refreshSecret = this.configService.get<string>('jwt.refreshSecret') || process.env.JWT_REFRESH_SECRET;
+    const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
+
+    if (!refreshSecret) {
+      throw new Error('JWT_REFRESH_SECRET is required. Please set it in your .env file.');
+    }
+
+    const payload = {
+      sub: userId,
+      email: email,
+      type: 'refresh',
+    };
+
+    return this.jwtService.sign(payload, {
+      secret: refreshSecret,
+      expiresIn: refreshExpiresIn,
+    });
+  }
+
+  /**
+   * Validate refresh token and generate new access token
+   */
+  async refreshToken(refreshToken: string): Promise<{ access_token: string; refresh_token: string }> {
+    const refreshSecret = this.configService.get<string>('jwt.refreshSecret') || process.env.JWT_REFRESH_SECRET;
+
+    if (!refreshSecret) {
+      throw new Error('JWT_REFRESH_SECRET is required. Please set it in your .env file.');
+    }
+
+    try {
+      // Verify refresh token
+      const payload = this.jwtService.verify(refreshToken, {
+        secret: refreshSecret,
+      });
+
+      if (payload.type !== 'refresh') {
+        throw new BusinessException(
+          ErrorCode.TOKEN_INVALID,
+          ERROR_MESSAGES.TOKEN_INVALID,
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      // Get user to ensure they still exist and are active
+      const user = await this.userService.findById(payload.sub);
+
+      if (!user) {
+        throw new BusinessException(
+          ErrorCode.USER_NOT_FOUND,
+          ERROR_MESSAGES.USER_NOT_FOUND_AUTH,
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      if (!user.isActive) {
+        throw new BusinessException(
+          ErrorCode.ACCOUNT_INACTIVE,
+          ERROR_MESSAGES.ACCOUNT_INACTIVE,
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      // Generate new access token
+      const accessTokenPayload: any = {
+        sub: user.id,
+        email: user.email,
+      };
+
+      // If user has company context from previous token, preserve it
+      // (Note: refresh token doesn't include companyId, so we'll generate without it)
+      // User will need to select company again if needed
+      const access_token = this.jwtService.sign(accessTokenPayload);
+
+      // Generate new refresh token (rotate refresh token)
+      const refresh_token = this.generateRefreshToken(user.id, user.email);
+
+      return {
+        access_token,
+        refresh_token,
+      };
+    } catch (error) {
+      if (error instanceof BusinessException) {
+        throw error;
+      }
+      throw new BusinessException(
+        ErrorCode.TOKEN_INVALID,
+        ERROR_MESSAGES.TOKEN_INVALID,
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
   }
 }
 

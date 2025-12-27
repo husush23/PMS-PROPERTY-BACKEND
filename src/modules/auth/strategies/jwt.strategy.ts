@@ -4,6 +4,7 @@ import { ERROR_MESSAGES } from '../../../common/constants/error-messages.constan
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
+import { Request } from 'express';
 import { UserService } from '../../user/user.service';
 import { CompanyService } from '../../company/company.service';
 import { UserRole } from '../../../shared/enums/user-role.enum';
@@ -27,8 +28,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       console.warn('⚠️  WARNING: JWT_SECRET not set. Using default development secret. This is NOT secure for production!');
     }
 
+    const cookieName = configService.get<string>('jwt.cookieName') || 'access_token';
+
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        (request: Request) => {
+          // Extract token from cookie
+          return request?.cookies?.[cookieName] || null;
+        },
+      ]),
       ignoreExpiration: false,
       secretOrKey: finalSecret,
     });

@@ -63,6 +63,16 @@ export const ERROR_MESSAGES = {
   LEASE_NOT_ACTIVE: "This lease is not active. This operation can only be performed on active leases.",
   CANNOT_ACTIVATE_UNAVAILABLE_UNIT: "Cannot activate lease for an unavailable unit. The unit must be available.",
   
+  // Payment
+  PAYMENT_NOT_FOUND: "The payment you're looking for doesn't exist or you don't have access to it.",
+  PAYMENT_ALREADY_COMPLETED: "This payment has already been completed and cannot be modified.",
+  CANNOT_EDIT_COMPLETED_PAYMENT: "Completed payments cannot be edited. Use reversal to correct errors.",
+  INVALID_PAYMENT_STATUS_TRANSITION: "This payment status transition is not allowed.",
+  LEASE_NOT_FOUND_FOR_PAYMENT: "The lease specified for this payment does not exist or you don't have access to it.",
+  TENANT_NOT_FOUND_FOR_PAYMENT: "The tenant specified for this payment does not exist or does not belong to the lease.",
+  CANNOT_DELETE_COMPLETED_PAYMENT: "Completed or refunded payments cannot be deleted. Use reversal instead.",
+  CANNOT_REVERSE_PAYMENT: "This payment cannot be reversed. Only paid payments can be reversed.",
+  
   // General
   INTERNAL_SERVER_ERROR: "Something went wrong on our end. Please try again later.",
   BAD_REQUEST: "The request you sent is invalid. Please check your input and try again.",

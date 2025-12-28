@@ -105,24 +105,20 @@ export class LeaseService {
       );
     }
 
-    // Validate tenant exists and is active
-    const tenant = await this.userRepository.findOne({
-      where: { id: createDto.tenantId, isActive: true },
+    // Validate tenant profile exists (frontend sends tenant profile ID)
+    // First, try to find tenant profile by ID
+    let tenantProfile = await this.tenantProfileRepository.findOne({
+      where: { id: createDto.tenantId, companyId: unit.companyId },
+      relations: ['user'],
     });
 
-    if (!tenant) {
-      throw new BusinessException(
-        ErrorCode.USER_NOT_FOUND,
-        ERROR_MESSAGES.USER_NOT_FOUND,
-        HttpStatus.NOT_FOUND,
-        { userId: createDto.tenantId },
-      );
+    // If not found as tenant profile ID, try as user ID (for backward compatibility)
+    if (!tenantProfile) {
+      tenantProfile = await this.tenantProfileRepository.findOne({
+        where: { userId: createDto.tenantId, companyId: unit.companyId },
+        relations: ['user'],
+      });
     }
-
-    // Check if tenant is a tenant in this company
-    const tenantProfile = await this.tenantProfileRepository.findOne({
-      where: { userId: createDto.tenantId, companyId: unit.companyId },
-    });
 
     if (!tenantProfile) {
       throw new BusinessException(
@@ -130,6 +126,36 @@ export class LeaseService {
         ERROR_MESSAGES.TENANT_NOT_FOUND,
         HttpStatus.NOT_FOUND,
         { tenantId: createDto.tenantId, companyId: unit.companyId },
+      );
+    }
+
+    // Check if the associated user exists and is active
+    if (!tenantProfile.user) {
+      throw new BusinessException(
+        ErrorCode.USER_NOT_FOUND,
+        ERROR_MESSAGES.USER_NOT_FOUND,
+        HttpStatus.NOT_FOUND,
+        {
+          tenantId: tenantProfile.id,
+          userId: tenantProfile.userId,
+          message: 'The tenant profile exists but the associated user is missing',
+        },
+      );
+    }
+
+    const tenantUserId = tenantProfile.userId;
+
+    // Validate user is active
+    if (!tenantProfile.user.isActive) {
+      throw new BusinessException(
+        ErrorCode.USER_NOT_FOUND,
+        ERROR_MESSAGES.USER_NOT_FOUND,
+        HttpStatus.NOT_FOUND,
+        {
+          tenantId: tenantProfile.id,
+          userId: tenantUserId,
+          message: 'The associated user account is inactive',
+        },
       );
     }
 
@@ -176,9 +202,9 @@ export class LeaseService {
       leaseNumber = `LEASE-${year}-${String(count + 1).padStart(3, '0')}`;
     }
 
-    // Create lease entity
+    // Create lease entity (use userId from tenant profile, not tenant profile ID)
     const lease = this.leaseRepository.create({
-      tenantId: createDto.tenantId,
+      tenantId: tenantUserId,
       unitId: createDto.unitId,
       companyId: unit.companyId,
       landlordUserId: createDto.landlordUserId,

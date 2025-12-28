@@ -3,6 +3,7 @@ import { BusinessException, ErrorCode } from '../../common/exceptions/business.e
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import * as jwt from 'jsonwebtoken';
 import { UserService } from '../user/user.service';
 import { CompanyService } from '../company/company.service';
 import { RegisterDto } from './dto/register.dto';
@@ -289,11 +290,37 @@ export class AuthService {
    */
   generateRefreshToken(userId: string, email: string): string {
     const refreshSecret = this.configService.get<string>('jwt.refreshSecret') || process.env.JWT_REFRESH_SECRET;
-    const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
+    
+    // Get refreshExpiresIn with multiple fallbacks
+    const configValue = this.configService.get<string>('jwt.refreshExpiresIn');
+    const envValue = process.env.JWT_REFRESH_EXPIRES_IN;
+    
+    let refreshExpiresIn: string = '7d'; // Default fallback
+    
+    // Helper function to clean and validate expiresIn value
+    const cleanExpiresIn = (value: string): string => {
+      // Remove trailing commas, semicolons, and other invalid trailing characters
+      // Also remove any leading/trailing whitespace
+      let cleaned = value.trim().replace(/[,;]+$/, '').trim();
+      // If empty after cleaning, return default
+      if (!cleaned || cleaned === '') {
+        return '7d';
+      }
+      return cleaned;
+    };
+    
+    if (configValue && typeof configValue === 'string' && configValue.trim() !== '') {
+      refreshExpiresIn = cleanExpiresIn(configValue);
+    } else if (envValue && typeof envValue === 'string' && envValue.trim() !== '') {
+      refreshExpiresIn = cleanExpiresIn(envValue);
+    }
 
     if (!refreshSecret) {
       throw new Error('JWT_REFRESH_SECRET is required. Please set it in your .env file.');
     }
+
+    // Final validation - ensure it's a valid non-empty string (should already be cleaned, but double-check)
+    refreshExpiresIn = cleanExpiresIn(refreshExpiresIn);
 
     const payload = {
       sub: userId,
@@ -301,10 +328,13 @@ export class AuthService {
       type: 'refresh',
     };
 
-    return this.jwtService.sign(payload, {
-      secret: refreshSecret,
+    // Use jsonwebtoken directly since we need a different secret than the JWT module default
+    const options: jwt.SignOptions = {
+      // @ts-expect-error - expiresIn accepts string like "7d" but types are strict
       expiresIn: refreshExpiresIn,
-    });
+    };
+    
+    return jwt.sign(payload, refreshSecret as jwt.Secret, options);
   }
 
   /**
@@ -318,10 +348,8 @@ export class AuthService {
     }
 
     try {
-      // Verify refresh token
-      const payload = this.jwtService.verify(refreshToken, {
-        secret: refreshSecret,
-      });
+      // Verify refresh token using jsonwebtoken directly since it uses a different secret
+      const payload = jwt.verify(refreshToken, refreshSecret as string) as any;
 
       if (payload.type !== 'refresh') {
         throw new BusinessException(

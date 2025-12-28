@@ -449,7 +449,8 @@ export class TenantService {
         relations: ['user'],
       });
 
-      if (!tenantProfile) {
+      if (!tenantProfile || !tenantProfile.user) {
+        // Filter out orphaned tenant profiles (missing user)
         return {
           data: [],
           pagination: { total: 0, page: 1, limit: queryDto.limit || 10, totalPages: 0 },
@@ -482,10 +483,10 @@ export class TenantService {
     const limit = queryDto.limit || 10;
     const skip = (page - 1) * limit;
 
-    // Build query
+    // Build query - use innerJoin to filter out tenant profiles with missing users
     const queryBuilder = this.tenantProfileRepository
       .createQueryBuilder('tenantProfile')
-      .leftJoinAndSelect('tenantProfile.user', 'user')
+      .innerJoinAndSelect('tenantProfile.user', 'user')
       .leftJoinAndSelect('tenantProfile.company', 'company')
       .where('tenantProfile.companyId = :companyId', { companyId });
 
@@ -511,7 +512,7 @@ export class TenantService {
       queryBuilder.orderBy(`tenantProfile.${sortBy}`, sortOrder);
     }
 
-    // Get total count
+    // Get total count before pagination (excluding orphaned tenants via innerJoin)
     const total = await queryBuilder.getCount();
 
     // Apply pagination
@@ -532,8 +533,11 @@ export class TenantService {
 
     const userCompanyMap = new Map(userCompanies.map((uc) => [uc.userId, uc]));
 
-    const data = tenantProfiles.map((tenantProfile) =>
-      this.toResponseDto(tenantProfile, tenantProfile.user, companyId, userCompanyMap.get(tenantProfile.userId)),
+    // Filter out any tenant profiles with null users (extra safety check)
+    const validTenantProfiles = tenantProfiles.filter((tp) => tp.user !== null && tp.user !== undefined);
+
+    const data = validTenantProfiles.map((tenantProfile) =>
+      this.toResponseDto(tenantProfile, tenantProfile.user!, companyId, userCompanyMap.get(tenantProfile.userId)),
     );
 
     const totalPages = Math.ceil(total / limit);

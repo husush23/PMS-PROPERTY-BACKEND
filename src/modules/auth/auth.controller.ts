@@ -16,7 +16,7 @@ import {
   ApiBody,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { Response, Request } from 'express';
+import type { Response, Request } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { Public } from '../../common/decorators/public.decorator';
@@ -68,8 +68,8 @@ export class AuthController {
     const expiresIn = this.configService.get<string>('jwt.expiresIn') || '15m';
     const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
     
-    setAccessTokenCookie(res, authResponse.access_token, expiresIn, this.configService);
-    setRefreshTokenCookie(res, authResponse.refresh_token, refreshExpiresIn, this.configService);
+    setAccessTokenCookie(res, authResponse.access_token!, expiresIn, this.configService);
+    setRefreshTokenCookie(res, authResponse.refresh_token!, refreshExpiresIn, this.configService);
     
     // Return response without tokens
     const { access_token, refresh_token, ...responseData } = authResponse;
@@ -106,8 +106,8 @@ export class AuthController {
     const expiresIn = this.configService.get<string>('jwt.expiresIn') || '15m';
     const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
     
-    setAccessTokenCookie(res, loginResponse.access_token, expiresIn, this.configService);
-    setRefreshTokenCookie(res, loginResponse.refresh_token, refreshExpiresIn, this.configService);
+    setAccessTokenCookie(res, loginResponse.access_token!, expiresIn, this.configService);
+    setRefreshTokenCookie(res, loginResponse.refresh_token!, refreshExpiresIn, this.configService);
     
     // Return response without tokens
     const { access_token, refresh_token, ...responseData } = loginResponse;
@@ -152,8 +152,8 @@ export class AuthController {
     const expiresIn = this.configService.get<string>('jwt.expiresIn') || '15m';
     const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
     
-    setAccessTokenCookie(res, authResponse.access_token, expiresIn, this.configService);
-    setRefreshTokenCookie(res, authResponse.refresh_token, refreshExpiresIn, this.configService);
+    setAccessTokenCookie(res, authResponse.access_token!, expiresIn, this.configService);
+    setRefreshTokenCookie(res, authResponse.refresh_token!, refreshExpiresIn, this.configService);
     
     // Return response without tokens
     const { access_token, refresh_token, ...responseData } = authResponse;
@@ -197,8 +197,8 @@ export class AuthController {
     const expiresIn = this.configService.get<string>('jwt.expiresIn') || '15m';
     const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
     
-    setAccessTokenCookie(res, authResponse.access_token, expiresIn, this.configService);
-    setRefreshTokenCookie(res, authResponse.refresh_token, refreshExpiresIn, this.configService);
+    setAccessTokenCookie(res, authResponse.access_token!, expiresIn, this.configService);
+    setRefreshTokenCookie(res, authResponse.refresh_token!, refreshExpiresIn, this.configService);
     
     // Return response without tokens
     const { access_token, refresh_token, ...responseData } = authResponse;
@@ -282,21 +282,44 @@ export class AuthController {
   }
 
   @Get('me')
-  @ApiOperation({ summary: 'Get current authenticated user' })
+  @ApiOperation({ summary: 'Get current authenticated user with role and company context' })
   @ApiResponse({
     status: 200,
-    description: 'Current user retrieved successfully',
-    type: UserResponseDto,
+    description: 'Current user retrieved successfully with role and company context',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        data: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            email: { type: 'string' },
+            name: { type: 'string', nullable: true },
+            isActive: { type: 'boolean' },
+            isSuperAdmin: { type: 'boolean' },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+            companyId: { type: 'string', nullable: true, description: 'Current company context (if selected)' },
+            role: { type: 'string', nullable: true, description: 'User role in the current company context' },
+          },
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 401,
     description: 'Unauthorized',
   })
-  async getCurrentUser(@AuthUser() user: { id: string; email: string; companyId?: string; role?: string }) {
+  async getCurrentUser(@AuthUser() user: { id: string; email: string; companyId?: string; role?: string; isSuperAdmin?: boolean }) {
     const userData = await this.authService.getCurrentUser(user.id);
     return {
       success: true,
-      data: userData,
+      data: {
+        ...userData,
+        companyId: user.companyId || null,
+        role: user.role || null,
+      },
     };
   }
 

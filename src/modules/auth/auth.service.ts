@@ -319,9 +319,6 @@ export class AuthService {
       throw new Error('JWT_REFRESH_SECRET is required. Please set it in your .env file.');
     }
 
-    // Final validation - ensure it's a valid non-empty string (should already be cleaned, but double-check)
-    refreshExpiresIn = cleanExpiresIn(refreshExpiresIn);
-
     const payload = {
       sub: userId,
       email: email,

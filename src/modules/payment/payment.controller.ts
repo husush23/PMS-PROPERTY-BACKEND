@@ -17,7 +17,7 @@ import {
   ApiOperation,
   ApiResponse,
   ApiParam,
-  ApiBearerAuth,
+  ApiCookieAuth,
   ApiQuery,
 } from '@nestjs/swagger';
 import { PaymentService } from './payment.service';
@@ -39,7 +39,7 @@ export class PaymentController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiBearerAuth('JWT-auth')
+  @ApiCookieAuth('access_token')
   @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD)
   @ApiOperation({ summary: 'Create a new payment (COMPANY_ADMIN/MANAGER/LANDLORD only)' })
   @ApiResponse({
@@ -68,7 +68,7 @@ export class PaymentController {
   }
 
   @Get()
-  @ApiBearerAuth('JWT-auth')
+  @ApiCookieAuth('access_token')
   @ApiOperation({ summary: 'List payments with filtering and pagination' })
   @ApiResponse({
     status: 200,
@@ -87,7 +87,7 @@ export class PaymentController {
   }
 
   @Get(':id')
-  @ApiBearerAuth('JWT-auth')
+  @ApiCookieAuth('access_token')
   @ApiOperation({ summary: 'Get payment by ID' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
@@ -111,7 +111,7 @@ export class PaymentController {
   }
 
   @Patch(':id')
-  @ApiBearerAuth('JWT-auth')
+  @ApiCookieAuth('access_token')
   @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
   @ApiOperation({ summary: 'Update payment (limited fields only) (COMPANY_ADMIN/MANAGER only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -146,7 +146,7 @@ export class PaymentController {
   }
 
   @Post(':id/reverse')
-  @ApiBearerAuth('JWT-auth')
+  @ApiCookieAuth('access_token')
   @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
   @ApiOperation({ summary: 'Reverse a payment (COMPANY_ADMIN/MANAGER only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -181,7 +181,7 @@ export class PaymentController {
   }
 
   @Post(':id/mark-failed')
-  @ApiBearerAuth('JWT-auth')
+  @ApiCookieAuth('access_token')
   @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
   @ApiOperation({ summary: 'Mark payment as failed (COMPANY_ADMIN/MANAGER only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -216,7 +216,7 @@ export class PaymentController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  @ApiBearerAuth('JWT-auth')
+  @ApiCookieAuth('access_token')
   @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
   @ApiOperation({ summary: 'Soft delete payment (COMPANY_ADMIN/MANAGER only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
@@ -248,7 +248,7 @@ export class PaymentController {
   }
 
   @Get('tenant/:tenantId/balance')
-  @ApiBearerAuth('JWT-auth')
+  @ApiCookieAuth('access_token')
   @ApiOperation({ summary: 'Get tenant balance' })
   @ApiParam({ name: 'tenantId', type: 'string', format: 'uuid' })
   @ApiQuery({ name: 'companyId', type: 'string', format: 'uuid', required: true })
@@ -269,7 +269,7 @@ export class PaymentController {
   }
 
   @Get('lease/:leaseId/balance')
-  @ApiBearerAuth('JWT-auth')
+  @ApiCookieAuth('access_token')
   @ApiOperation({ summary: 'Get lease balance' })
   @ApiParam({ name: 'leaseId', type: 'string', format: 'uuid' })
   @ApiResponse({
@@ -288,7 +288,7 @@ export class PaymentController {
   }
 
   @Get('tenant/:tenantId/history')
-  @ApiBearerAuth('JWT-auth')
+  @ApiCookieAuth('access_token')
   @ApiOperation({ summary: 'Get payment history for tenant' })
   @ApiParam({ name: 'tenantId', type: 'string', format: 'uuid' })
   @ApiResponse({
@@ -307,7 +307,7 @@ export class PaymentController {
   }
 
   @Get('lease/:leaseId/history')
-  @ApiBearerAuth('JWT-auth')
+  @ApiCookieAuth('access_token')
   @ApiOperation({ summary: 'Get payment history for lease' })
   @ApiParam({ name: 'leaseId', type: 'string', format: 'uuid' })
   @ApiResponse({

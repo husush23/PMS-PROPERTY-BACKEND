@@ -14,7 +14,7 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBody,
-  ApiBearerAuth,
+  ApiCookieAuth,
 } from '@nestjs/swagger';
 import type { Response, Request } from 'express';
 import { ConfigService } from '@nestjs/config';
@@ -123,6 +123,7 @@ export class AuthController {
 
   @Post('select-company')
   @HttpCode(HttpStatus.OK)
+  @ApiCookieAuth('access_token')
   @ApiOperation({ summary: 'Select company after login (if multiple companies)' })
   @ApiBody({ type: SelectCompanyDto })
   @ApiResponse({
@@ -167,6 +168,7 @@ export class AuthController {
 
   @Post('switch-company')
   @HttpCode(HttpStatus.OK)
+  @ApiCookieAuth('access_token')
   @ApiOperation({ summary: 'Switch company context' })
   @ApiBody({ type: SelectCompanyDto })
   @ApiResponse({
@@ -268,6 +270,7 @@ export class AuthController {
   }
 
   @Get('companies')
+  @ApiCookieAuth('access_token')
   @ApiOperation({ summary: "Get user's companies" })
   @ApiResponse({
     status: 200,

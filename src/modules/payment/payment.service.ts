@@ -54,12 +54,6 @@ export class PaymentService {
       );
     }
 
-    // Validate tenant belongs to lease
-    if (lease.tenantId !== createDto.leaseId && lease.tenantId) {
-      // This will be validated through the lease relationship
-      // We'll use the lease's tenantId
-    }
-
     // Check company access
     if (!isSuperAdmin) {
       const requester = await this.userCompanyRepository.findOne({
@@ -328,22 +322,13 @@ export class PaymentService {
       }
     }
 
-    // Immutability check - prevent editing completed payments
-    if (payment.status === PaymentStatus.PAID && updateDto.status !== PaymentStatus.REFUNDED) {
-      throw new BusinessException(
-        ErrorCode.CANNOT_EDIT_COMPLETED_PAYMENT,
-        ERROR_MESSAGES.CANNOT_EDIT_COMPLETED_PAYMENT,
-        HttpStatus.BAD_REQUEST,
-        { paymentId: id, currentStatus: payment.status },
-      );
-    }
-
-    // Validate status transition
+    // Validate status transition (if status is being updated)
     if (updateDto.status) {
       this.validateStatusTransition(payment.status, updateDto.status);
     }
 
-    // Only allow updating specific fields
+    // Only allow updating specific fields (notes, attachmentUrl, period, status)
+    // Immutability: amount, paymentDate, paymentMethod cannot be changed
     if (updateDto.notes !== undefined) {
       payment.notes = updateDto.notes;
     }
@@ -434,7 +419,6 @@ export class PaymentService {
       period: payment.period,
       notes: `Reversal: ${reverseDto.reason}${reverseDto.notes ? `. ${reverseDto.notes}` : ''}`,
       isPartial: false,
-      attachmentUrl: null,
     });
 
     const savedReversal = await this.paymentRepository.save(reversalPayment);
@@ -855,7 +839,7 @@ export class PaymentService {
 
   private async toResponseDto(
     payment: Payment,
-    requesterUserId: string,
+    requesterUserId?: string,
   ): Promise<PaymentResponseDto> {
     // Load relations if not already loaded
     if (!payment.lease) {

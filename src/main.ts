@@ -4,6 +4,7 @@ import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { DatabaseExceptionFilter } from './common/filters/database-exception.filter';
@@ -17,6 +18,9 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
   const reflector = app.get(Reflector);
+
+  // Cookie parser middleware
+  app.use(cookieParser());
 
   // Security - Helmet
   app.use(helmet());
@@ -64,19 +68,17 @@ async function bootstrap() {
   // Swagger/OpenAPI documentation
   const config = new DocumentBuilder()
     .setTitle('PMS Backend API')
-    .setDescription('Property Management System Backend API Documentation')
-    .setVersion('1.0')
-    .addBearerAuth(
-      {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-        name: 'JWT',
-        description: 'Enter JWT token',
-        in: 'header',
-      },
-      'JWT-auth',
+    .setDescription(
+      'Property Management System Backend API Documentation\n\n' +
+      '**Authentication**: This API uses HTTP-only cookies for authentication. ' +
+      'Access tokens and refresh tokens are automatically set as cookies when you login, register, or refresh tokens. ' +
+      'Cookies are sent automatically with each request. ' +
+      'Use the `/auth/refresh` endpoint to refresh your access token when it expires. ' +
+      'Use the `/auth/logout` endpoint to clear authentication cookies.\n\n' +
+      '**Important**: Ensure your client sends credentials (cookies) with requests by setting `withCredentials: true` (axios) or `credentials: "include"` (fetch).'
     )
+    .setVersion('1.0')
+    .addCookieAuth('access_token')
     .addTag('auth', 'Authentication endpoints')
     .addTag('users', 'User management endpoints')
     .addTag('properties', 'Property management endpoints')

@@ -449,7 +449,8 @@ export class TenantService {
         relations: ['user'],
       });
 
-      if (!tenantProfile) {
+      if (!tenantProfile || !tenantProfile.user) {
+        // Filter out orphaned tenant profiles (missing user)
         return {
           data: [],
           pagination: { total: 0, page: 1, limit: queryDto.limit || 10, totalPages: 0 },
@@ -482,10 +483,10 @@ export class TenantService {
     const limit = queryDto.limit || 10;
     const skip = (page - 1) * limit;
 
-    // Build query
+    // Build query - use innerJoin to filter out tenant profiles with missing users
     const queryBuilder = this.tenantProfileRepository
       .createQueryBuilder('tenantProfile')
-      .leftJoinAndSelect('tenantProfile.user', 'user')
+      .innerJoinAndSelect('tenantProfile.user', 'user')
       .leftJoinAndSelect('tenantProfile.company', 'company')
       .where('tenantProfile.companyId = :companyId', { companyId });
 
@@ -511,7 +512,7 @@ export class TenantService {
       queryBuilder.orderBy(`tenantProfile.${sortBy}`, sortOrder);
     }
 
-    // Get total count
+    // Get total count before pagination (excluding orphaned tenants via innerJoin)
     const total = await queryBuilder.getCount();
 
     // Apply pagination
@@ -532,8 +533,11 @@ export class TenantService {
 
     const userCompanyMap = new Map(userCompanies.map((uc) => [uc.userId, uc]));
 
-    const data = tenantProfiles.map((tenantProfile) =>
-      this.toResponseDto(tenantProfile, tenantProfile.user, companyId, userCompanyMap.get(tenantProfile.userId)),
+    // Filter out any tenant profiles with null users (extra safety check)
+    const validTenantProfiles = tenantProfiles.filter((tp) => tp.user !== null && tp.user !== undefined);
+
+    const data = validTenantProfiles.map((tenantProfile) =>
+      this.toResponseDto(tenantProfile, tenantProfile.user!, companyId, userCompanyMap.get(tenantProfile.userId)),
     );
 
     const totalPages = Math.ceil(total / limit);
@@ -626,11 +630,20 @@ export class TenantService {
     const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
+    let requesterUserCompany: UserCompany | null = null;
     if (!isSuperAdmin) {
       if (tenantProfile.userId === requesterUserId) {
-        // Tenant updating own profile - allowed
+        // Tenant updating own profile - allowed, but status updates are restricted
+        if (updateDto.status !== undefined) {
+          throw new BusinessException(
+            ErrorCode.CAN_ONLY_VIEW_OWN_TENANT_DATA,
+            'Tenants cannot update their own status. Status is managed automatically based on active leases.',
+            HttpStatus.FORBIDDEN,
+            { tenantId },
+          );
+        }
       } else {
-        const requesterUserCompany = await this.userCompanyRepository.findOne({
+        requesterUserCompany = await this.userCompanyRepository.findOne({
           where: {
             userId: requesterUserId,
             companyId: tenantProfile.companyId,
@@ -677,6 +690,11 @@ export class TenantService {
     if (updateDto.tags !== undefined) updateData.tags = updateDto.tags || null;
     if (updateDto.emailNotifications !== undefined) updateData.emailNotifications = updateDto.emailNotifications;
     if (updateDto.smsNotifications !== undefined) updateData.smsNotifications = updateDto.smsNotifications;
+    
+    // Status can only be updated by admins/managers (checked above)
+    if (updateDto.status !== undefined) {
+      updateData.status = updateDto.status;
+    }
 
     await this.tenantProfileRepository.update(tenantId, updateData);
 

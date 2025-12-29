@@ -1,12 +1,12 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { UserResponseDto } from '../../user/dto/user-response.dto';
 
 export class AuthResponseDto {
-  @ApiProperty({
-    description: 'JWT access token',
+  @ApiPropertyOptional({
+    description: 'JWT access token (deprecated - now set as HTTP-only cookie). This field is only present for backward compatibility during migration.',
     example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
   })
-  access_token: string;
+  access_token?: string;
 
   @ApiProperty({
     description: 'User information',

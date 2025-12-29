@@ -11,6 +11,7 @@ import { PropertyModule } from './modules/property/property.module';
 import { UnitModule } from './modules/unit/unit.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { LeaseModule } from './modules/lease/lease.module';
+import { PaymentModule } from './modules/payment/payment.module';
 import appConfig from './config/app.config';
 import dbConfig from './config/db.config';
 import jwtConfig from './config/jwt.config';
@@ -31,6 +32,7 @@ import cacheConfig from './config/cache.config';
     UnitModule,
     TenantModule,
     LeaseModule,
+    PaymentModule,
     SampleModule,
   ],
   controllers: [AppController],

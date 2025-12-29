@@ -19,7 +19,7 @@ import { LeaseType } from '../../../shared/enums/lease-type.enum';
 
 export class CreateLeaseDto {
   @ApiProperty({
-    description: 'Tenant user ID',
+    description: 'Tenant profile ID (preferred) or tenant user ID (accepted for backward compatibility)',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
   @IsUUID('4', { message: 'Tenant ID must be a valid UUID' })

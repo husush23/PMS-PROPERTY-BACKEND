@@ -6,14 +6,18 @@ import {
   Body,
   HttpCode,
   HttpStatus,
+  Res,
+  Req,
 } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiBody,
-  ApiBearerAuth,
+  ApiCookieAuth,
 } from '@nestjs/swagger';
+import type { Response, Request } from 'express';
+import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { AuthUser } from '../../common/decorators/auth-user.decorator';
@@ -25,11 +29,19 @@ import { SelectCompanyDto } from './dto/select-company.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UserResponseDto } from '../user/dto/user-response.dto';
+import {
+  setAccessTokenCookie,
+  setRefreshTokenCookie,
+  clearAuthCookies,
+} from '../../common/utils/cookie.util';
 
 @ApiTags('auth')
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Public()
   @Post('register')
@@ -38,7 +50,7 @@ export class AuthController {
   @ApiBody({ type: RegisterDto })
   @ApiResponse({
     status: 201,
-    description: 'User registered successfully. Returns token without companyId. User can create company after login.',
+    description: 'User registered successfully. Tokens are set as HTTP-only cookies.',
     type: LoginResponseDto,
   })
   @ApiResponse({
@@ -49,13 +61,24 @@ export class AuthController {
     status: 409,
     description: 'User with this email already exists',
   })
-  async register(@Body() registerDto: RegisterDto) {
+  async register(@Body() registerDto: RegisterDto, @Res() res: Response) {
     const authResponse = await this.authService.register(registerDto);
-    return {
+    
+    // Set cookies
+    const expiresIn = this.configService.get<string>('jwt.expiresIn') || '15m';
+    const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
+    
+    setAccessTokenCookie(res, authResponse.access_token!, expiresIn, this.configService);
+    setRefreshTokenCookie(res, authResponse.refresh_token!, refreshExpiresIn, this.configService);
+    
+    // Return response without tokens
+    const { access_token, refresh_token, ...responseData } = authResponse;
+    
+    return res.json({
       success: true,
-      data: authResponse,
+      data: responseData,
       message: 'User registered successfully',
-    };
+    });
   }
 
   @Public()
@@ -65,7 +88,7 @@ export class AuthController {
   @ApiBody({ type: LoginDto })
   @ApiResponse({
     status: 200,
-    description: 'User logged in successfully. If companies.length === 0, token has no companyId. If 1 company, auto-selected. If multiple, requires selection.',
+    description: 'User logged in successfully. Tokens are set as HTTP-only cookies. If companies.length === 0, token has no companyId. If 1 company, auto-selected. If multiple, requires selection.',
     type: LoginResponseDto,
   })
   @ApiResponse({
@@ -76,25 +99,36 @@ export class AuthController {
     status: 401,
     description: 'Invalid email or password',
   })
-  async login(@Body() loginDto: LoginDto) {
+  async login(@Body() loginDto: LoginDto, @Res() res: Response) {
     const loginResponse = await this.authService.login(loginDto);
-    return {
+    
+    // Set cookies
+    const expiresIn = this.configService.get<string>('jwt.expiresIn') || '15m';
+    const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
+    
+    setAccessTokenCookie(res, loginResponse.access_token!, expiresIn, this.configService);
+    setRefreshTokenCookie(res, loginResponse.refresh_token!, refreshExpiresIn, this.configService);
+    
+    // Return response without tokens
+    const { access_token, refresh_token, ...responseData } = loginResponse;
+    
+    return res.json({
       success: true,
-      data: loginResponse,
+      data: responseData,
       message: loginResponse.requiresCompanySelection
         ? 'Please select a company'
         : 'User logged in successfully',
-    };
+    });
   }
 
   @Post('select-company')
   @HttpCode(HttpStatus.OK)
-  @ApiBearerAuth('JWT-auth')
+  @ApiCookieAuth('access_token')
   @ApiOperation({ summary: 'Select company after login (if multiple companies)' })
   @ApiBody({ type: SelectCompanyDto })
   @ApiResponse({
     status: 200,
-    description: 'Company selected successfully',
+    description: 'Company selected successfully. New tokens are set as HTTP-only cookies.',
     type: AuthResponseDto,
   })
   @ApiResponse({
@@ -108,26 +142,38 @@ export class AuthController {
   async selectCompany(
     @Body() selectCompanyDto: SelectCompanyDto,
     @AuthUser() user: { id: string },
+    @Res() res: Response,
   ) {
     const authResponse = await this.authService.selectCompany(
       user.id,
       selectCompanyDto.companyId,
     );
-    return {
+    
+    // Set cookies
+    const expiresIn = this.configService.get<string>('jwt.expiresIn') || '15m';
+    const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
+    
+    setAccessTokenCookie(res, authResponse.access_token!, expiresIn, this.configService);
+    setRefreshTokenCookie(res, authResponse.refresh_token!, refreshExpiresIn, this.configService);
+    
+    // Return response without tokens
+    const { access_token, refresh_token, ...responseData } = authResponse;
+    
+    return res.json({
       success: true,
-      data: authResponse,
+      data: responseData,
       message: 'Company selected successfully',
-    };
+    });
   }
 
   @Post('switch-company')
   @HttpCode(HttpStatus.OK)
-  @ApiBearerAuth('JWT-auth')
+  @ApiCookieAuth('access_token')
   @ApiOperation({ summary: 'Switch company context' })
   @ApiBody({ type: SelectCompanyDto })
   @ApiResponse({
     status: 200,
-    description: 'Company switched successfully',
+    description: 'Company switched successfully. New tokens are set as HTTP-only cookies.',
     type: AuthResponseDto,
   })
   @ApiResponse({
@@ -141,21 +187,90 @@ export class AuthController {
   async switchCompany(
     @Body() selectCompanyDto: SelectCompanyDto,
     @AuthUser() user: { id: string },
+    @Res() res: Response,
   ) {
     // Same as select-company
     const authResponse = await this.authService.selectCompany(
       user.id,
       selectCompanyDto.companyId,
     );
-    return {
+    
+    // Set cookies
+    const expiresIn = this.configService.get<string>('jwt.expiresIn') || '15m';
+    const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
+    
+    setAccessTokenCookie(res, authResponse.access_token!, expiresIn, this.configService);
+    setRefreshTokenCookie(res, authResponse.refresh_token!, refreshExpiresIn, this.configService);
+    
+    // Return response without tokens
+    const { access_token, refresh_token, ...responseData } = authResponse;
+    
+    return res.json({
       success: true,
-      data: authResponse,
+      data: responseData,
       message: 'Company switched successfully',
-    };
+    });
+  }
+
+  @Public()
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Refresh access token using refresh token cookie' })
+  @ApiResponse({
+    status: 200,
+    description: 'Access token refreshed successfully. New tokens are set as HTTP-only cookies.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid or expired refresh token',
+  })
+  async refresh(@Req() req: Request, @Res() res: Response) {
+    const refreshToken = req.cookies?.[this.configService.get<string>('jwt.refreshCookieName') || 'refresh_token'];
+    
+    if (!refreshToken) {
+      return res.status(HttpStatus.UNAUTHORIZED).json({
+        success: false,
+        message: 'Refresh token not found',
+      });
+    }
+
+    const tokens = await this.authService.refreshToken(refreshToken);
+    
+    // Set new cookies
+    const expiresIn = this.configService.get<string>('jwt.expiresIn') || '15m';
+    const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
+    
+    setAccessTokenCookie(res, tokens.access_token, expiresIn, this.configService);
+    setRefreshTokenCookie(res, tokens.refresh_token, refreshExpiresIn, this.configService);
+    
+    return res.json({
+      success: true,
+      message: 'Token refreshed successfully',
+    });
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Logout user and clear authentication cookies' })
+  @ApiResponse({
+    status: 200,
+    description: 'Logged out successfully',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized',
+  })
+  async logout(@Res() res: Response) {
+    clearAuthCookies(res, this.configService);
+    
+    return res.json({
+      success: true,
+      message: 'Logged out successfully',
+    });
   }
 
   @Get('companies')
-  @ApiBearerAuth('JWT-auth')
+  @ApiCookieAuth('access_token')
   @ApiOperation({ summary: "Get user's companies" })
   @ApiResponse({
     status: 200,
@@ -170,27 +285,48 @@ export class AuthController {
   }
 
   @Get('me')
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Get current authenticated user' })
+  @ApiOperation({ summary: 'Get current authenticated user with role and company context' })
   @ApiResponse({
     status: 200,
-    description: 'Current user retrieved successfully',
-    type: UserResponseDto,
+    description: 'Current user retrieved successfully with role and company context',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        data: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            email: { type: 'string' },
+            name: { type: 'string', nullable: true },
+            isActive: { type: 'boolean' },
+            isSuperAdmin: { type: 'boolean' },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+            companyId: { type: 'string', nullable: true, description: 'Current company context (if selected)' },
+            role: { type: 'string', nullable: true, description: 'User role in the current company context' },
+          },
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 401,
     description: 'Unauthorized',
   })
-  async getCurrentUser(@AuthUser() user: { id: string; email: string; companyId?: string; role?: string }) {
+  async getCurrentUser(@AuthUser() user: { id: string; email: string; companyId?: string; role?: string; isSuperAdmin?: boolean }) {
     const userData = await this.authService.getCurrentUser(user.id);
     return {
       success: true,
-      data: userData,
+      data: {
+        ...userData,
+        companyId: user.companyId || null,
+        role: user.role || null,
+      },
     };
   }
 
   @Patch('profile')
-  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Update own profile (name, email)' })
   @ApiBody({ type: UpdateProfileDto })
   @ApiResponse({
@@ -219,7 +355,6 @@ export class AuthController {
   }
 
   @Patch('profile/password')
-  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Change own password' })
   @ApiBody({ type: ChangePasswordDto })
   @ApiResponse({

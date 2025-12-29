@@ -1,0 +1,11 @@
+export enum PaymentType {
+  RENT = 'RENT',
+  DEPOSIT = 'DEPOSIT',
+  LATE_FEE = 'LATE_FEE',
+  UTILITY = 'UTILITY',
+  PET_DEPOSIT = 'PET_DEPOSIT',
+  PET_RENT = 'PET_RENT',
+  MAINTENANCE = 'MAINTENANCE',
+  OTHER = 'OTHER',
+}
+

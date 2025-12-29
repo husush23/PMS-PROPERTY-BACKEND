@@ -86,6 +86,84 @@ export class PaymentController {
     };
   }
 
+  @Get('tenant/:tenantId/balance')
+  @ApiCookieAuth('access_token')
+  @ApiOperation({ summary: 'Get tenant balance' })
+  @ApiParam({ name: 'tenantId', type: 'string', format: 'uuid' })
+  @ApiQuery({ name: 'companyId', type: 'string', format: 'uuid', required: true })
+  @ApiResponse({
+    status: 200,
+    description: 'Tenant balance retrieved successfully',
+  })
+  async getTenantBalance(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Query('companyId', ParseUUIDPipe) companyId: string,
+    @AuthUser() user: { id: string },
+  ) {
+    const balance = await this.paymentService.getTenantBalance(tenantId, companyId, user.id);
+    return {
+      success: true,
+      data: balance,
+    };
+  }
+
+  @Get('lease/:leaseId/balance')
+  @ApiCookieAuth('access_token')
+  @ApiOperation({ summary: 'Get lease balance' })
+  @ApiParam({ name: 'leaseId', type: 'string', format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lease balance retrieved successfully',
+  })
+  async getLeaseBalance(
+    @Param('leaseId', ParseUUIDPipe) leaseId: string,
+    @AuthUser() user: { id: string },
+  ) {
+    const balance = await this.paymentService.getLeaseBalance(leaseId, user.id);
+    return {
+      success: true,
+      data: balance,
+    };
+  }
+
+  @Get('tenant/:tenantId/history')
+  @ApiCookieAuth('access_token')
+  @ApiOperation({ summary: 'Get payment history for tenant' })
+  @ApiParam({ name: 'tenantId', type: 'string', format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Payment history retrieved successfully',
+  })
+  async getTenantHistory(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @AuthUser() user: { id: string },
+  ) {
+    const history = await this.paymentService.getPaymentHistory(tenantId, undefined, user.id);
+    return {
+      success: true,
+      data: history,
+    };
+  }
+
+  @Get('lease/:leaseId/history')
+  @ApiCookieAuth('access_token')
+  @ApiOperation({ summary: 'Get payment history for lease' })
+  @ApiParam({ name: 'leaseId', type: 'string', format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Payment history retrieved successfully',
+  })
+  async getLeaseHistory(
+    @Param('leaseId', ParseUUIDPipe) leaseId: string,
+    @AuthUser() user: { id: string },
+  ) {
+    const history = await this.paymentService.getPaymentHistory(undefined, leaseId, user.id);
+    return {
+      success: true,
+      data: history,
+    };
+  }
+
   @Get(':id')
   @ApiCookieAuth('access_token')
   @ApiOperation({ summary: 'Get payment by ID' })
@@ -244,84 +322,6 @@ export class PaymentController {
     return {
       success: true,
       message: 'Payment deleted successfully',
-    };
-  }
-
-  @Get('tenant/:tenantId/balance')
-  @ApiCookieAuth('access_token')
-  @ApiOperation({ summary: 'Get tenant balance' })
-  @ApiParam({ name: 'tenantId', type: 'string', format: 'uuid' })
-  @ApiQuery({ name: 'companyId', type: 'string', format: 'uuid', required: true })
-  @ApiResponse({
-    status: 200,
-    description: 'Tenant balance retrieved successfully',
-  })
-  async getTenantBalance(
-    @Param('tenantId', ParseUUIDPipe) tenantId: string,
-    @Query('companyId', ParseUUIDPipe) companyId: string,
-    @AuthUser() user: { id: string },
-  ) {
-    const balance = await this.paymentService.getTenantBalance(tenantId, companyId, user.id);
-    return {
-      success: true,
-      data: balance,
-    };
-  }
-
-  @Get('lease/:leaseId/balance')
-  @ApiCookieAuth('access_token')
-  @ApiOperation({ summary: 'Get lease balance' })
-  @ApiParam({ name: 'leaseId', type: 'string', format: 'uuid' })
-  @ApiResponse({
-    status: 200,
-    description: 'Lease balance retrieved successfully',
-  })
-  async getLeaseBalance(
-    @Param('leaseId', ParseUUIDPipe) leaseId: string,
-    @AuthUser() user: { id: string },
-  ) {
-    const balance = await this.paymentService.getLeaseBalance(leaseId, user.id);
-    return {
-      success: true,
-      data: balance,
-    };
-  }
-
-  @Get('tenant/:tenantId/history')
-  @ApiCookieAuth('access_token')
-  @ApiOperation({ summary: 'Get payment history for tenant' })
-  @ApiParam({ name: 'tenantId', type: 'string', format: 'uuid' })
-  @ApiResponse({
-    status: 200,
-    description: 'Payment history retrieved successfully',
-  })
-  async getTenantHistory(
-    @Param('tenantId', ParseUUIDPipe) tenantId: string,
-    @AuthUser() user: { id: string },
-  ) {
-    const history = await this.paymentService.getPaymentHistory(tenantId, undefined, user.id);
-    return {
-      success: true,
-      data: history,
-    };
-  }
-
-  @Get('lease/:leaseId/history')
-  @ApiCookieAuth('access_token')
-  @ApiOperation({ summary: 'Get payment history for lease' })
-  @ApiParam({ name: 'leaseId', type: 'string', format: 'uuid' })
-  @ApiResponse({
-    status: 200,
-    description: 'Payment history retrieved successfully',
-  })
-  async getLeaseHistory(
-    @Param('leaseId', ParseUUIDPipe) leaseId: string,
-    @AuthUser() user: { id: string },
-  ) {
-    const history = await this.paymentService.getPaymentHistory(undefined, leaseId, user.id);
-    return {
-      success: true,
-      data: history,
     };
   }
 }

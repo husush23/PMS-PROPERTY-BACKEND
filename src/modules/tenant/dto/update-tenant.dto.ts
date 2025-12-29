@@ -5,8 +5,10 @@ import {
   IsArray,
   MinLength,
   IsDateString,
+  IsEnum,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { TenantStatus } from '../../../shared/enums/tenant-status.enum';
 
 export class UpdateTenantDto {
   @ApiPropertyOptional({
@@ -155,5 +157,14 @@ export class UpdateTenantDto {
   @IsOptional()
   @IsBoolean()
   smsNotifications?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Tenant status (PENDING, ACTIVE, FORMER). Note: Status is usually managed automatically based on active leases, but can be manually updated by admins/managers.',
+    enum: TenantStatus,
+    example: TenantStatus.ACTIVE,
+  })
+  @IsOptional()
+  @IsEnum(TenantStatus, { message: 'Status must be a valid TenantStatus enum value (PENDING, ACTIVE, or FORMER)' })
+  status?: TenantStatus;
 }
 

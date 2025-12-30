@@ -95,18 +95,38 @@ POST /api/v1/auth/select-company
 
 **Prerequisites**: 
 - User can exist or not exist
-- If user doesn't exist, system automatically creates user in inactive state and sends invitation
+- Password field is optional
 
-**Request (User Exists)**:
+**Request Options**:
+
+**Option A: With Password (Direct Creation - User Can Login Immediately)**
 ```json
 {
-  "email": "existing-user@example.com",
+  "email": "new-tenant@example.com",
+  "password": "SecurePassword123!",
   "name": "Jane Smith",
-  "phone": "+1987654321"
+  "phone": "+1987654321",
+  "address": "123 Main St",
+  "city": "New York"
 }
 ```
 
-**Request (User Doesn't Exist)**:
+**Expected (Password Provided)**:
+- Status: `201 Created`
+- If user doesn't exist:
+  - User created with `isActive: true` (active immediately)
+  - Password set to provided value
+  - TenantProfile created with status `PENDING`
+  - UserCompany relationship created with TENANT role
+  - **No invitation sent** - user can login immediately
+- If user exists:
+  - User password updated to provided value
+  - User `isActive` set to `true` (activated)
+  - TenantProfile created with status `PENDING`
+  - UserCompany relationship created with TENANT role
+  - **No invitation sent**
+
+**Option B: Without Password (Invitation Flow)**
 ```json
 {
   "email": "new-tenant@example.com",
@@ -115,10 +135,11 @@ POST /api/v1/auth/select-company
 }
 ```
 
-**Expected**:
+**Expected (No Password)**:
 - Status: `201 Created`
 - If user doesn't exist:
   - User created with `isActive: false` (inactive state)
+  - Temporary password generated (not usable)
   - TenantProfile created with status `PENDING`
   - UserCompany relationship created with TENANT role
   - Invitation automatically created and email sent
@@ -126,7 +147,7 @@ POST /api/v1/auth/select-company
 - If user exists:
   - TenantProfile created with status `PENDING`
   - UserCompany relationship created with TENANT role
-  - No invitation sent (user already exists and is active)
+  - No invitation sent (user already exists)
 
 ---
 
@@ -288,8 +309,10 @@ GET /api/v1/tenants?search=john&status=PENDING&sortBy=name&sortOrder=ASC
 
 - [ ] Invite new tenant (creates user with isActive: false)
 - [ ] Accept tenant invitation (public endpoint, no auth needed, sets password, activates account)
-- [ ] Create tenant directly with existing user
-- [ ] Create tenant directly with new user (automatically creates inactive user and sends invitation)
+- [ ] Create tenant directly with password (user created active, can login immediately)
+- [ ] Create tenant directly without password (automatically creates inactive user and sends invitation)
+- [ ] Create tenant directly with existing user and password (updates password, activates user)
+- [ ] Create tenant directly with existing user without password (no invitation sent)
 - [ ] List tenants (admin sees all, tenant sees only self)
 - [ ] Get tenant details (access control works)
 - [ ] Update tenant (self and admin updates)
@@ -327,8 +350,11 @@ SELECT id, email, "isActive" FROM users WHERE email = 'tenant@example.com';
 
 - **Accept Invitation**: This endpoint is **public** (no authentication required). Security is provided by the invitation token. The user account is created/updated based on the invitation email.
 - **Create Tenant**: 
-  - If user doesn't exist: System automatically creates user in inactive state (`isActive: false`) and sends invitation email. Tenant must accept invitation and set password to activate.
-  - If user exists: Tenant profile is created directly, no invitation sent.
+  - **With Password**: User is created/updated as active (`isActive: true`) and can login immediately. No invitation sent.
+  - **Without Password**: 
+    - If user doesn't exist: System automatically creates user in inactive state (`isActive: false`) and sends invitation email. Tenant must accept invitation and set password to activate.
+    - If user exists: Tenant profile is created directly, no invitation sent.
+- Password must be at least 8 characters long (if provided)
 - Tenant invitations expire after 7 days
 - Tenant status updates will be automatic when Lease module is integrated
 - All tenant operations are company-scoped

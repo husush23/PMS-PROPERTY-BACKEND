@@ -332,17 +332,55 @@ export class TenantService {
     });
 
     if (!user) {
-      // User doesn't exist - create user in inactive state and send invitation
-      const tempPassword = randomUUID();
-      const hashedPassword = await PasswordUtil.hash(tempPassword);
-      
-      user = this.userRepository.create({
-        email: createDto.email.toLowerCase(),
-        password: hashedPassword,
-        name: createDto.name || undefined,
-        isActive: false,
-      });
-      user = await this.userRepository.save(user);
+      // User doesn't exist - create user
+      if (createDto.password) {
+        // Password provided: create active user with provided password
+        const hashedPassword = await PasswordUtil.hash(createDto.password);
+        
+        user = this.userRepository.create({
+          email: createDto.email.toLowerCase(),
+          password: hashedPassword,
+          name: createDto.name || undefined,
+          isActive: true, // Active immediately
+        });
+        user = await this.userRepository.save(user);
+      } else {
+        // No password: create inactive user with temp password (invitation flow)
+        const tempPassword = randomUUID();
+        const hashedPassword = await PasswordUtil.hash(tempPassword);
+        
+        user = this.userRepository.create({
+          email: createDto.email.toLowerCase(),
+          password: hashedPassword,
+          name: createDto.name || undefined,
+          isActive: false, // Inactive, needs invitation
+        });
+        user = await this.userRepository.save(user);
+      }
+    } else {
+      // User exists - if password provided, update it and activate
+      if (createDto.password) {
+        const hashedPassword = await PasswordUtil.hash(createDto.password);
+        await this.userRepository.update(user.id, {
+          password: hashedPassword,
+          isActive: true, // Activate existing user
+        });
+        // Refresh user object to get updated isActive status
+        const updatedUser = await this.userRepository.findOne({ where: { id: user.id } });
+        if (updatedUser) {
+          user = updatedUser;
+        }
+      }
+    }
+
+    // Ensure user is not null at this point
+    if (!user) {
+      throw new BusinessException(
+        ErrorCode.USER_NOT_FOUND,
+        ERROR_MESSAGES.USER_NOT_FOUND,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        { email: createDto.email },
+      );
     }
 
     // Check for duplicate tenant

@@ -602,3 +602,5 @@ axios.post('/api/v1/auth/logout', {}, { withCredentials: true });
 **Backend API Version:** v1  
 **Migration Status:** ✅ Backend Complete - Frontend Migration Required
 
+
+

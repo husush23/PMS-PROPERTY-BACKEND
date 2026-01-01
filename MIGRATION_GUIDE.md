@@ -102,3 +102,4 @@ If you encounter issues:
 3. Check the migration files for syntax errors
 4. Use `migration:show` to see the current state
 
+

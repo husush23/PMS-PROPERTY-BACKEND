@@ -39,9 +39,13 @@ async function bootstrap() {
   }
 
   // Handle multiple origins (comma-separated)
+  // In production, only use CORS_ORIGIN from environment (no fallback)
+  // In development, allow localhost
   const allowedOrigins = corsOrigin
     ? corsOrigin.split(',').map((origin) => origin.trim()).filter(Boolean)
-    : ['http://localhost:3000', 'https://pms-pro-egmn.vercel.app']; // Default for development
+    : process.env.NODE_ENV === 'production'
+      ? [] // Production: no fallback, must set CORS_ORIGIN
+      : ['http://localhost:3000']; // Development only
 
   app.enableCors({
     origin: (origin, callback) => {

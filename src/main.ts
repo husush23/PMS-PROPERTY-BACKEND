@@ -22,13 +22,58 @@ async function bootstrap() {
   // Cookie parser middleware
   app.use(cookieParser());
 
-  // Security - Helmet
-  app.use(helmet());
+  // Security - Helmet (configured to not block CORS)
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
 
-  // CORS
+  // CORS Configuration - MUST be before other middleware
+  const corsOrigin = process.env.CORS_ORIGIN;
+
+  // In production, require CORS_ORIGIN to be set
+  if (!corsOrigin && process.env.NODE_ENV === 'production') {
+    console.warn('⚠️  WARNING: CORS_ORIGIN not set in production. CORS may not work correctly.');
+  }
+
+  // Handle multiple origins (comma-separated)
+  const allowedOrigins = corsOrigin
+    ? corsOrigin.split(',').map((origin) => origin.trim()).filter(Boolean)
+    : ['http://localhost:3000', 'https://pms-pro-egmn.vercel.app']; // Default for development
+
   app.enableCors({
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, Postman, or server-to-server)
+      if (!origin) {
+        return callback(null, true);
+      }
+      
+      // Check if origin is in allowed list
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.error(`CORS blocked origin: ${origin}. Allowed: ${allowedOrigins.join(', ')}`);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Requested-With',
+      'Accept',
+      'Origin',
+      'Access-Control-Allow-Origin',
+      'Access-Control-Allow-Headers',
+      'Access-Control-Allow-Methods',
+      'Access-Control-Allow-Credentials',
+    ],
+    exposedHeaders: ['Set-Cookie'],
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
   });
 
   // Global prefix

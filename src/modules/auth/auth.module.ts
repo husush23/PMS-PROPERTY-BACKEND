@@ -15,18 +15,23 @@ import { CompanyModule } from '../company/company.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService): JwtModuleOptions => {
-        const secret = configService.get<string>('jwt.secret') || process.env.JWT_SECRET;
+        const secret =
+          configService.get<string>('jwt.secret') || process.env.JWT_SECRET;
         const expiresIn = configService.get<string>('jwt.expiresIn') || '15m';
-        
+
         // For development, use a default secret if not provided (NOT for production!)
         const finalSecret = secret || 'dev-secret-key-change-in-production';
-        
+
         if (!secret && process.env.NODE_ENV === 'production') {
-          throw new Error('JWT_SECRET is required in production. Please set it in your .env file.');
+          throw new Error(
+            'JWT_SECRET is required in production. Please set it in your .env file.',
+          );
         }
 
         if (!secret) {
-          console.warn('⚠️  WARNING: JWT_SECRET not set. Using default development secret. This is NOT secure for production!');
+          console.warn(
+            '⚠️  WARNING: JWT_SECRET not set. Using default development secret. This is NOT secure for production!',
+          );
         }
 
         return {
@@ -47,9 +52,3 @@ import { CompanyModule } from '../company/company.module';
   exports: [AuthService],
 })
 export class AuthModule {}
-
-
-
-
-
-

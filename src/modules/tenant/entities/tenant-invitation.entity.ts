@@ -70,4 +70,3 @@ export class TenantInvitation {
   @UpdateDateColumn()
   updatedAt: Date;
 }
-

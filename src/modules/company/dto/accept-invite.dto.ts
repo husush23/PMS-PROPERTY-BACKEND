@@ -9,4 +9,3 @@ export class AcceptInviteDto {
   @IsUUID('4', { message: 'Token must be a valid UUID' })
   token: string;
 }
-

@@ -142,7 +142,9 @@ export class AdminController {
 
   // User Management Routes
   @Get('users')
-  @ApiOperation({ summary: 'List all users across all companies (super admin only)' })
+  @ApiOperation({
+    summary: 'List all users across all companies (super admin only)',
+  })
   @ApiResponse({
     status: 200,
     description: 'Users retrieved successfully',
@@ -198,7 +200,9 @@ export class AdminController {
 
   @Delete('users/:id/remove-super-admin')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Remove super admin status from user (super admin only)' })
+  @ApiOperation({
+    summary: 'Remove super admin status from user (super admin only)',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,
@@ -255,7 +259,10 @@ export class AdminController {
 
   @Post('users')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create a new user (super admin only). Optionally assign to a company.' })
+  @ApiOperation({
+    summary:
+      'Create a new user (super admin only). Optionally assign to a company.',
+  })
   @ApiBody({ type: CreateAdminUserDto })
   @ApiResponse({
     status: 201,
@@ -351,9 +358,17 @@ export class AdminController {
 
   @Delete('users/:id')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Delete user (soft delete by default, hard delete with ?hard=true, super admin only)' })
+  @ApiOperation({
+    summary:
+      'Delete user (soft delete by default, hard delete with ?hard=true, super admin only)',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
-  @ApiQuery({ name: 'hard', required: false, type: Boolean, description: 'Set to true for hard delete (permanent removal)' })
+  @ApiQuery({
+    name: 'hard',
+    required: false,
+    type: Boolean,
+    description: 'Set to true for hard delete (permanent removal)',
+  })
   @ApiResponse({
     status: 200,
     description: 'User deleted successfully',
@@ -395,7 +410,9 @@ export class AdminController {
   }
 
   @Get('overview')
-  @ApiOperation({ summary: 'Get system overview dashboard data (super admin only)' })
+  @ApiOperation({
+    summary: 'Get system overview dashboard data (super admin only)',
+  })
   @ApiResponse({
     status: 200,
     description: 'Overview data retrieved successfully',
@@ -409,4 +426,3 @@ export class AdminController {
     };
   }
 }
-

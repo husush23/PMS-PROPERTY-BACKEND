@@ -1,4 +1,12 @@
-import { IsOptional, IsInt, Min, Max, IsEnum, IsString, IsNumber } from 'class-validator';
+import {
+  IsOptional,
+  IsInt,
+  Min,
+  Max,
+  IsEnum,
+  IsString,
+  IsNumber,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { UnitStatus } from '../../../shared/enums/unit-status.enum';
@@ -131,4 +139,3 @@ export class ListUnitsQueryDto {
   @IsString()
   sortOrder?: 'ASC' | 'DESC' = 'DESC';
 }
-

@@ -7,14 +7,20 @@ import {
   forwardRef,
   Inject,
 } from '@nestjs/common';
-import { BusinessException, ErrorCode } from '../../common/exceptions/business.exception';
+import {
+  BusinessException,
+  ErrorCode,
+} from '../../common/exceptions/business.exception';
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { Company } from './entities/company.entity';
 import { UserCompany } from './entities/user-company.entity';
-import { CompanyInvitation, InvitationStatus } from './entities/company-invitation.entity';
+import {
+  CompanyInvitation,
+  InvitationStatus,
+} from './entities/company-invitation.entity';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import { CompanyResponseDto } from './dto/company-response.dto';
@@ -84,7 +90,11 @@ export class CompanyService {
     const savedCompany = await this.companyRepository.save(company);
 
     // Assign creator as COMPANY_ADMIN
-    await this.assignUserToCompany(userId, savedCompany.id, UserRole.COMPANY_ADMIN);
+    await this.assignUserToCompany(
+      userId,
+      savedCompany.id,
+      UserRole.COMPANY_ADMIN,
+    );
 
     return this.toResponseDto(savedCompany);
   }
@@ -216,7 +226,9 @@ export class CompanyService {
     requesterUserId: string,
   ): Promise<void> {
     // Check if requester is super admin
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (!isSuperAdmin) {
@@ -242,7 +254,11 @@ export class CompanyService {
       }
     }
 
-    await this.assignUserToCompany(addUserDto.userId, companyId, addUserDto.role);
+    await this.assignUserToCompany(
+      addUserDto.userId,
+      companyId,
+      addUserDto.role,
+    );
   }
 
   async updateUserRole(
@@ -252,7 +268,9 @@ export class CompanyService {
     requesterUserId: string,
   ): Promise<void> {
     // Check if requester is super admin
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (!isSuperAdmin) {
@@ -295,7 +313,9 @@ export class CompanyService {
     requesterUserId: string,
   ): Promise<void> {
     // Check if requester is super admin
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (!isSuperAdmin) {
@@ -356,7 +376,9 @@ export class CompanyService {
     requesterUserId: string,
   ): Promise<void> {
     // Check if requester is super admin
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (!isSuperAdmin) {
@@ -383,7 +405,9 @@ export class CompanyService {
     }
 
     // Verify company exists
-    const company = await this.companyRepository.findOne({ where: { id: companyId } });
+    const company = await this.companyRepository.findOne({
+      where: { id: companyId },
+    });
     if (!company) {
       throw new BusinessException(
         ErrorCode.COMPANY_NOT_FOUND,
@@ -462,7 +486,8 @@ export class CompanyService {
     }
 
     // Send invitation email (don't await - let it run in background)
-    const inviterName = requesterUser?.name || requesterUser?.email || 'Someone';
+    const inviterName =
+      requesterUser?.name || requesterUser?.email || 'Someone';
     this.notificationService
       .sendInvitationEmail(inviteDto.email, company.name, token, inviterName)
       .catch((error) => {
@@ -578,7 +603,11 @@ export class CompanyService {
     }
 
     // Add user to company
-    await this.assignUserToCompany(userId, invitation.companyId, invitation.role);
+    await this.assignUserToCompany(
+      userId,
+      invitation.companyId,
+      invitation.role,
+    );
 
     // Mark invitation as accepted
     await this.invitationRepository.update(invitation.id, {
@@ -592,7 +621,9 @@ export class CompanyService {
     requesterUserId: string,
   ): Promise<MemberResponseDto[]> {
     // Check if requester is super admin
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (!isSuperAdmin) {
@@ -632,7 +663,9 @@ export class CompanyService {
     }));
   }
 
-  async createDefaultCompany(name: string = 'Default Company'): Promise<Company> {
+  async createDefaultCompany(
+    name: string = 'Default Company',
+  ): Promise<Company> {
     const company = this.companyRepository.create({
       name,
       slug: this.generateSlug(name),
@@ -666,4 +699,3 @@ export class CompanyService {
     };
   }
 }
-

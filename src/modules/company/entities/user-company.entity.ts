@@ -48,4 +48,3 @@ export class UserCompany {
   @CreateDateColumn()
   joinedAt: Date;
 }
-

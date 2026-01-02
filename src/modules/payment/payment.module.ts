@@ -17,17 +17,3 @@ import { UserCompany } from '../company/entities/user-company.entity';
   exports: [PaymentService],
 })
 export class PaymentModule {}
-
-
-
-
-
-
-
-
-
-
-
-
-
-

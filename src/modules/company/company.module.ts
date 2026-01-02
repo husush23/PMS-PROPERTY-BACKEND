@@ -18,4 +18,3 @@ import { NotificationModule } from '../notification/notification.module';
   exports: [CompanyService],
 })
 export class CompanyModule {}
-

@@ -13,7 +13,8 @@ export class CreateAdminUserDto extends CreateUserDto {
   companyId?: string;
 
   @ApiPropertyOptional({
-    description: 'Role to assign when adding user to company (defaults to TENANT)',
+    description:
+      'Role to assign when adding user to company (defaults to TENANT)',
     enum: UserRole,
     example: UserRole.TENANT,
   })
@@ -21,4 +22,3 @@ export class CreateAdminUserDto extends CreateUserDto {
   @IsEnum(UserRole)
   role?: UserRole;
 }
-

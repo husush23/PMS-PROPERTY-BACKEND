@@ -15,7 +15,8 @@ export class NotificationService {
     invitationToken: string,
     invitedBy: string,
   ): Promise<void> {
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
     const acceptInviteUrl = `${frontendUrl}/accept-invite?token=${invitationToken}`;
 
     await this.mailerService.sendMail({
@@ -59,7 +60,8 @@ export class NotificationService {
     invitationToken: string,
     invitedBy: string,
   ): Promise<void> {
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
     const acceptInviteUrl = `${frontendUrl}/tenants/accept-invitation?token=${invitationToken}`;
 
     await this.mailerService.sendMail({

@@ -1,11 +1,12 @@
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { Request } from 'express';
 import { BusinessException, ErrorCode } from '../exceptions/business.exception';
 import { ERROR_MESSAGES } from '../constants/error-messages.constant';
 
 @Injectable()
 export class SuperAdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<Request>();
     const user = request.user;
 
     if (!user || !user.isSuperAdmin) {
@@ -19,4 +20,3 @@ export class SuperAdminGuard implements CanActivate {
     return true;
   }
 }
-

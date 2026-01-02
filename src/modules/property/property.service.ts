@@ -1,8 +1,8 @@
+import { Injectable, HttpStatus } from '@nestjs/common';
 import {
-  Injectable,
-  HttpStatus,
-} from '@nestjs/common';
-import { BusinessException, ErrorCode } from '../../common/exceptions/business.exception';
+  BusinessException,
+  ErrorCode,
+} from '../../common/exceptions/business.exception';
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -132,7 +132,9 @@ export class PropertyService {
       }
 
       const companyIds = userCompanies.map((uc) => uc.companyId);
-      queryBuilder.andWhere('property.companyId IN (:...companyIds)', { companyIds });
+      queryBuilder.andWhere('property.companyId IN (:...companyIds)', {
+        companyIds,
+      });
     }
 
     // Filter by companyId if provided (super admin can filter by company)
@@ -152,7 +154,9 @@ export class PropertyService {
 
     // Status filter
     if (query.status) {
-      queryBuilder.andWhere('property.status = :status', { status: query.status });
+      queryBuilder.andWhere('property.status = :status', {
+        status: query.status,
+      });
     }
 
     // Property type filter
@@ -341,7 +345,10 @@ export class PropertyService {
     await this.propertyRepository.update(id, { isActive: false });
   }
 
-  private toResponseDto(property: Property, numberOfUnits: number = 0): PropertyResponseDto {
+  private toResponseDto(
+    property: Property,
+    numberOfUnits: number = 0,
+  ): PropertyResponseDto {
     return {
       id: property.id,
       name: property.name,

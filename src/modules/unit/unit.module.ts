@@ -17,11 +17,3 @@ import { User } from '../user/entities/user.entity';
   exports: [UnitService],
 })
 export class UnitModule {}
-
-
-
-
-
-
-
-

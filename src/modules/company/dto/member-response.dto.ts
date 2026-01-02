@@ -40,4 +40,3 @@ export class MemberResponseDto {
   })
   isActive: boolean;
 }
-

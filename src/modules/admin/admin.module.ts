@@ -18,4 +18,3 @@ import { CompanyModule } from '../company/company.module';
   exports: [AdminService],
 })
 export class AdminModule {}
-

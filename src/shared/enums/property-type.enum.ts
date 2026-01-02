@@ -6,4 +6,3 @@ export enum PropertyType {
   TOWNHOUSE = 'TOWNHOUSE',
   MIXED_USE = 'MIXED_USE',
 }
-

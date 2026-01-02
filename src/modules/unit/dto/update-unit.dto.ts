@@ -1,4 +1,14 @@
-import { IsOptional, IsEnum, IsString, IsNumber, IsArray, IsBoolean, IsUUID, IsInt, Min } from 'class-validator';
+import {
+  IsOptional,
+  IsEnum,
+  IsString,
+  IsNumber,
+  IsArray,
+  IsBoolean,
+  IsUUID,
+  IsInt,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { UnitStatus } from '../../../shared/enums/unit-status.enum';
@@ -15,7 +25,8 @@ export class UpdateUnitDto {
   propertyId?: string;
 
   @ApiPropertyOptional({
-    description: 'Company ID (will be auto-populated from Property if not provided)',
+    description:
+      'Company ID (will be auto-populated from Property if not provided)',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
   @IsOptional()
@@ -36,7 +47,9 @@ export class UpdateUnitDto {
     example: UnitStatus.AVAILABLE,
   })
   @IsOptional()
-  @IsEnum(UnitStatus, { message: 'Status must be a valid UnitStatus enum value' })
+  @IsEnum(UnitStatus, {
+    message: 'Status must be a valid UnitStatus enum value',
+  })
   status?: UnitStatus;
 
   @ApiPropertyOptional({
@@ -45,15 +58,23 @@ export class UpdateUnitDto {
     example: UnitType.ONE_BEDROOM,
   })
   @IsOptional()
-  @IsEnum(UnitType, { message: 'Unit type must be a valid UnitType enum value' })
+  @IsEnum(UnitType, {
+    message: 'Unit type must be a valid UnitType enum value',
+  })
   unitType?: UnitType;
 
   @ApiPropertyOptional({
     description: 'Monthly rent amount',
-    example: 1500.00,
+    example: 1500.0,
   })
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Monthly rent must be a valid number with up to 2 decimal places' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    {
+      message:
+        'Monthly rent must be a valid number with up to 2 decimal places',
+    },
+  )
   @Min(0, { message: 'Monthly rent must be a positive number' })
   @Type(() => Number)
   monthlyRent?: number;
@@ -84,17 +105,26 @@ export class UpdateUnitDto {
   })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 1 }, { message: 'Bathrooms must be a valid number with up to 1 decimal place' })
+  @IsNumber(
+    { maxDecimalPlaces: 1 },
+    { message: 'Bathrooms must be a valid number with up to 1 decimal place' },
+  )
   @Min(0, { message: 'Bathrooms must be a non-negative number' })
   bathrooms?: number;
 
   @ApiPropertyOptional({
     description: 'Security deposit amount',
-    example: 1500.00,
+    example: 1500.0,
   })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Deposit amount must be a valid number with up to 2 decimal places' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    {
+      message:
+        'Deposit amount must be a valid number with up to 2 decimal places',
+    },
+  )
   @Min(0, { message: 'Deposit amount must be a positive number' })
   depositAmount?: number;
 
@@ -149,7 +179,9 @@ export class UpdateUnitDto {
     example: LeaseType.LONG_TERM,
   })
   @IsOptional()
-  @IsEnum(LeaseType, { message: 'Lease type must be a valid LeaseType enum value' })
+  @IsEnum(LeaseType, {
+    message: 'Lease type must be a valid LeaseType enum value',
+  })
   leaseType?: LeaseType;
 
   @ApiPropertyOptional({
@@ -206,31 +238,45 @@ export class UpdateUnitDto {
 
   @ApiPropertyOptional({
     description: 'Late fee amount',
-    example: 50.00,
+    example: 50.0,
   })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Late fee amount must be a valid number with up to 2 decimal places' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    {
+      message:
+        'Late fee amount must be a valid number with up to 2 decimal places',
+    },
+  )
   @Min(0, { message: 'Late fee amount must be a positive number' })
   lateFeeAmount?: number;
 
   @ApiPropertyOptional({
     description: 'Pet deposit amount',
-    example: 300.00,
+    example: 300.0,
   })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Pet deposit must be a valid number with up to 2 decimal places' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    {
+      message: 'Pet deposit must be a valid number with up to 2 decimal places',
+    },
+  )
   @Min(0, { message: 'Pet deposit must be a positive number' })
   petDeposit?: number;
 
   @ApiPropertyOptional({
     description: 'Additional monthly pet rent',
-    example: 50.00,
+    example: 50.0,
   })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Pet rent must be a valid number with up to 2 decimal places' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'Pet rent must be a valid number with up to 2 decimal places' },
+  )
   @Min(0, { message: 'Pet rent must be a positive number' })
   petRent?: number;
 

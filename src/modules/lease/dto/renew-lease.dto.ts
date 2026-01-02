@@ -1,4 +1,12 @@
-import { IsString, IsEnum, IsOptional, IsDateString, IsNumber, IsBoolean, Min } from 'class-validator';
+import {
+  IsString,
+  IsEnum,
+  IsOptional,
+  IsDateString,
+  IsNumber,
+  IsBoolean,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { LeaseType } from '../../../shared/enums/lease-type.enum';
@@ -20,9 +28,15 @@ export class RenewLeaseDto {
 
   @ApiProperty({
     description: 'New monthly rent amount',
-    example: 1600.00,
+    example: 1600.0,
   })
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Monthly rent must be a valid number with up to 2 decimal places' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    {
+      message:
+        'Monthly rent must be a valid number with up to 2 decimal places',
+    },
+  )
   @Min(0, { message: 'Monthly rent must be a positive number' })
   @Type(() => Number)
   monthlyRent: number;
@@ -32,15 +46,23 @@ export class RenewLeaseDto {
     enum: LeaseType,
   })
   @IsOptional()
-  @IsEnum(LeaseType, { message: 'Lease type must be a valid LeaseType enum value' })
+  @IsEnum(LeaseType, {
+    message: 'Lease type must be a valid LeaseType enum value',
+  })
   leaseType?: LeaseType;
 
   @ApiPropertyOptional({
     description: 'New security deposit amount',
-    example: 1600.00,
+    example: 1600.0,
   })
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Security deposit must be a valid number with up to 2 decimal places' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    {
+      message:
+        'Security deposit must be a valid number with up to 2 decimal places',
+    },
+  )
   @Min(0, { message: 'Security deposit must be a positive number' })
   @Type(() => Number)
   securityDeposit?: number;
@@ -62,4 +84,3 @@ export class RenewLeaseDto {
   @Min(0, { message: 'Grace period days must be a non-negative number' })
   gracePeriodDays?: number;
 }
-

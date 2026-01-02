@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, ParseUUIDPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  ParseUUIDPipe,
+} from '@nestjs/common';
 import { SampleService } from './sample.service';
 import { Public } from '../../common/decorators/public.decorator';
 
@@ -31,7 +40,14 @@ export class SampleController {
   }
 
   @Post()
-  async create(@Body() createItemDto: { name: string; description?: string; price?: number }) {
+  async create(
+    @Body()
+    createItemDto: {
+      name: string;
+      description?: string;
+      price?: number;
+    },
+  ) {
     return {
       success: true,
       data: await this.sampleService.create(createItemDto),
@@ -41,7 +57,13 @@ export class SampleController {
   @Put(':id')
   async update(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() updateItemDto: { name?: string; description?: string; price?: number; isActive?: boolean },
+    @Body()
+    updateItemDto: {
+      name?: string;
+      description?: string;
+      price?: number;
+      isActive?: boolean;
+    },
   ) {
     const item = await this.sampleService.update(id, updateItemDto);
     if (!item) {
@@ -65,4 +87,3 @@ export class SampleController {
     };
   }
 }
-

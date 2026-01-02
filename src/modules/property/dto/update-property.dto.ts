@@ -12,4 +12,3 @@ export class UpdatePropertyDto extends PartialType(CreatePropertyDto) {
   @IsBoolean()
   isActive?: boolean;
 }
-

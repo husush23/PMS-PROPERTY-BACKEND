@@ -1,10 +1,10 @@
-import {
-  Injectable,
-  HttpStatus,
-} from '@nestjs/common';
+import { Injectable, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { BusinessException, ErrorCode } from '../../common/exceptions/business.exception';
+import {
+  BusinessException,
+  ErrorCode,
+} from '../../common/exceptions/business.exception';
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import { Payment } from './entities/payment.entity';
 import { Lease } from '../lease/entities/lease.entity';
@@ -36,7 +36,9 @@ export class PaymentService {
     requesterUserId: string,
   ): Promise<PaymentResponseDto> {
     // Permission check (COMPANY_ADMIN, MANAGER, LANDLORD)
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     // Validate lease exists and get company ID
@@ -66,13 +68,21 @@ export class PaymentService {
 
       if (
         !requester ||
-        ![UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD].includes(requester.role)
+        ![UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD].includes(
+          requester.role,
+        )
       ) {
         throw new BusinessException(
           ErrorCode.INSUFFICIENT_PERMISSIONS,
           'Only company administrators, managers, and landlords can create payments.',
           HttpStatus.FORBIDDEN,
-          { requiredRoles: [UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD] },
+          {
+            requiredRoles: [
+              UserRole.COMPANY_ADMIN,
+              UserRole.MANAGER,
+              UserRole.LANDLORD,
+            ],
+          },
         );
       }
     }
@@ -145,7 +155,9 @@ export class PaymentService {
     const skip = (page - 1) * limit;
 
     // Check if user is super admin
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     // Check if user is a tenant
@@ -154,7 +166,8 @@ export class PaymentService {
     });
     const isTenant = userCompany?.role === UserRole.TENANT;
 
-    const queryBuilder = this.paymentRepository.createQueryBuilder('payment')
+    const queryBuilder = this.paymentRepository
+      .createQueryBuilder('payment')
       .leftJoinAndSelect('payment.lease', 'lease')
       .leftJoinAndSelect('payment.tenant', 'tenant')
       .leftJoinAndSelect('payment.company', 'company')
@@ -165,7 +178,9 @@ export class PaymentService {
     if (!isSuperAdmin) {
       if (isTenant) {
         // Tenants can only see their own payments
-        queryBuilder.andWhere('payment.tenantId = :tenantId', { tenantId: requesterUserId });
+        queryBuilder.andWhere('payment.tenantId = :tenantId', {
+          tenantId: requesterUserId,
+        });
       } else {
         // Other users can see payments in their companies
         const userCompanies = await this.userCompanyRepository.find({
@@ -185,42 +200,60 @@ export class PaymentService {
           };
         }
 
-        const companyIds = userCompanies.map(uc => uc.companyId);
-        queryBuilder.andWhere('payment.companyId IN (:...companyIds)', { companyIds });
+        const companyIds = userCompanies.map((uc) => uc.companyId);
+        queryBuilder.andWhere('payment.companyId IN (:...companyIds)', {
+          companyIds,
+        });
       }
     }
 
     // Apply filters
     if (queryDto.tenantId) {
-      queryBuilder.andWhere('payment.tenantId = :tenantId', { tenantId: queryDto.tenantId });
+      queryBuilder.andWhere('payment.tenantId = :tenantId', {
+        tenantId: queryDto.tenantId,
+      });
     }
 
     if (queryDto.leaseId) {
-      queryBuilder.andWhere('payment.leaseId = :leaseId', { leaseId: queryDto.leaseId });
+      queryBuilder.andWhere('payment.leaseId = :leaseId', {
+        leaseId: queryDto.leaseId,
+      });
     }
 
     if (queryDto.companyId) {
-      queryBuilder.andWhere('payment.companyId = :companyId', { companyId: queryDto.companyId });
+      queryBuilder.andWhere('payment.companyId = :companyId', {
+        companyId: queryDto.companyId,
+      });
     }
 
     if (queryDto.status) {
-      queryBuilder.andWhere('payment.status = :status', { status: queryDto.status });
+      queryBuilder.andWhere('payment.status = :status', {
+        status: queryDto.status,
+      });
     }
 
     if (queryDto.paymentType) {
-      queryBuilder.andWhere('payment.paymentType = :paymentType', { paymentType: queryDto.paymentType });
+      queryBuilder.andWhere('payment.paymentType = :paymentType', {
+        paymentType: queryDto.paymentType,
+      });
     }
 
     if (queryDto.paymentMethod) {
-      queryBuilder.andWhere('payment.paymentMethod = :paymentMethod', { paymentMethod: queryDto.paymentMethod });
+      queryBuilder.andWhere('payment.paymentMethod = :paymentMethod', {
+        paymentMethod: queryDto.paymentMethod,
+      });
     }
 
     if (queryDto.startDate) {
-      queryBuilder.andWhere('payment.paymentDate >= :startDate', { startDate: queryDto.startDate });
+      queryBuilder.andWhere('payment.paymentDate >= :startDate', {
+        startDate: queryDto.startDate,
+      });
     }
 
     if (queryDto.endDate) {
-      queryBuilder.andWhere('payment.paymentDate <= :endDate', { endDate: queryDto.endDate });
+      queryBuilder.andWhere('payment.paymentDate <= :endDate', {
+        endDate: queryDto.endDate,
+      });
     }
 
     // Sorting
@@ -237,7 +270,7 @@ export class PaymentService {
     const payments = await queryBuilder.getMany();
 
     const data = await Promise.all(
-      payments.map(payment => this.toResponseDto(payment, requesterUserId)),
+      payments.map((payment) => this.toResponseDto(payment, requesterUserId)),
     );
 
     return {
@@ -297,7 +330,9 @@ export class PaymentService {
     await this.validateAccess(payment, requesterUserId);
 
     // Permission check (COMPANY_ADMIN, MANAGER only for updates)
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (!isSuperAdmin) {
@@ -368,7 +403,9 @@ export class PaymentService {
     await this.validateAccess(payment, requesterUserId);
 
     // Permission check
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (!isSuperAdmin) {
@@ -414,7 +451,9 @@ export class PaymentService {
       paymentMethod: payment.paymentMethod,
       paymentType: payment.paymentType,
       status: PaymentStatus.REFUNDED,
-      reference: payment.reference ? `REV-${payment.reference}` : `REV-${payment.id.substring(0, 8)}`,
+      reference: payment.reference
+        ? `REV-${payment.reference}`
+        : `REV-${payment.id.substring(0, 8)}`,
       recordedBy: requesterUserId,
       period: payment.period,
       notes: `Reversal: ${reverseDto.reason}${reverseDto.notes ? `. ${reverseDto.notes}` : ''}`,
@@ -425,7 +464,7 @@ export class PaymentService {
 
     // Update original payment status to REFUNDED
     payment.status = PaymentStatus.REFUNDED;
-    payment.notes = payment.notes 
+    payment.notes = payment.notes
       ? `${payment.notes}\n\nReversed on ${new Date().toISOString()}: ${reverseDto.reason}`
       : `Reversed on ${new Date().toISOString()}: ${reverseDto.reason}`;
     await this.paymentRepository.save(payment);
@@ -455,7 +494,9 @@ export class PaymentService {
     await this.validateAccess(payment, requesterUserId);
 
     // Permission check
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (!isSuperAdmin) {
@@ -499,10 +540,7 @@ export class PaymentService {
     return this.toResponseDto(updatedPayment, requesterUserId);
   }
 
-  async softDelete(
-    id: string,
-    requesterUserId: string,
-  ): Promise<void> {
+  async softDelete(id: string, requesterUserId: string): Promise<void> {
     const payment = await this.paymentRepository.findOne({
       where: { id, isActive: true },
     });
@@ -520,7 +558,9 @@ export class PaymentService {
     await this.validateAccess(payment, requesterUserId);
 
     // Permission check
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (!isSuperAdmin) {
@@ -546,7 +586,9 @@ export class PaymentService {
     }
 
     // Only PENDING or CANCELLED payments can be deleted
-    if (![PaymentStatus.PENDING, PaymentStatus.CANCELLED].includes(payment.status)) {
+    if (
+      ![PaymentStatus.PENDING, PaymentStatus.CANCELLED].includes(payment.status)
+    ) {
       throw new BusinessException(
         ErrorCode.CANNOT_DELETE_COMPLETED_PAYMENT,
         ERROR_MESSAGES.CANNOT_DELETE_COMPLETED_PAYMENT,
@@ -583,11 +625,11 @@ export class PaymentService {
     });
 
     const totalPaid = payments
-      .filter(p => p.status === PaymentStatus.PAID && p.amount > 0)
+      .filter((p) => p.status === PaymentStatus.PAID && p.amount > 0)
       .reduce((sum, p) => sum + Number(p.amount), 0);
 
     const totalRefunded = payments
-      .filter(p => p.status === PaymentStatus.REFUNDED || p.amount < 0)
+      .filter((p) => p.status === PaymentStatus.REFUNDED || p.amount < 0)
       .reduce((sum, p) => sum + Math.abs(Number(p.amount)), 0);
 
     const netBalance = totalPaid - totalRefunded;
@@ -595,8 +637,8 @@ export class PaymentService {
     // Group by payment type
     const byType: Record<string, number> = {};
     payments
-      .filter(p => p.status === PaymentStatus.PAID && p.amount > 0)
-      .forEach(p => {
+      .filter((p) => p.status === PaymentStatus.PAID && p.amount > 0)
+      .forEach((p) => {
         byType[p.paymentType] = (byType[p.paymentType] || 0) + Number(p.amount);
       });
 
@@ -646,11 +688,11 @@ export class PaymentService {
     });
 
     const totalPaid = payments
-      .filter(p => p.status === PaymentStatus.PAID && p.amount > 0)
+      .filter((p) => p.status === PaymentStatus.PAID && p.amount > 0)
       .reduce((sum, p) => sum + Number(p.amount), 0);
 
     const totalRefunded = payments
-      .filter(p => p.status === PaymentStatus.REFUNDED || p.amount < 0)
+      .filter((p) => p.status === PaymentStatus.REFUNDED || p.amount < 0)
       .reduce((sum, p) => sum + Math.abs(Number(p.amount)), 0);
 
     const netBalance = totalPaid - totalRefunded;
@@ -658,12 +700,13 @@ export class PaymentService {
     // Group by payment type
     const byType: Record<string, number> = {};
     payments
-      .filter(p => p.status === PaymentStatus.PAID && p.amount > 0)
-      .forEach(p => {
+      .filter((p) => p.status === PaymentStatus.PAID && p.amount > 0)
+      .forEach((p) => {
         byType[p.paymentType] = (byType[p.paymentType] || 0) + Number(p.amount);
       });
 
-    const lastPaymentDate = payments.length > 0 ? payments[0].paymentDate : undefined;
+    const lastPaymentDate =
+      payments.length > 0 ? payments[0].paymentDate : undefined;
 
     return {
       leaseId,
@@ -688,7 +731,8 @@ export class PaymentService {
       );
     }
 
-    const queryBuilder = this.paymentRepository.createQueryBuilder('payment')
+    const queryBuilder = this.paymentRepository
+      .createQueryBuilder('payment')
       .leftJoinAndSelect('payment.lease', 'lease')
       .leftJoinAndSelect('payment.tenant', 'tenant')
       .leftJoinAndSelect('payment.company', 'company')
@@ -705,7 +749,9 @@ export class PaymentService {
 
     // Access control
     if (requesterUserId) {
-      const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+      const requesterUser = await this.userRepository.findOne({
+        where: { id: requesterUserId },
+      });
       const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
       if (!isSuperAdmin) {
@@ -715,7 +761,9 @@ export class PaymentService {
         const isTenant = userCompany?.role === UserRole.TENANT;
 
         if (isTenant) {
-          queryBuilder.andWhere('payment.tenantId = :requesterUserId', { requesterUserId });
+          queryBuilder.andWhere('payment.tenantId = :requesterUserId', {
+            requesterUserId,
+          });
         } else {
           const userCompanies = await this.userCompanyRepository.find({
             where: { userId: requesterUserId, isActive: true },
@@ -723,8 +771,10 @@ export class PaymentService {
           });
 
           if (userCompanies.length > 0) {
-            const companyIds = userCompanies.map(uc => uc.companyId);
-            queryBuilder.andWhere('payment.companyId IN (:...companyIds)', { companyIds });
+            const companyIds = userCompanies.map((uc) => uc.companyId);
+            queryBuilder.andWhere('payment.companyId IN (:...companyIds)', {
+              companyIds,
+            });
           } else {
             return [];
           }
@@ -737,7 +787,7 @@ export class PaymentService {
     const payments = await queryBuilder.getMany();
 
     return Promise.all(
-      payments.map(payment => this.toResponseDto(payment, requesterUserId)),
+      payments.map((payment) => this.toResponseDto(payment, requesterUserId)),
     );
   }
 
@@ -746,7 +796,9 @@ export class PaymentService {
     payment: Payment,
     requesterUserId: string,
   ): Promise<void> {
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (isSuperAdmin) {
@@ -791,7 +843,9 @@ export class PaymentService {
     companyId: string,
     requesterUserId: string,
   ): Promise<void> {
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (isSuperAdmin) {
@@ -820,7 +874,11 @@ export class PaymentService {
     newStatus: PaymentStatus,
   ): void {
     const allowedTransitions: Record<PaymentStatus, PaymentStatus[]> = {
-      [PaymentStatus.PENDING]: [PaymentStatus.PAID, PaymentStatus.FAILED, PaymentStatus.CANCELLED],
+      [PaymentStatus.PENDING]: [
+        PaymentStatus.PAID,
+        PaymentStatus.FAILED,
+        PaymentStatus.CANCELLED,
+      ],
       [PaymentStatus.PAID]: [PaymentStatus.REFUNDED],
       [PaymentStatus.FAILED]: [],
       [PaymentStatus.REFUNDED]: [],
@@ -843,16 +901,23 @@ export class PaymentService {
   ): Promise<PaymentResponseDto> {
     // Load relations if not already loaded
     if (!payment.lease) {
-      payment = await this.paymentRepository.findOne({
-        where: { id: payment.id },
-        relations: ['lease', 'tenant', 'company', 'recordedByUser'],
-      }) || payment;
+      payment =
+        (await this.paymentRepository.findOne({
+          where: { id: payment.id },
+          relations: ['lease', 'tenant', 'company', 'recordedByUser'],
+        })) || payment;
     }
 
     // Calculate derived fields
-    const tenantBalance = await this.calculateTenantBalance(payment.tenantId, payment.companyId);
+    const tenantBalance = await this.calculateTenantBalance(
+      payment.tenantId,
+      payment.companyId,
+    );
     const leaseBalance = await this.calculateLeaseBalance(payment.leaseId);
-    const lastPaymentDate = await this.getLastPaymentDate(payment.leaseId, payment.tenantId);
+    const lastPaymentDate = await this.getLastPaymentDate(
+      payment.leaseId,
+      payment.tenantId,
+    );
 
     const response: PaymentResponseDto = {
       id: payment.id,
@@ -872,7 +937,9 @@ export class PaymentService {
       period: payment.period,
       notes: payment.notes,
       isPartial: payment.isPartial,
-      balanceAfter: payment.balanceAfter ? Number(payment.balanceAfter) : undefined,
+      balanceAfter: payment.balanceAfter
+        ? Number(payment.balanceAfter)
+        : undefined,
       attachmentUrl: payment.attachmentUrl,
       isActive: payment.isActive,
       createdAt: payment.createdAt,
@@ -899,11 +966,11 @@ export class PaymentService {
     });
 
     const totalPaid = payments
-      .filter(p => p.status === PaymentStatus.PAID && p.amount > 0)
+      .filter((p) => p.status === PaymentStatus.PAID && p.amount > 0)
       .reduce((sum, p) => sum + Number(p.amount), 0);
 
     const totalRefunded = payments
-      .filter(p => p.status === PaymentStatus.REFUNDED || p.amount < 0)
+      .filter((p) => p.status === PaymentStatus.REFUNDED || p.amount < 0)
       .reduce((sum, p) => sum + Math.abs(Number(p.amount)), 0);
 
     return totalPaid - totalRefunded;
@@ -918,11 +985,11 @@ export class PaymentService {
     });
 
     const totalPaid = payments
-      .filter(p => p.status === PaymentStatus.PAID && p.amount > 0)
+      .filter((p) => p.status === PaymentStatus.PAID && p.amount > 0)
       .reduce((sum, p) => sum + Number(p.amount), 0);
 
     const totalRefunded = payments
-      .filter(p => p.status === PaymentStatus.REFUNDED || p.amount < 0)
+      .filter((p) => p.status === PaymentStatus.REFUNDED || p.amount < 0)
       .reduce((sum, p) => sum + Math.abs(Number(p.amount)), 0);
 
     return totalPaid - totalRefunded;

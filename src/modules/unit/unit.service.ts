@@ -1,8 +1,8 @@
+import { Injectable, HttpStatus } from '@nestjs/common';
 import {
-  Injectable,
-  HttpStatus,
-} from '@nestjs/common';
-import { BusinessException, ErrorCode } from '../../common/exceptions/business.exception';
+  BusinessException,
+  ErrorCode,
+} from '../../common/exceptions/business.exception';
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -155,7 +155,9 @@ export class UnitService {
       }
 
       const companyIds = userCompanies.map((uc) => uc.companyId);
-      queryBuilder.andWhere('unit.companyId IN (:...companyIds)', { companyIds });
+      queryBuilder.andWhere('unit.companyId IN (:...companyIds)', {
+        companyIds,
+      });
     }
 
     // Filter by propertyId if provided
@@ -330,7 +332,10 @@ export class UnitService {
     }
 
     // If unitNumber is being updated, check for uniqueness
-    if (updateUnitDto.unitNumber && updateUnitDto.unitNumber !== unit.unitNumber) {
+    if (
+      updateUnitDto.unitNumber &&
+      updateUnitDto.unitNumber !== unit.unitNumber
+    ) {
       const existingUnit = await this.unitRepository.findOne({
         where: {
           propertyId: unit.propertyId,
@@ -353,7 +358,10 @@ export class UnitService {
     }
 
     // If propertyId is being updated, validate new property exists and user has access
-    if (updateUnitDto.propertyId && updateUnitDto.propertyId !== unit.propertyId) {
+    if (
+      updateUnitDto.propertyId &&
+      updateUnitDto.propertyId !== unit.propertyId
+    ) {
       const newProperty = await this.propertyRepository.findOne({
         where: { id: updateUnitDto.propertyId, isActive: true },
       });

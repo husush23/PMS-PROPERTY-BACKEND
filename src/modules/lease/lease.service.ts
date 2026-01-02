@@ -1,10 +1,8 @@
+import { Injectable, HttpStatus, forwardRef, Inject } from '@nestjs/common';
 import {
-  Injectable,
-  HttpStatus,
-  forwardRef,
-  Inject,
-} from '@nestjs/common';
-import { BusinessException, ErrorCode } from '../../common/exceptions/business.exception';
+  BusinessException,
+  ErrorCode,
+} from '../../common/exceptions/business.exception';
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan, Not } from 'typeorm';
@@ -54,12 +52,16 @@ export class LeaseService {
     requesterUserId: string,
   ): Promise<LeaseResponseDto> {
     // Permission check (COMPANY_ADMIN, MANAGER, LANDLORD)
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (!isSuperAdmin) {
       // Get unit first to check company
-      const unit = await this.unitRepository.findOne({ where: { id: createDto.unitId } });
+      const unit = await this.unitRepository.findOne({
+        where: { id: createDto.unitId },
+      });
       if (!unit) {
         throw new BusinessException(
           ErrorCode.UNIT_NOT_FOUND,
@@ -79,13 +81,21 @@ export class LeaseService {
 
       if (
         !requester ||
-        ![UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD].includes(requester.role)
+        ![UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD].includes(
+          requester.role,
+        )
       ) {
         throw new BusinessException(
           ErrorCode.INSUFFICIENT_PERMISSIONS,
           'Only company administrators, managers, and landlords can create leases.',
           HttpStatus.FORBIDDEN,
-          { requiredRoles: [UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD] },
+          {
+            requiredRoles: [
+              UserRole.COMPANY_ADMIN,
+              UserRole.MANAGER,
+              UserRole.LANDLORD,
+            ],
+          },
         );
       }
     }
@@ -138,7 +148,8 @@ export class LeaseService {
         {
           tenantId: tenantProfile.id,
           userId: tenantProfile.userId,
-          message: 'The tenant profile exists but the associated user is missing',
+          message:
+            'The tenant profile exists but the associated user is missing',
         },
       );
     }
@@ -213,12 +224,24 @@ export class LeaseService {
       leaseType: createDto.leaseType,
       startDate,
       endDate,
-      moveInDate: createDto.moveInDate ? new Date(createDto.moveInDate) : undefined,
-      moveOutDate: createDto.moveOutDate ? new Date(createDto.moveOutDate) : undefined,
-      signedDate: createDto.signedDate ? new Date(createDto.signedDate) : undefined,
-      renewalDate: createDto.renewalDate ? new Date(createDto.renewalDate) : undefined,
-      noticeToVacateDate: createDto.noticeToVacateDate ? new Date(createDto.noticeToVacateDate) : undefined,
-      billingStartDate: createDto.billingStartDate ? new Date(createDto.billingStartDate) : undefined,
+      moveInDate: createDto.moveInDate
+        ? new Date(createDto.moveInDate)
+        : undefined,
+      moveOutDate: createDto.moveOutDate
+        ? new Date(createDto.moveOutDate)
+        : undefined,
+      signedDate: createDto.signedDate
+        ? new Date(createDto.signedDate)
+        : undefined,
+      renewalDate: createDto.renewalDate
+        ? new Date(createDto.renewalDate)
+        : undefined,
+      noticeToVacateDate: createDto.noticeToVacateDate
+        ? new Date(createDto.noticeToVacateDate)
+        : undefined,
+      billingStartDate: createDto.billingStartDate
+        ? new Date(createDto.billingStartDate)
+        : undefined,
       proratedFirstMonth: createDto.proratedFirstMonth ?? false,
       gracePeriodDays: createDto.gracePeriodDays ?? 0,
       monthlyRent: createDto.monthlyRent,
@@ -264,7 +287,9 @@ export class LeaseService {
     const skip = (page - 1) * limit;
 
     // Check if user is super admin
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     // Check if user is a tenant (restricted access)
@@ -273,7 +298,8 @@ export class LeaseService {
     });
     const isTenant = userCompany?.role === UserRole.TENANT;
 
-    const queryBuilder = this.leaseRepository.createQueryBuilder('lease')
+    const queryBuilder = this.leaseRepository
+      .createQueryBuilder('lease')
       .leftJoinAndSelect('lease.tenant', 'tenant')
       .leftJoinAndSelect('lease.unit', 'unit')
       .leftJoinAndSelect('unit.property', 'property')
@@ -284,7 +310,9 @@ export class LeaseService {
     if (!isSuperAdmin) {
       if (isTenant) {
         // Tenants can only see their own leases
-        queryBuilder.andWhere('lease.tenantId = :tenantId', { tenantId: requesterUserId });
+        queryBuilder.andWhere('lease.tenantId = :tenantId', {
+          tenantId: requesterUserId,
+        });
       } else {
         // Other users can see leases in their companies
         const userCompanies = await this.userCompanyRepository.find({
@@ -305,33 +333,47 @@ export class LeaseService {
         }
 
         const companyIds = userCompanies.map((uc) => uc.companyId);
-        queryBuilder.andWhere('lease.companyId IN (:...companyIds)', { companyIds });
+        queryBuilder.andWhere('lease.companyId IN (:...companyIds)', {
+          companyIds,
+        });
       }
     }
 
     // Filters
     if (queryDto.tenantId) {
-      queryBuilder.andWhere('lease.tenantId = :tenantId', { tenantId: queryDto.tenantId });
+      queryBuilder.andWhere('lease.tenantId = :tenantId', {
+        tenantId: queryDto.tenantId,
+      });
     }
 
     if (queryDto.unitId) {
-      queryBuilder.andWhere('lease.unitId = :unitId', { unitId: queryDto.unitId });
+      queryBuilder.andWhere('lease.unitId = :unitId', {
+        unitId: queryDto.unitId,
+      });
     }
 
     if (queryDto.propertyId) {
-      queryBuilder.andWhere('unit.propertyId = :propertyId', { propertyId: queryDto.propertyId });
+      queryBuilder.andWhere('unit.propertyId = :propertyId', {
+        propertyId: queryDto.propertyId,
+      });
     }
 
     if (queryDto.companyId) {
-      queryBuilder.andWhere('lease.companyId = :companyId', { companyId: queryDto.companyId });
+      queryBuilder.andWhere('lease.companyId = :companyId', {
+        companyId: queryDto.companyId,
+      });
     }
 
     if (queryDto.status) {
-      queryBuilder.andWhere('lease.status = :status', { status: queryDto.status });
+      queryBuilder.andWhere('lease.status = :status', {
+        status: queryDto.status,
+      });
     }
 
     if (queryDto.leaseType) {
-      queryBuilder.andWhere('lease.leaseType = :leaseType', { leaseType: queryDto.leaseType });
+      queryBuilder.andWhere('lease.leaseType = :leaseType', {
+        leaseType: queryDto.leaseType,
+      });
     }
 
     if (queryDto.startDateFrom) {
@@ -361,9 +403,13 @@ export class LeaseService {
     if (queryDto.expiringSoon) {
       const thirtyDaysFromNow = new Date();
       thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-      queryBuilder.andWhere('lease.endDate <= :expiringDate', { expiringDate: thirtyDaysFromNow });
+      queryBuilder.andWhere('lease.endDate <= :expiringDate', {
+        expiringDate: thirtyDaysFromNow,
+      });
       queryBuilder.andWhere('lease.endDate >= :today', { today: new Date() });
-      queryBuilder.andWhere('lease.status = :activeStatus', { activeStatus: LeaseStatus.ACTIVE });
+      queryBuilder.andWhere('lease.status = :activeStatus', {
+        activeStatus: LeaseStatus.ACTIVE,
+      });
     }
 
     if (queryDto.search) {
@@ -379,7 +425,13 @@ export class LeaseService {
     // Sorting
     const sortBy = queryDto.sortBy || 'createdAt';
     const sortOrder = queryDto.sortOrder || 'DESC';
-    const validSortFields = ['startDate', 'endDate', 'createdAt', 'leaseNumber', 'monthlyRent'];
+    const validSortFields = [
+      'startDate',
+      'endDate',
+      'createdAt',
+      'leaseNumber',
+      'monthlyRent',
+    ];
     const finalSortBy = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
     queryBuilder.orderBy(`lease.${finalSortBy}`, sortOrder);
 
@@ -400,7 +452,10 @@ export class LeaseService {
     };
   }
 
-  async findOne(leaseId: string, requesterUserId: string): Promise<LeaseResponseDto> {
+  async findOne(
+    leaseId: string,
+    requesterUserId: string,
+  ): Promise<LeaseResponseDto> {
     const lease = await this.leaseRepository.findOne({
       where: { id: leaseId, isActive: true },
       relations: ['tenant', 'unit', 'unit.property', 'company', 'landlord'],
@@ -416,7 +471,9 @@ export class LeaseService {
     }
 
     // Access control
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (!isSuperAdmin) {
@@ -453,7 +510,9 @@ export class LeaseService {
     requesterUserId: string,
   ): Promise<LeaseResponseDto> {
     // Permission check
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     const lease = await this.leaseRepository.findOne({
@@ -480,13 +539,21 @@ export class LeaseService {
 
       if (
         !requester ||
-        ![UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD].includes(requester.role)
+        ![UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD].includes(
+          requester.role,
+        )
       ) {
         throw new BusinessException(
           ErrorCode.INSUFFICIENT_PERMISSIONS,
           'Only company administrators, managers, and landlords can update leases.',
           HttpStatus.FORBIDDEN,
-          { requiredRoles: [UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD] },
+          {
+            requiredRoles: [
+              UserRole.COMPANY_ADMIN,
+              UserRole.MANAGER,
+              UserRole.LANDLORD,
+            ],
+          },
         );
       }
     }
@@ -494,7 +561,10 @@ export class LeaseService {
     // If ACTIVE: Only allow limited updates (notes, tags, documents, some dates)
     if (lease.status === LeaseStatus.ACTIVE) {
       // Cannot change startDate/endDate if ACTIVE (or require special permission)
-      if (updateDto.startDate && new Date(updateDto.startDate).getTime() !== lease.startDate.getTime()) {
+      if (
+        updateDto.startDate &&
+        new Date(updateDto.startDate).getTime() !== lease.startDate.getTime()
+      ) {
         throw new BusinessException(
           ErrorCode.CANNOT_UPDATE_ACTIVE_LEASE_FIELD,
           'Cannot change start date for an active lease.',
@@ -503,7 +573,10 @@ export class LeaseService {
         );
       }
 
-      if (updateDto.endDate && new Date(updateDto.endDate).getTime() !== lease.endDate.getTime()) {
+      if (
+        updateDto.endDate &&
+        new Date(updateDto.endDate).getTime() !== lease.endDate.getTime()
+      ) {
         throw new BusinessException(
           ErrorCode.CANNOT_UPDATE_ACTIVE_LEASE_FIELD,
           'Cannot change end date for an active lease.',
@@ -548,7 +621,9 @@ export class LeaseService {
         finalUpdateData.renewalDate = new Date(finalUpdateData.renewalDate);
       }
       if (finalUpdateData.noticeToVacateDate) {
-        finalUpdateData.noticeToVacateDate = new Date(finalUpdateData.noticeToVacateDate);
+        finalUpdateData.noticeToVacateDate = new Date(
+          finalUpdateData.noticeToVacateDate,
+        );
       }
 
       await this.leaseRepository.update(leaseId, finalUpdateData);
@@ -569,7 +644,7 @@ export class LeaseService {
       }
 
       const updateData: any = { ...updateDto };
-      
+
       // Convert date strings to Date objects
       if (updateData.startDate) {
         updateData.startDate = new Date(updateData.startDate);
@@ -578,25 +653,39 @@ export class LeaseService {
         updateData.endDate = new Date(updateData.endDate);
       }
       if (updateData.moveInDate) {
-        updateData.moveInDate = updateData.moveInDate ? new Date(updateData.moveInDate) : null;
+        updateData.moveInDate = updateData.moveInDate
+          ? new Date(updateData.moveInDate)
+          : null;
       }
       if (updateData.moveOutDate) {
-        updateData.moveOutDate = updateData.moveOutDate ? new Date(updateData.moveOutDate) : null;
+        updateData.moveOutDate = updateData.moveOutDate
+          ? new Date(updateData.moveOutDate)
+          : null;
       }
       if (updateData.signedDate) {
-        updateData.signedDate = updateData.signedDate ? new Date(updateData.signedDate) : null;
+        updateData.signedDate = updateData.signedDate
+          ? new Date(updateData.signedDate)
+          : null;
       }
       if (updateData.renewalDate) {
-        updateData.renewalDate = updateData.renewalDate ? new Date(updateData.renewalDate) : null;
+        updateData.renewalDate = updateData.renewalDate
+          ? new Date(updateData.renewalDate)
+          : null;
       }
       if (updateData.noticeToVacateDate) {
-        updateData.noticeToVacateDate = updateData.noticeToVacateDate ? new Date(updateData.noticeToVacateDate) : null;
+        updateData.noticeToVacateDate = updateData.noticeToVacateDate
+          ? new Date(updateData.noticeToVacateDate)
+          : null;
       }
       if (updateData.billingStartDate) {
-        updateData.billingStartDate = updateData.billingStartDate ? new Date(updateData.billingStartDate) : null;
+        updateData.billingStartDate = updateData.billingStartDate
+          ? new Date(updateData.billingStartDate)
+          : null;
       }
       if (updateData.actualTerminationDate) {
-        updateData.actualTerminationDate = updateData.actualTerminationDate ? new Date(updateData.actualTerminationDate) : null;
+        updateData.actualTerminationDate = updateData.actualTerminationDate
+          ? new Date(updateData.actualTerminationDate)
+          : null;
       }
 
       await this.leaseRepository.update(leaseId, updateData);
@@ -605,9 +694,14 @@ export class LeaseService {
     return this.findOne(leaseId, requesterUserId);
   }
 
-  async activate(leaseId: string, requesterUserId: string): Promise<LeaseResponseDto> {
+  async activate(
+    leaseId: string,
+    requesterUserId: string,
+  ): Promise<LeaseResponseDto> {
     // Permission check (COMPANY_ADMIN, MANAGER only)
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     const lease = await this.leaseRepository.findOne({
@@ -676,7 +770,9 @@ export class LeaseService {
     }
 
     // Validate unit is available
-    const unit = await this.unitRepository.findOne({ where: { id: lease.unitId } });
+    const unit = await this.unitRepository.findOne({
+      where: { id: lease.unitId },
+    });
     if (!unit) {
       throw new BusinessException(
         ErrorCode.UNIT_NOT_FOUND,
@@ -730,7 +826,9 @@ export class LeaseService {
     requesterUserId: string,
   ): Promise<LeaseResponseDto> {
     // Permission check (COMPANY_ADMIN, MANAGER only)
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     const lease = await this.leaseRepository.findOne({
@@ -823,7 +921,9 @@ export class LeaseService {
     requesterUserId: string,
   ): Promise<LeaseResponseDto> {
     // Permission check (COMPANY_ADMIN, MANAGER only)
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     const oldLease = await this.leaseRepository.findOne({
@@ -943,7 +1043,9 @@ export class LeaseService {
 
   async delete(leaseId: string, requesterUserId: string): Promise<void> {
     // Permission check (COMPANY_ADMIN, MANAGER only)
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     const lease = await this.leaseRepository.findOne({
@@ -1001,7 +1103,9 @@ export class LeaseService {
     requesterUserId: string,
   ): Promise<LeaseResponseDto> {
     // Permission check (COMPANY_ADMIN, MANAGER only)
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     const oldLease = await this.leaseRepository.findOne({
@@ -1130,7 +1234,10 @@ export class LeaseService {
     return this.create(createDto, requesterUserId);
   }
 
-  async getLeaseHistoryByUnit(unitId: string, requesterUserId: string): Promise<LeaseResponseDto[]> {
+  async getLeaseHistoryByUnit(
+    unitId: string,
+    requesterUserId: string,
+  ): Promise<LeaseResponseDto[]> {
     const unit = await this.unitRepository.findOne({ where: { id: unitId } });
     if (!unit) {
       throw new BusinessException(
@@ -1142,7 +1249,9 @@ export class LeaseService {
     }
 
     // Access control
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (!isSuperAdmin) {
@@ -1173,9 +1282,14 @@ export class LeaseService {
     return leases.map((lease) => this.toResponseDto(lease));
   }
 
-  async getLeaseHistoryByTenant(tenantId: string, requesterUserId: string): Promise<LeaseResponseDto[]> {
+  async getLeaseHistoryByTenant(
+    tenantId: string,
+    requesterUserId: string,
+  ): Promise<LeaseResponseDto[]> {
     // Access control - tenants can only view their own history
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (!isSuperAdmin && requesterUserId !== tenantId) {
@@ -1208,7 +1322,9 @@ export class LeaseService {
 
         if (
           !requesterCompany ||
-          ![UserRole.COMPANY_ADMIN, UserRole.MANAGER].includes(requesterCompany.role)
+          ![UserRole.COMPANY_ADMIN, UserRole.MANAGER].includes(
+            requesterCompany.role,
+          )
         ) {
           throw new BusinessException(
             ErrorCode.INSUFFICIENT_PERMISSIONS,
@@ -1269,7 +1385,6 @@ export class LeaseService {
     }
   }
 
-
   private toResponseDto(lease: Lease): LeaseResponseDto {
     return {
       id: lease.id,
@@ -1295,13 +1410,36 @@ export class LeaseService {
       billingStartDate: lease.billingStartDate,
       proratedFirstMonth: lease.proratedFirstMonth,
       gracePeriodDays: lease.gracePeriodDays,
-      monthlyRent: typeof lease.monthlyRent === 'string' ? Number(lease.monthlyRent) : lease.monthlyRent,
-      securityDeposit: lease.securityDeposit ? (typeof lease.securityDeposit === 'string' ? Number(lease.securityDeposit) : lease.securityDeposit) : undefined,
-      petDeposit: lease.petDeposit ? (typeof lease.petDeposit === 'string' ? Number(lease.petDeposit) : lease.petDeposit) : undefined,
-      petRent: lease.petRent ? (typeof lease.petRent === 'string' ? Number(lease.petRent) : lease.petRent) : undefined,
-      lateFeeAmount: lease.lateFeeAmount ? (typeof lease.lateFeeAmount === 'string' ? Number(lease.lateFeeAmount) : lease.lateFeeAmount) : undefined,
+      monthlyRent:
+        typeof lease.monthlyRent === 'string'
+          ? Number(lease.monthlyRent)
+          : lease.monthlyRent,
+      securityDeposit: lease.securityDeposit
+        ? typeof lease.securityDeposit === 'string'
+          ? Number(lease.securityDeposit)
+          : lease.securityDeposit
+        : undefined,
+      petDeposit: lease.petDeposit
+        ? typeof lease.petDeposit === 'string'
+          ? Number(lease.petDeposit)
+          : lease.petDeposit
+        : undefined,
+      petRent: lease.petRent
+        ? typeof lease.petRent === 'string'
+          ? Number(lease.petRent)
+          : lease.petRent
+        : undefined,
+      lateFeeAmount: lease.lateFeeAmount
+        ? typeof lease.lateFeeAmount === 'string'
+          ? Number(lease.lateFeeAmount)
+          : lease.lateFeeAmount
+        : undefined,
       utilitiesIncluded: lease.utilitiesIncluded,
-      utilityCosts: lease.utilityCosts ? (typeof lease.utilityCosts === 'string' ? Number(lease.utilityCosts) : lease.utilityCosts) : undefined,
+      utilityCosts: lease.utilityCosts
+        ? typeof lease.utilityCosts === 'string'
+          ? Number(lease.utilityCosts)
+          : lease.utilityCosts
+        : undefined,
       currency: lease.currency,
       terminationReason: lease.terminationReason,
       terminatedBy: lease.terminatedBy,

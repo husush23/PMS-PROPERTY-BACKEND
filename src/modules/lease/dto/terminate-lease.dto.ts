@@ -23,7 +23,9 @@ export class TerminateLeaseDto {
     example: '2024-12-31',
   })
   @IsOptional()
-  @IsDateString({}, { message: 'Actual termination date must be a valid date string' })
+  @IsDateString(
+    {},
+    { message: 'Actual termination date must be a valid date string' },
+  )
   actualTerminationDate?: string;
 }
-

@@ -5,9 +5,3 @@ import { DocumentService } from './document.service';
 export class DocumentController {
   constructor(private readonly documentService: DocumentService) {}
 }
-
-
-
-
-
-

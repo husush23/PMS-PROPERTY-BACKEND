@@ -3,7 +3,7 @@ import { ValidationError } from 'class-validator';
 export interface FormattedValidationError {
   field: string;
   message: string;
-  value?: any;
+  value?: unknown;
 }
 
 export class ValidationErrorFormatter {
@@ -11,7 +11,9 @@ export class ValidationErrorFormatter {
     return errors.map((error) => this.formatSingleError(error)).flat();
   }
 
-  private static formatSingleError(error: ValidationError): FormattedValidationError[] {
+  private static formatSingleError(
+    error: ValidationError,
+  ): FormattedValidationError[] {
     const formattedErrors: FormattedValidationError[] = [];
 
     // Get the field name (handle nested properties)
@@ -20,11 +22,14 @@ export class ValidationErrorFormatter {
     // Format constraint messages
     if (error.constraints) {
       Object.keys(error.constraints).forEach((key) => {
-        formattedErrors.push({
-          field,
-          message: this.getHumanReadableMessage(error.constraints![key], error),
-          value: error.value,
-        });
+        const constraintValue = error.constraints?.[key];
+        if (constraintValue) {
+          formattedErrors.push({
+            field,
+            message: this.getHumanReadableMessage(constraintValue, error),
+            value: error.value,
+          });
+        }
       });
     }
 
@@ -45,7 +50,10 @@ export class ValidationErrorFormatter {
     return formattedErrors;
   }
 
-  private static getHumanReadableMessage(constraintMessage: string, error: ValidationError): string {
+  private static getHumanReadableMessage(
+    constraintMessage: string,
+    error: ValidationError,
+  ): string {
     // Map common constraint messages to more user-friendly ones
     const messageMap: Record<string, string> = {
       'must be an email': 'must be a valid email address',
@@ -83,4 +91,3 @@ export class ValidationErrorFormatter {
     return message.charAt(0).toUpperCase() + message.slice(1);
   }
 }
-

@@ -29,4 +29,3 @@ export class Item {
   @UpdateDateColumn()
   updatedAt: Date;
 }
-

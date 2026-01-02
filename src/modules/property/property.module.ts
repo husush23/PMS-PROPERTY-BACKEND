@@ -17,11 +17,3 @@ import { Unit } from '../unit/entities/unit.entity';
   exports: [PropertyService],
 })
 export class PropertyModule {}
-
-
-
-
-
-
-
-

@@ -74,4 +74,3 @@ export class CompanyInvitation {
   @UpdateDateColumn()
   updatedAt: Date;
 }
-

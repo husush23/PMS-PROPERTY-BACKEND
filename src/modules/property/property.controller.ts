@@ -34,7 +34,9 @@ export class PropertyController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Create a new property (COMPANY_ADMIN/MANAGER only)' })
+  @ApiOperation({
+    summary: 'Create a new property (COMPANY_ADMIN/MANAGER only)',
+  })
   @ApiResponse({
     status: 201,
     description: 'Property created successfully',
@@ -56,7 +58,10 @@ export class PropertyController {
     @Body() createPropertyDto: CreatePropertyDto,
     @AuthUser() user: { id: string },
   ) {
-    const property = await this.propertyService.create(createPropertyDto, user.id);
+    const property = await this.propertyService.create(
+      createPropertyDto,
+      user.id,
+    );
     return {
       success: true,
       data: property,
@@ -129,7 +134,11 @@ export class PropertyController {
     @Body() updatePropertyDto: UpdatePropertyDto,
     @AuthUser() user: { id: string },
   ) {
-    const property = await this.propertyService.update(id, updatePropertyDto, user.id);
+    const property = await this.propertyService.update(
+      id,
+      updatePropertyDto,
+      user.id,
+    );
     return {
       success: true,
       data: property,

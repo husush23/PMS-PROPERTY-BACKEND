@@ -24,7 +24,9 @@ export async function seedSuperAdmin(dataSource: DataSource): Promise<void> {
     console.warn(
       '⚠️  WARNING: SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD are not set in environment variables.',
     );
-    console.warn('Skipping super admin seed. Please set these variables to create a super admin.');
+    console.warn(
+      'Skipping super admin seed. Please set these variables to create a super admin.',
+    );
     return;
   }
 
@@ -38,7 +40,9 @@ export async function seedSuperAdmin(dataSource: DataSource): Promise<void> {
     await userRepository.update(existingUser.id, {
       isSuperAdmin: true,
     });
-    console.log(`✅ Updated existing user "${superAdminEmail}" to super admin.`);
+    console.log(
+      `✅ Updated existing user "${superAdminEmail}" to super admin.`,
+    );
     return;
   }
 
@@ -56,4 +60,3 @@ export async function seedSuperAdmin(dataSource: DataSource): Promise<void> {
   await userRepository.save(superAdmin);
   console.log(`✅ Super admin created successfully: ${superAdminEmail}`);
 }
-

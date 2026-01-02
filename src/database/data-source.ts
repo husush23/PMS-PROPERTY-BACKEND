@@ -7,7 +7,7 @@ config();
 // Parse DATABASE_URL
 function parseDatabaseUrl(databaseUrl: string) {
   const url = new URL(databaseUrl);
-  
+
   return {
     host: url.hostname,
     port: parseInt(url.port || '5432', 10),
@@ -36,4 +36,3 @@ export default new DataSource({
   synchronize: false,
   logging: process.env.NODE_ENV === 'development',
 });
-

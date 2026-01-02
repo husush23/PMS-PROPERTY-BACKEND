@@ -46,11 +46,14 @@ export class AuthController {
   @Public()
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Register a new user (creates global account without company)' })
+  @ApiOperation({
+    summary: 'Register a new user (creates global account without company)',
+  })
   @ApiBody({ type: RegisterDto })
   @ApiResponse({
     status: 201,
-    description: 'User registered successfully. Tokens are set as HTTP-only cookies.',
+    description:
+      'User registered successfully. Tokens are set as HTTP-only cookies.',
     type: LoginResponseDto,
   })
   @ApiResponse({
@@ -63,17 +66,35 @@ export class AuthController {
   })
   async register(@Body() registerDto: RegisterDto, @Res() res: Response) {
     const authResponse = await this.authService.register(registerDto);
-    
+
     // Set cookies
     const expiresIn = this.configService.get<string>('jwt.expiresIn') || '15m';
-    const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
-    
-    setAccessTokenCookie(res, authResponse.access_token!, expiresIn, this.configService);
-    setRefreshTokenCookie(res, authResponse.refresh_token!, refreshExpiresIn, this.configService);
-    
+    const refreshExpiresIn =
+      this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
+
+    setAccessTokenCookie(
+      res,
+      authResponse.access_token!,
+      expiresIn,
+      this.configService,
+    );
+    setRefreshTokenCookie(
+      res,
+      authResponse.refresh_token,
+      refreshExpiresIn,
+      this.configService,
+    );
+
     // Return response without tokens
-    const { access_token, refresh_token, ...responseData } = authResponse;
-    
+
+    const {
+      access_token: _access_token,
+      refresh_token: _refresh_token,
+      ...responseData
+    } = authResponse;
+    void _access_token;
+    void _refresh_token;
+
     return res.json({
       success: true,
       data: responseData,
@@ -84,11 +105,15 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'User login (handles users with 0, 1, or multiple companies). Add ?return_token=true to get token in response for API clients.' })
+  @ApiOperation({
+    summary:
+      'User login (handles users with 0, 1, or multiple companies). Add ?return_token=true to get token in response for API clients.',
+  })
   @ApiBody({ type: LoginDto })
   @ApiResponse({
     status: 200,
-    description: 'User logged in successfully. Tokens are set as HTTP-only cookies. Add ?return_token=true to get tokens in response body for API clients. If companies.length === 0, token has no companyId. If 1 company, auto-selected. If multiple, requires selection.',
+    description:
+      'User logged in successfully. Tokens are set as HTTP-only cookies. Add ?return_token=true to get tokens in response body for API clients. If companies.length === 0, token has no companyId. If 1 company, auto-selected. If multiple, requires selection.',
     type: LoginResponseDto,
   })
   @ApiResponse({
@@ -99,22 +124,37 @@ export class AuthController {
     status: 401,
     description: 'Invalid email or password',
   })
-  async login(@Body() loginDto: LoginDto, @Res() res: Response, @Req() req: Request) {
+  async login(
+    @Body() loginDto: LoginDto,
+    @Res() res: Response,
+    @Req() req: Request,
+  ) {
     const loginResponse = await this.authService.login(loginDto);
-    
+
     // Set cookies (for browsers)
     const expiresIn = this.configService.get<string>('jwt.expiresIn') || '15m';
-    const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
-    
-    setAccessTokenCookie(res, loginResponse.access_token!, expiresIn, this.configService);
-    setRefreshTokenCookie(res, loginResponse.refresh_token!, refreshExpiresIn, this.configService);
-    
+    const refreshExpiresIn =
+      this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
+
+    setAccessTokenCookie(
+      res,
+      loginResponse.access_token!,
+      expiresIn,
+      this.configService,
+    );
+    setRefreshTokenCookie(
+      res,
+      loginResponse.refresh_token,
+      refreshExpiresIn,
+      this.configService,
+    );
+
     // Check if client wants token in response (for API clients like Thunder Client, Postman, etc.)
     // Check query parameter or header
-    const wantsTokenInResponse = 
-      req.query['return_token'] === 'true' || 
+    const wantsTokenInResponse =
+      req.query['return_token'] === 'true' ||
       req.headers['x-return-token'] === 'true';
-    
+
     if (wantsTokenInResponse) {
       // Return token in response body for API clients
       return res.json({
@@ -125,10 +165,17 @@ export class AuthController {
           : 'User logged in successfully',
       });
     }
-    
+
     // Default: Return response without tokens (for browsers with cookies)
-    const { access_token, refresh_token, ...responseData } = loginResponse;
-    
+
+    const {
+      access_token: _access_token,
+      refresh_token: _refresh_token,
+      ...responseData
+    } = loginResponse;
+    void _access_token;
+    void _refresh_token;
+
     return res.json({
       success: true,
       data: responseData,
@@ -141,11 +188,14 @@ export class AuthController {
   @Post('select-company')
   @HttpCode(HttpStatus.OK)
   @ApiCookieAuth('access_token')
-  @ApiOperation({ summary: 'Select company after login (if multiple companies)' })
+  @ApiOperation({
+    summary: 'Select company after login (if multiple companies)',
+  })
   @ApiBody({ type: SelectCompanyDto })
   @ApiResponse({
     status: 200,
-    description: 'Company selected successfully. New tokens are set as HTTP-only cookies.',
+    description:
+      'Company selected successfully. New tokens are set as HTTP-only cookies.',
     type: AuthResponseDto,
   })
   @ApiResponse({
@@ -165,17 +215,35 @@ export class AuthController {
       user.id,
       selectCompanyDto.companyId,
     );
-    
+
     // Set cookies
     const expiresIn = this.configService.get<string>('jwt.expiresIn') || '15m';
-    const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
-    
-    setAccessTokenCookie(res, authResponse.access_token!, expiresIn, this.configService);
-    setRefreshTokenCookie(res, authResponse.refresh_token!, refreshExpiresIn, this.configService);
-    
+    const refreshExpiresIn =
+      this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
+
+    setAccessTokenCookie(
+      res,
+      authResponse.access_token!,
+      expiresIn,
+      this.configService,
+    );
+    setRefreshTokenCookie(
+      res,
+      authResponse.refresh_token,
+      refreshExpiresIn,
+      this.configService,
+    );
+
     // Return response without tokens
-    const { access_token, refresh_token, ...responseData } = authResponse;
-    
+
+    const {
+      access_token: _access_token,
+      refresh_token: _refresh_token,
+      ...responseData
+    } = authResponse;
+    void _access_token;
+    void _refresh_token;
+
     return res.json({
       success: true,
       data: responseData,
@@ -190,7 +258,8 @@ export class AuthController {
   @ApiBody({ type: SelectCompanyDto })
   @ApiResponse({
     status: 200,
-    description: 'Company switched successfully. New tokens are set as HTTP-only cookies.',
+    description:
+      'Company switched successfully. New tokens are set as HTTP-only cookies.',
     type: AuthResponseDto,
   })
   @ApiResponse({
@@ -211,17 +280,35 @@ export class AuthController {
       user.id,
       selectCompanyDto.companyId,
     );
-    
+
     // Set cookies
     const expiresIn = this.configService.get<string>('jwt.expiresIn') || '15m';
-    const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
-    
-    setAccessTokenCookie(res, authResponse.access_token!, expiresIn, this.configService);
-    setRefreshTokenCookie(res, authResponse.refresh_token!, refreshExpiresIn, this.configService);
-    
+    const refreshExpiresIn =
+      this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
+
+    setAccessTokenCookie(
+      res,
+      authResponse.access_token!,
+      expiresIn,
+      this.configService,
+    );
+    setRefreshTokenCookie(
+      res,
+      authResponse.refresh_token,
+      refreshExpiresIn,
+      this.configService,
+    );
+
     // Return response without tokens
-    const { access_token, refresh_token, ...responseData } = authResponse;
-    
+
+    const {
+      access_token: _access_token,
+      refresh_token: _refresh_token,
+      ...responseData
+    } = authResponse;
+    void _access_token;
+    void _refresh_token;
+
     return res.json({
       success: true,
       data: responseData,
@@ -235,15 +322,19 @@ export class AuthController {
   @ApiOperation({ summary: 'Refresh access token using refresh token cookie' })
   @ApiResponse({
     status: 200,
-    description: 'Access token refreshed successfully. New tokens are set as HTTP-only cookies.',
+    description:
+      'Access token refreshed successfully. New tokens are set as HTTP-only cookies.',
   })
   @ApiResponse({
     status: 401,
     description: 'Invalid or expired refresh token',
   })
   async refresh(@Req() req: Request, @Res() res: Response) {
-    const refreshToken = req.cookies?.[this.configService.get<string>('jwt.refreshCookieName') || 'refresh_token'];
-    
+    const refreshCookieName =
+      this.configService.get<string>('jwt.refreshCookieName') ??
+      'refresh_token';
+    const refreshToken = req.cookies?.[refreshCookieName] as string | undefined;
+
     if (!refreshToken) {
       return res.status(HttpStatus.UNAUTHORIZED).json({
         success: false,
@@ -251,15 +342,26 @@ export class AuthController {
       });
     }
 
-    const tokens = await this.authService.refreshToken(refreshToken);
-    
+    const tokens = await this.authService.refreshToken(refreshToken as string);
+
     // Set new cookies
     const expiresIn = this.configService.get<string>('jwt.expiresIn') || '15m';
-    const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
-    
-    setAccessTokenCookie(res, tokens.access_token, expiresIn, this.configService);
-    setRefreshTokenCookie(res, tokens.refresh_token, refreshExpiresIn, this.configService);
-    
+    const refreshExpiresIn =
+      this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
+
+    setAccessTokenCookie(
+      res,
+      tokens.access_token,
+      expiresIn,
+      this.configService,
+    );
+    setRefreshTokenCookie(
+      res,
+      tokens.refresh_token,
+      refreshExpiresIn,
+      this.configService,
+    );
+
     return res.json({
       success: true,
       message: 'Token refreshed successfully',
@@ -277,10 +379,10 @@ export class AuthController {
     status: 401,
     description: 'Unauthorized',
   })
-  async logout(@Res() res: Response) {
+  logout(@Res() res: Response): void {
     clearAuthCookies(res, this.configService);
-    
-    return res.json({
+
+    res.json({
       success: true,
       message: 'Logged out successfully',
     });
@@ -302,10 +404,13 @@ export class AuthController {
   }
 
   @Get('me')
-  @ApiOperation({ summary: 'Get current authenticated user with role and company context' })
+  @ApiOperation({
+    summary: 'Get current authenticated user with role and company context',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Current user retrieved successfully with role and company context',
+    description:
+      'Current user retrieved successfully with role and company context',
     schema: {
       type: 'object',
       properties: {
@@ -320,8 +425,16 @@ export class AuthController {
             isSuperAdmin: { type: 'boolean' },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' },
-            companyId: { type: 'string', nullable: true, description: 'Current company context (if selected)' },
-            role: { type: 'string', nullable: true, description: 'User role in the current company context' },
+            companyId: {
+              type: 'string',
+              nullable: true,
+              description: 'Current company context (if selected)',
+            },
+            role: {
+              type: 'string',
+              nullable: true,
+              description: 'User role in the current company context',
+            },
           },
         },
       },
@@ -331,7 +444,16 @@ export class AuthController {
     status: 401,
     description: 'Unauthorized',
   })
-  async getCurrentUser(@AuthUser() user: { id: string; email: string; companyId?: string; role?: string; isSuperAdmin?: boolean }) {
+  async getCurrentUser(
+    @AuthUser()
+    user: {
+      id: string;
+      email: string;
+      companyId?: string;
+      role?: string;
+      isSuperAdmin?: boolean;
+    },
+  ) {
     const userData = await this.authService.getCurrentUser(user.id);
     return {
       success: true,
@@ -363,7 +485,10 @@ export class AuthController {
     @Body() updateProfileDto: UpdateProfileDto,
     @AuthUser() user: { id: string },
   ) {
-    const updatedUser = await this.authService.updateProfile(user.id, updateProfileDto);
+    const updatedUser = await this.authService.updateProfile(
+      user.id,
+      updateProfileDto,
+    );
     return {
       success: true,
       data: updatedUser,
@@ -401,9 +526,3 @@ export class AuthController {
     };
   }
 }
-
-
-
-
-
-

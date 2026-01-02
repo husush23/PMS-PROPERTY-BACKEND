@@ -24,9 +24,12 @@ export class CreatePaymentDto {
 
   @ApiProperty({
     description: 'Payment amount',
-    example: 1500.00,
+    example: 1500.0,
   })
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Amount must be a valid number with up to 2 decimal places' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'Amount must be a valid number with up to 2 decimal places' },
+  )
   @Min(0.01, { message: 'Amount must be greater than 0' })
   @Type(() => Number)
   amount: number;
@@ -53,7 +56,9 @@ export class CreatePaymentDto {
     enum: PaymentMethod,
     example: PaymentMethod.CASH,
   })
-  @IsEnum(PaymentMethod, { message: 'Payment method must be a valid PaymentMethod enum value' })
+  @IsEnum(PaymentMethod, {
+    message: 'Payment method must be a valid PaymentMethod enum value',
+  })
   paymentMethod: PaymentMethod;
 
   @ApiProperty({
@@ -61,7 +66,9 @@ export class CreatePaymentDto {
     enum: PaymentType,
     example: PaymentType.RENT,
   })
-  @IsEnum(PaymentType, { message: 'Payment type must be a valid PaymentType enum value' })
+  @IsEnum(PaymentType, {
+    message: 'Payment type must be a valid PaymentType enum value',
+  })
   paymentType: PaymentType;
 
   @ApiPropertyOptional({
@@ -98,10 +105,16 @@ export class CreatePaymentDto {
 
   @ApiPropertyOptional({
     description: 'Balance after this payment (snapshot)',
-    example: 500.00,
+    example: 500.0,
   })
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Balance after must be a valid number with up to 2 decimal places' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    {
+      message:
+        'Balance after must be a valid number with up to 2 decimal places',
+    },
+  )
   @Type(() => Number)
   balanceAfter?: number;
 
@@ -113,4 +126,3 @@ export class CreatePaymentDto {
   @IsString()
   attachmentUrl?: string;
 }
-

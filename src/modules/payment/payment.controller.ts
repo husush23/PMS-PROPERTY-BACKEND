@@ -41,7 +41,9 @@ export class PaymentController {
   @HttpCode(HttpStatus.CREATED)
   @ApiCookieAuth('access_token')
   @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD)
-  @ApiOperation({ summary: 'Create a new payment (COMPANY_ADMIN/MANAGER/LANDLORD only)' })
+  @ApiOperation({
+    summary: 'Create a new payment (COMPANY_ADMIN/MANAGER/LANDLORD only)',
+  })
   @ApiResponse({
     status: 201,
     description: 'Payment created successfully',
@@ -90,7 +92,12 @@ export class PaymentController {
   @ApiCookieAuth('access_token')
   @ApiOperation({ summary: 'Get tenant balance' })
   @ApiParam({ name: 'tenantId', type: 'string', format: 'uuid' })
-  @ApiQuery({ name: 'companyId', type: 'string', format: 'uuid', required: true })
+  @ApiQuery({
+    name: 'companyId',
+    type: 'string',
+    format: 'uuid',
+    required: true,
+  })
   @ApiResponse({
     status: 200,
     description: 'Tenant balance retrieved successfully',
@@ -100,7 +107,11 @@ export class PaymentController {
     @Query('companyId', ParseUUIDPipe) companyId: string,
     @AuthUser() user: { id: string },
   ) {
-    const balance = await this.paymentService.getTenantBalance(tenantId, companyId, user.id);
+    const balance = await this.paymentService.getTenantBalance(
+      tenantId,
+      companyId,
+      user.id,
+    );
     return {
       success: true,
       data: balance,
@@ -138,7 +149,11 @@ export class PaymentController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @AuthUser() user: { id: string },
   ) {
-    const history = await this.paymentService.getPaymentHistory(tenantId, undefined, user.id);
+    const history = await this.paymentService.getPaymentHistory(
+      tenantId,
+      undefined,
+      user.id,
+    );
     return {
       success: true,
       data: history,
@@ -157,7 +172,11 @@ export class PaymentController {
     @Param('leaseId', ParseUUIDPipe) leaseId: string,
     @AuthUser() user: { id: string },
   ) {
-    const history = await this.paymentService.getPaymentHistory(undefined, leaseId, user.id);
+    const history = await this.paymentService.getPaymentHistory(
+      undefined,
+      leaseId,
+      user.id,
+    );
     return {
       success: true,
       data: history,
@@ -191,7 +210,10 @@ export class PaymentController {
   @Patch(':id')
   @ApiCookieAuth('access_token')
   @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
-  @ApiOperation({ summary: 'Update payment (limited fields only) (COMPANY_ADMIN/MANAGER only)' })
+  @ApiOperation({
+    summary:
+      'Update payment (limited fields only) (COMPANY_ADMIN/MANAGER only)',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,
@@ -215,7 +237,11 @@ export class PaymentController {
     @Body() updatePaymentDto: UpdatePaymentDto,
     @AuthUser() user: { id: string },
   ) {
-    const payment = await this.paymentService.update(id, updatePaymentDto, user.id);
+    const payment = await this.paymentService.update(
+      id,
+      updatePaymentDto,
+      user.id,
+    );
     return {
       success: true,
       data: payment,
@@ -250,7 +276,11 @@ export class PaymentController {
     @Body() reversePaymentDto: ReversePaymentDto,
     @AuthUser() user: { id: string },
   ) {
-    const payment = await this.paymentService.reverse(id, reversePaymentDto, user.id);
+    const payment = await this.paymentService.reverse(
+      id,
+      reversePaymentDto,
+      user.id,
+    );
     return {
       success: true,
       data: payment,
@@ -261,7 +291,9 @@ export class PaymentController {
   @Post(':id/mark-failed')
   @ApiCookieAuth('access_token')
   @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
-  @ApiOperation({ summary: 'Mark payment as failed (COMPANY_ADMIN/MANAGER only)' })
+  @ApiOperation({
+    summary: 'Mark payment as failed (COMPANY_ADMIN/MANAGER only)',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,

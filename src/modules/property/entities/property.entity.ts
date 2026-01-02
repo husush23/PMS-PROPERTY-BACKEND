@@ -107,4 +107,3 @@ export class Property {
   @UpdateDateColumn()
   updatedAt: Date;
 }
-

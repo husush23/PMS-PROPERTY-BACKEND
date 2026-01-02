@@ -1,10 +1,8 @@
+import { Injectable, HttpStatus, forwardRef, Inject } from '@nestjs/common';
 import {
-  Injectable,
-  HttpStatus,
-  forwardRef,
-  Inject,
-} from '@nestjs/common';
-import { BusinessException, ErrorCode } from '../../common/exceptions/business.exception';
+  BusinessException,
+  ErrorCode,
+} from '../../common/exceptions/business.exception';
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike } from 'typeorm';
@@ -54,7 +52,9 @@ export class TenantService {
     requesterUserId: string,
   ): Promise<void> {
     // Permission check
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (!isSuperAdmin) {
@@ -80,7 +80,9 @@ export class TenantService {
     }
 
     // Verify company exists
-    const company = await this.companyRepository.findOne({ where: { id: companyId } });
+    const company = await this.companyRepository.findOne({
+      where: { id: companyId },
+    });
     if (!company) {
       throw new BusinessException(
         ErrorCode.COMPANY_NOT_FOUND,
@@ -112,7 +114,7 @@ export class TenantService {
       // Create user with inactive status and temporary password
       const tempPassword = randomUUID();
       const hashedPassword = await PasswordUtil.hash(tempPassword);
-      
+
       user = this.userRepository.create({
         email: inviteDto.email.toLowerCase(),
         password: hashedPassword,
@@ -132,7 +134,8 @@ export class TenantService {
       smsNotifications: true,
     });
 
-    const savedTenantProfile = await this.tenantProfileRepository.save(tenantProfile);
+    const savedTenantProfile =
+      await this.tenantProfileRepository.save(tenantProfile);
 
     // Create or ensure UserCompany relationship with TENANT role
     // Check if relationship already exists (user might be tenant at multiple companies)
@@ -142,7 +145,11 @@ export class TenantService {
 
     if (!existingUserCompany) {
       // Create UserCompany relationship if it doesn't exist
-      await this.companyService.assignUserToCompany(user.id, companyId, UserRole.TENANT);
+      await this.companyService.assignUserToCompany(
+        user.id,
+        companyId,
+        UserRole.TENANT,
+      );
     } else if (existingUserCompany.role !== UserRole.TENANT) {
       // If relationship exists but with different role, update to TENANT
       await this.userCompanyRepository.update(existingUserCompany.id, {
@@ -176,9 +183,15 @@ export class TenantService {
     await this.tenantInvitationRepository.save(invitation);
 
     // Send invitation email
-    const inviterName = requesterUser?.name || requesterUser?.email || 'Someone';
+    const inviterName =
+      requesterUser?.name || requesterUser?.email || 'Someone';
     this.notificationService
-      .sendTenantInvitationEmail(inviteDto.email, company.name, token, inviterName)
+      .sendTenantInvitationEmail(
+        inviteDto.email,
+        company.name,
+        token,
+        inviterName,
+      )
       .catch((error) => {
         console.error('Failed to send tenant invitation email:', error);
       });
@@ -211,7 +224,10 @@ export class TenantService {
       );
     }
 
-    if (invitation.status === InvitationStatus.CANCELLED || invitation.status === InvitationStatus.EXPIRED) {
+    if (
+      invitation.status === InvitationStatus.CANCELLED ||
+      invitation.status === InvitationStatus.EXPIRED
+    ) {
       throw new BusinessException(
         ErrorCode.TENANT_INVITATION_EXPIRED,
         ERROR_MESSAGES.TENANT_INVITATION_EXPIRED,
@@ -286,7 +302,9 @@ export class TenantService {
       status: TenantStatus.PENDING,
       phone: acceptDto.phone,
       alternativePhone: acceptDto.alternativePhone,
-      dateOfBirth: acceptDto.dateOfBirth ? new Date(acceptDto.dateOfBirth) : undefined,
+      dateOfBirth: acceptDto.dateOfBirth
+        ? new Date(acceptDto.dateOfBirth)
+        : undefined,
       idNumber: acceptDto.idNumber,
       idType: acceptDto.idType,
       address: acceptDto.address,
@@ -348,7 +366,9 @@ export class TenantService {
     requesterUserId: string,
   ): Promise<TenantResponseDto> {
     // Permission check
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (!isSuperAdmin) {
@@ -374,7 +394,9 @@ export class TenantService {
     }
 
     // Verify company exists
-    const company = await this.companyRepository.findOne({ where: { id: companyId } });
+    const company = await this.companyRepository.findOne({
+      where: { id: companyId },
+    });
     if (!company) {
       throw new BusinessException(
         ErrorCode.COMPANY_NOT_FOUND,
@@ -394,7 +416,7 @@ export class TenantService {
       if (createDto.password) {
         // Password provided: create active user with provided password
         const hashedPassword = await PasswordUtil.hash(createDto.password);
-        
+
         user = this.userRepository.create({
           email: createDto.email.toLowerCase(),
           password: hashedPassword,
@@ -406,7 +428,7 @@ export class TenantService {
         // No password: create inactive user with temp password (invitation flow)
         const tempPassword = randomUUID();
         const hashedPassword = await PasswordUtil.hash(tempPassword);
-        
+
         user = this.userRepository.create({
           email: createDto.email.toLowerCase(),
           password: hashedPassword,
@@ -424,7 +446,9 @@ export class TenantService {
           isActive: true, // Activate existing user
         });
         // Refresh user object to get updated isActive status
-        const updatedUser = await this.userRepository.findOne({ where: { id: user.id } });
+        const updatedUser = await this.userRepository.findOne({
+          where: { id: user.id },
+        });
         if (updatedUser) {
           user = updatedUser;
         }
@@ -460,7 +484,9 @@ export class TenantService {
       companyId,
       phone: createDto.phone,
       alternativePhone: createDto.alternativePhone,
-      dateOfBirth: createDto.dateOfBirth ? new Date(createDto.dateOfBirth) : undefined,
+      dateOfBirth: createDto.dateOfBirth
+        ? new Date(createDto.dateOfBirth)
+        : undefined,
       idNumber: createDto.idNumber,
       idType: createDto.idType,
       address: createDto.address,
@@ -478,10 +504,15 @@ export class TenantService {
       smsNotifications: createDto.smsNotifications ?? true,
     });
 
-    const savedTenantProfile = await this.tenantProfileRepository.save(tenantProfile);
+    const savedTenantProfile =
+      await this.tenantProfileRepository.save(tenantProfile);
 
     // Create UserCompany relationship with TENANT role
-    await this.companyService.assignUserToCompany(user.id, companyId, UserRole.TENANT);
+    await this.companyService.assignUserToCompany(
+      user.id,
+      companyId,
+      UserRole.TENANT,
+    );
 
     // If user was just created (inactive), send invitation email
     if (!user.isActive) {
@@ -502,10 +533,18 @@ export class TenantService {
       await this.tenantInvitationRepository.save(invitation);
 
       // Send invitation email
-      const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
-      const inviterName = requesterUser?.name || requesterUser?.email || 'Someone';
+      const requesterUser = await this.userRepository.findOne({
+        where: { id: requesterUserId },
+      });
+      const inviterName =
+        requesterUser?.name || requesterUser?.email || 'Someone';
       this.notificationService
-        .sendTenantInvitationEmail(createDto.email, company.name, token, inviterName)
+        .sendTenantInvitationEmail(
+          createDto.email,
+          company.name,
+          token,
+          inviterName,
+        )
         .catch((error) => {
           console.error('Failed to send tenant invitation email:', error);
         });
@@ -528,7 +567,9 @@ export class TenantService {
     };
   }> {
     // Permission check
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     // Get requester's role in company (for tenant access check)
@@ -549,7 +590,12 @@ export class TenantService {
         // Filter out orphaned tenant profiles (missing user)
         return {
           data: [],
-          pagination: { total: 0, page: 1, limit: queryDto.limit || 10, totalPages: 0 },
+          pagination: {
+            total: 0,
+            page: 1,
+            limit: queryDto.limit || 10,
+            totalPages: 0,
+          },
         };
       }
 
@@ -558,14 +604,31 @@ export class TenantService {
       });
 
       return {
-        data: [this.toResponseDto(tenantProfile, tenantProfile.user, companyId, userCompany!)],
-        pagination: { total: 1, page: 1, limit: queryDto.limit || 10, totalPages: 1 },
+        data: [
+          this.toResponseDto(
+            tenantProfile,
+            tenantProfile.user,
+            companyId,
+            userCompany!,
+          ),
+        ],
+        pagination: {
+          total: 1,
+          page: 1,
+          limit: queryDto.limit || 10,
+          totalPages: 1,
+        },
       };
     }
 
     if (!isSuperAdmin) {
       // Verify requester is a member of the company (COMPANY_ADMIN or MANAGER)
-      if (!requesterUserCompany || ![UserRole.COMPANY_ADMIN, UserRole.MANAGER].includes(requesterUserCompany.role)) {
+      if (
+        !requesterUserCompany ||
+        ![UserRole.COMPANY_ADMIN, UserRole.MANAGER].includes(
+          requesterUserCompany.role,
+        )
+      ) {
         throw new BusinessException(
           ErrorCode.INSUFFICIENT_PERMISSIONS,
           'Only company administrators and managers can view tenants.',
@@ -595,13 +658,15 @@ export class TenantService {
     }
 
     if (queryDto.status) {
-      queryBuilder.andWhere('tenantProfile.status = :status', { status: queryDto.status });
+      queryBuilder.andWhere('tenantProfile.status = :status', {
+        status: queryDto.status,
+      });
     }
 
     // Apply sorting
     const sortBy = queryDto.sortBy || 'createdAt';
     const sortOrder = queryDto.sortOrder || 'DESC';
-    
+
     if (sortBy === 'name' || sortBy === 'email') {
       queryBuilder.orderBy(`user.${sortBy}`, sortOrder);
     } else {
@@ -618,22 +683,30 @@ export class TenantService {
 
     // Get UserCompany relationships for joinedAt and role
     const userIds = tenantProfiles.map((tp) => tp.userId);
-    const userCompanies = userIds.length > 0
-      ? await this.userCompanyRepository
-          .createQueryBuilder('uc')
-          .where('uc.userId IN (:...userIds)', { userIds })
-          .andWhere('uc.companyId = :companyId', { companyId })
-          .andWhere('uc.isActive = :isActive', { isActive: true })
-          .getMany()
-      : [];
+    const userCompanies =
+      userIds.length > 0
+        ? await this.userCompanyRepository
+            .createQueryBuilder('uc')
+            .where('uc.userId IN (:...userIds)', { userIds })
+            .andWhere('uc.companyId = :companyId', { companyId })
+            .andWhere('uc.isActive = :isActive', { isActive: true })
+            .getMany()
+        : [];
 
     const userCompanyMap = new Map(userCompanies.map((uc) => [uc.userId, uc]));
 
     // Filter out any tenant profiles with null users (extra safety check)
-    const validTenantProfiles = tenantProfiles.filter((tp) => tp.user !== null && tp.user !== undefined);
+    const validTenantProfiles = tenantProfiles.filter(
+      (tp) => tp.user !== null && tp.user !== undefined,
+    );
 
     const data = validTenantProfiles.map((tenantProfile) =>
-      this.toResponseDto(tenantProfile, tenantProfile.user!, companyId, userCompanyMap.get(tenantProfile.userId)),
+      this.toResponseDto(
+        tenantProfile,
+        tenantProfile.user,
+        companyId,
+        userCompanyMap.get(tenantProfile.userId),
+      ),
     );
 
     const totalPages = Math.ceil(total / limit);
@@ -649,7 +722,10 @@ export class TenantService {
     };
   }
 
-  async findOne(tenantId: string, requesterUserId: string): Promise<TenantResponseDto> {
+  async findOne(
+    tenantId: string,
+    requesterUserId: string,
+  ): Promise<TenantResponseDto> {
     const tenantProfile = await this.tenantProfileRepository.findOne({
       where: { id: tenantId },
       relations: ['user', 'company'],
@@ -667,10 +743,10 @@ export class TenantService {
     // Check if tenant was deleted (soft delete)
     // Check UserCompany relationship first - if inactive, tenant is deleted
     const userCompany = await this.userCompanyRepository.findOne({
-      where: { 
-        userId: tenantProfile.userId, 
-        companyId: tenantProfile.companyId, 
-        isActive: true 
+      where: {
+        userId: tenantProfile.userId,
+        companyId: tenantProfile.companyId,
+        isActive: true,
       },
     });
 
@@ -685,7 +761,9 @@ export class TenantService {
     }
 
     // Access control
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (!isSuperAdmin) {
@@ -704,7 +782,9 @@ export class TenantService {
 
         if (
           !requesterUserCompany ||
-          ![UserRole.COMPANY_ADMIN, UserRole.MANAGER].includes(requesterUserCompany.role)
+          ![UserRole.COMPANY_ADMIN, UserRole.MANAGER].includes(
+            requesterUserCompany.role,
+          )
         ) {
           throw new BusinessException(
             ErrorCode.CAN_ONLY_VIEW_OWN_TENANT_DATA,
@@ -716,7 +796,12 @@ export class TenantService {
       }
     }
 
-    return this.toResponseDto(tenantProfile, tenantProfile.user, tenantProfile.companyId, userCompany);
+    return this.toResponseDto(
+      tenantProfile,
+      tenantProfile.user,
+      tenantProfile.companyId,
+      userCompany,
+    );
   }
 
   async update(
@@ -739,7 +824,9 @@ export class TenantService {
     }
 
     // Access control (same as findOne)
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     let requesterUserCompany: UserCompany | null = null;
@@ -765,7 +852,9 @@ export class TenantService {
 
         if (
           !requesterUserCompany ||
-          ![UserRole.COMPANY_ADMIN, UserRole.MANAGER].includes(requesterUserCompany.role)
+          ![UserRole.COMPANY_ADMIN, UserRole.MANAGER].includes(
+            requesterUserCompany.role,
+          )
         ) {
           throw new BusinessException(
             ErrorCode.CAN_ONLY_VIEW_OWN_TENANT_DATA,
@@ -778,31 +867,55 @@ export class TenantService {
     }
 
     // Update User if name changed
-    if (updateDto.name !== undefined && updateDto.name !== tenantProfile.user.name) {
-      await this.userRepository.update(tenantProfile.userId, { name: updateDto.name });
+    if (
+      updateDto.name !== undefined &&
+      updateDto.name !== tenantProfile.user.name
+    ) {
+      await this.userRepository.update(tenantProfile.userId, {
+        name: updateDto.name,
+      });
     }
 
     // Update TenantProfile
     const updateData: any = {};
-    
-    if (updateDto.phone !== undefined) updateData.phone = updateDto.phone || null;
-    if (updateDto.alternativePhone !== undefined) updateData.alternativePhone = updateDto.alternativePhone || null;
-    if (updateDto.dateOfBirth !== undefined) updateData.dateOfBirth = updateDto.dateOfBirth ? new Date(updateDto.dateOfBirth) : null;
-    if (updateDto.idNumber !== undefined) updateData.idNumber = updateDto.idNumber || null;
-    if (updateDto.idType !== undefined) updateData.idType = updateDto.idType || null;
-    if (updateDto.address !== undefined) updateData.address = updateDto.address || null;
+
+    if (updateDto.phone !== undefined)
+      updateData.phone = updateDto.phone || null;
+    if (updateDto.alternativePhone !== undefined)
+      updateData.alternativePhone = updateDto.alternativePhone || null;
+    if (updateDto.dateOfBirth !== undefined)
+      updateData.dateOfBirth = updateDto.dateOfBirth
+        ? new Date(updateDto.dateOfBirth)
+        : null;
+    if (updateDto.idNumber !== undefined)
+      updateData.idNumber = updateDto.idNumber || null;
+    if (updateDto.idType !== undefined)
+      updateData.idType = updateDto.idType || null;
+    if (updateDto.address !== undefined)
+      updateData.address = updateDto.address || null;
     if (updateDto.city !== undefined) updateData.city = updateDto.city || null;
-    if (updateDto.state !== undefined) updateData.state = updateDto.state || null;
-    if (updateDto.zipCode !== undefined) updateData.zipCode = updateDto.zipCode || null;
-    if (updateDto.country !== undefined) updateData.country = updateDto.country || null;
-    if (updateDto.emergencyContactName !== undefined) updateData.emergencyContactName = updateDto.emergencyContactName || null;
-    if (updateDto.emergencyContactPhone !== undefined) updateData.emergencyContactPhone = updateDto.emergencyContactPhone || null;
-    if (updateDto.emergencyContactRelationship !== undefined) updateData.emergencyContactRelationship = updateDto.emergencyContactRelationship || null;
-    if (updateDto.notes !== undefined) updateData.notes = updateDto.notes || null;
+    if (updateDto.state !== undefined)
+      updateData.state = updateDto.state || null;
+    if (updateDto.zipCode !== undefined)
+      updateData.zipCode = updateDto.zipCode || null;
+    if (updateDto.country !== undefined)
+      updateData.country = updateDto.country || null;
+    if (updateDto.emergencyContactName !== undefined)
+      updateData.emergencyContactName = updateDto.emergencyContactName || null;
+    if (updateDto.emergencyContactPhone !== undefined)
+      updateData.emergencyContactPhone =
+        updateDto.emergencyContactPhone || null;
+    if (updateDto.emergencyContactRelationship !== undefined)
+      updateData.emergencyContactRelationship =
+        updateDto.emergencyContactRelationship || null;
+    if (updateDto.notes !== undefined)
+      updateData.notes = updateDto.notes || null;
     if (updateDto.tags !== undefined) updateData.tags = updateDto.tags || null;
-    if (updateDto.emailNotifications !== undefined) updateData.emailNotifications = updateDto.emailNotifications;
-    if (updateDto.smsNotifications !== undefined) updateData.smsNotifications = updateDto.smsNotifications;
-    
+    if (updateDto.emailNotifications !== undefined)
+      updateData.emailNotifications = updateDto.emailNotifications;
+    if (updateDto.smsNotifications !== undefined)
+      updateData.smsNotifications = updateDto.smsNotifications;
+
     // Status can only be updated by admins/managers (checked above)
     if (updateDto.status !== undefined) {
       updateData.status = updateDto.status;
@@ -817,10 +930,19 @@ export class TenantService {
     });
 
     const userCompany = await this.userCompanyRepository.findOne({
-      where: { userId: tenantProfile.userId, companyId: tenantProfile.companyId, isActive: true },
+      where: {
+        userId: tenantProfile.userId,
+        companyId: tenantProfile.companyId,
+        isActive: true,
+      },
     });
 
-    return this.toResponseDto(updatedTenantProfile!, updatedTenantProfile!.user, tenantProfile.companyId, userCompany!);
+    return this.toResponseDto(
+      updatedTenantProfile!,
+      updatedTenantProfile!.user,
+      tenantProfile.companyId,
+      userCompany!,
+    );
   }
 
   async delete(tenantId: string, requesterUserId: string): Promise<void> {
@@ -838,7 +960,9 @@ export class TenantService {
     }
 
     // Permission check (only COMPANY_ADMIN/MANAGER)
-    const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
     if (!isSuperAdmin) {
@@ -852,7 +976,9 @@ export class TenantService {
 
       if (
         !requesterUserCompany ||
-        ![UserRole.COMPANY_ADMIN, UserRole.MANAGER].includes(requesterUserCompany.role)
+        ![UserRole.COMPANY_ADMIN, UserRole.MANAGER].includes(
+          requesterUserCompany.role,
+        )
       ) {
         throw new BusinessException(
           ErrorCode.INSUFFICIENT_PERMISSIONS,
@@ -878,7 +1004,9 @@ export class TenantService {
     });
 
     if (userCompany) {
-      await this.userCompanyRepository.update(userCompany.id, { isActive: false });
+      await this.userCompanyRepository.update(userCompany.id, {
+        isActive: false,
+      });
     }
   }
 

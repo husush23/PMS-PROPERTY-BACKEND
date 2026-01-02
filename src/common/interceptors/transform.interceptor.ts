@@ -9,9 +9,9 @@ import { map } from 'rxjs/operators';
 
 @Injectable()
 export class TransformInterceptor implements NestInterceptor {
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     return next.handle().pipe(
-      map((data) => {
+      map((data: unknown) => {
         // If the response already has a success field, return it as-is (already wrapped by controller)
         if (data && typeof data === 'object' && 'success' in data) {
           return data;
@@ -25,14 +25,3 @@ export class TransformInterceptor implements NestInterceptor {
     );
   }
 }
-
-
-
-
-
-
-
-
-
-
-

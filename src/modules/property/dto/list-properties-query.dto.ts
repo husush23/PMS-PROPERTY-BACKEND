@@ -99,4 +99,3 @@ export class ListPropertiesQueryDto {
   @IsString()
   sortOrder?: 'ASC' | 'DESC' = 'DESC';
 }
-

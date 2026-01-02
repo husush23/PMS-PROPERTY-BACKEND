@@ -1,5 +1,13 @@
-import { Injectable, UnauthorizedException, ConflictException, NotFoundException, HttpStatus } from '@nestjs/common';
-import { BusinessException, ErrorCode } from '../../common/exceptions/business.exception';
+import {
+  Injectable,
+  UnauthorizedException,
+  NotFoundException,
+  HttpStatus,
+} from '@nestjs/common';
+import {
+  BusinessException,
+  ErrorCode,
+} from '../../common/exceptions/business.exception';
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -26,7 +34,7 @@ export class AuthService {
 
   async validateUser(email: string, password: string): Promise<User> {
     const user = await this.userService.findByEmail(email);
-    
+
     if (!user) {
       throw new BusinessException(
         ErrorCode.INVALID_CREDENTIALS,
@@ -44,7 +52,7 @@ export class AuthService {
     }
 
     const isPasswordValid = await PasswordUtil.compare(password, user.password);
-    
+
     if (!isPasswordValid) {
       throw new BusinessException(
         ErrorCode.INVALID_CREDENTIALS,
@@ -56,9 +64,11 @@ export class AuthService {
     return user;
   }
 
-  async login(loginDto: LoginDto): Promise<LoginResponseDto & { refresh_token: string }> {
+  async login(
+    loginDto: LoginDto,
+  ): Promise<LoginResponseDto & { refresh_token: string }> {
     const user = await this.validateUser(loginDto.email, loginDto.password);
-    
+
     // Convert User entity to UserResponseDto
     const userResponse: UserResponseDto = {
       id: user.id,
@@ -79,10 +89,10 @@ export class AuthService {
         sub: user.id,
         email: user.email,
       });
-      
+
       // Get companies for display purposes (super admin can see all companies anyway)
       const companies = await this.companyService.getUserCompanies(user.id);
-      
+
       return {
         access_token,
         refresh_token,
@@ -101,7 +111,7 @@ export class AuthService {
         sub: user.id,
         email: user.email,
       });
-      
+
       return {
         access_token,
         refresh_token,
@@ -114,9 +124,16 @@ export class AuthService {
     // If user has only one company, auto-select it
     if (companies.length === 1) {
       const companyId = companies[0].id;
-      const role = await this.companyService.getUserRoleInCompany(user.id, companyId);
-      const access_token = this.generateCompanyScopedToken(userResponse, companyId, role!);
-      
+      const role = await this.companyService.getUserRoleInCompany(
+        user.id,
+        companyId,
+      );
+      const access_token = this.generateCompanyScopedToken(
+        userResponse,
+        companyId,
+        role!,
+      );
+
       return {
         access_token,
         refresh_token,
@@ -141,11 +158,14 @@ export class AuthService {
     };
   }
 
-  async selectCompany(userId: string, companyId: string): Promise<AuthResponseDto & { refresh_token: string }> {
+  async selectCompany(
+    userId: string,
+    companyId: string,
+  ): Promise<AuthResponseDto & { refresh_token: string }> {
     // Get user to check if super admin
     const user = await this.userService.findById(userId);
     const userEntity = await this.userService.findByEmail(user.email);
-    
+
     if (!userEntity) {
       throw new NotFoundException('User not found');
     }
@@ -155,7 +175,10 @@ export class AuthService {
 
     // Super admin can select any company (optional company context for specific views)
     if (userEntity.isSuperAdmin) {
-      const role = await this.companyService.getUserRoleInCompany(userId, companyId);
+      const role = await this.companyService.getUserRoleInCompany(
+        userId,
+        companyId,
+      );
       // Generate token with companyId if super admin wants company-specific view
       // But super admin doesn't require being a member
       const access_token = role
@@ -165,7 +188,7 @@ export class AuthService {
             email: user.email,
             companyId, // Include companyId for context but no role requirement
           });
-      
+
       return {
         access_token,
         refresh_token,
@@ -174,8 +197,11 @@ export class AuthService {
     }
 
     // Regular user - verify user belongs to company
-    const role = await this.companyService.getUserRoleInCompany(userId, companyId);
-    
+    const role = await this.companyService.getUserRoleInCompany(
+      userId,
+      companyId,
+    );
+
     if (!role) {
       throw new BusinessException(
         ErrorCode.USER_NOT_BELONGS_TO_COMPANY,
@@ -184,7 +210,7 @@ export class AuthService {
         { companyId },
       );
     }
-    
+
     // Generate company-scoped token
     const access_token = this.generateCompanyScopedToken(user, companyId, role);
 
@@ -195,7 +221,9 @@ export class AuthService {
     };
   }
 
-  async register(registerDto: RegisterDto): Promise<LoginResponseDto & { refresh_token: string }> {
+  async register(
+    registerDto: RegisterDto,
+  ): Promise<LoginResponseDto & { refresh_token: string }> {
     // Check for duplicate email
     const existingUser = await this.userService.findByEmail(registerDto.email);
     if (existingUser) {
@@ -255,13 +283,16 @@ export class AuthService {
     // Get user to verify old password
     const userDto = await this.userService.findById(userId);
     const user = await this.userService.findByEmail(userDto.email);
-    
+
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
     // Verify old password
-    const isPasswordValid = await PasswordUtil.compare(oldPassword, user.password);
+    const isPasswordValid = await PasswordUtil.compare(
+      oldPassword,
+      user.password,
+    );
     if (!isPasswordValid) {
       throw new UnauthorizedException('Current password is incorrect');
     }
@@ -289,34 +320,49 @@ export class AuthService {
    * Generate refresh token using refresh secret
    */
   generateRefreshToken(userId: string, email: string): string {
-    const refreshSecret = this.configService.get<string>('jwt.refreshSecret') || process.env.JWT_REFRESH_SECRET;
-    
+    const refreshSecret =
+      this.configService.get<string>('jwt.refreshSecret') ||
+      process.env.JWT_REFRESH_SECRET;
+
     // Get refreshExpiresIn with multiple fallbacks
     const configValue = this.configService.get<string>('jwt.refreshExpiresIn');
     const envValue = process.env.JWT_REFRESH_EXPIRES_IN;
-    
+
     let refreshExpiresIn: string = '7d'; // Default fallback
-    
+
     // Helper function to clean and validate expiresIn value
     const cleanExpiresIn = (value: string): string => {
       // Remove trailing commas, semicolons, and other invalid trailing characters
       // Also remove any leading/trailing whitespace
-      let cleaned = value.trim().replace(/[,;]+$/, '').trim();
+      const cleaned = value
+        .trim()
+        .replace(/[,;]+$/, '')
+        .trim();
       // If empty after cleaning, return default
       if (!cleaned || cleaned === '') {
         return '7d';
       }
       return cleaned;
     };
-    
-    if (configValue && typeof configValue === 'string' && configValue.trim() !== '') {
+
+    if (
+      configValue &&
+      typeof configValue === 'string' &&
+      configValue.trim() !== ''
+    ) {
       refreshExpiresIn = cleanExpiresIn(configValue);
-    } else if (envValue && typeof envValue === 'string' && envValue.trim() !== '') {
+    } else if (
+      envValue &&
+      typeof envValue === 'string' &&
+      envValue.trim() !== ''
+    ) {
       refreshExpiresIn = cleanExpiresIn(envValue);
     }
 
     if (!refreshSecret) {
-      throw new Error('JWT_REFRESH_SECRET is required. Please set it in your .env file.');
+      throw new Error(
+        'JWT_REFRESH_SECRET is required. Please set it in your .env file.',
+      );
     }
 
     const payload = {
@@ -330,23 +376,37 @@ export class AuthService {
       // @ts-expect-error - expiresIn accepts string like "7d" but types are strict
       expiresIn: refreshExpiresIn,
     };
-    
+
     return jwt.sign(payload, refreshSecret as jwt.Secret, options);
   }
 
   /**
    * Validate refresh token and generate new access token
    */
-  async refreshToken(refreshToken: string): Promise<{ access_token: string; refresh_token: string }> {
-    const refreshSecret = this.configService.get<string>('jwt.refreshSecret') || process.env.JWT_REFRESH_SECRET;
+  async refreshToken(
+    refreshToken: string,
+  ): Promise<{ access_token: string; refresh_token: string }> {
+    const refreshSecret =
+      this.configService.get<string>('jwt.refreshSecret') ||
+      process.env.JWT_REFRESH_SECRET;
 
     if (!refreshSecret) {
-      throw new Error('JWT_REFRESH_SECRET is required. Please set it in your .env file.');
+      throw new Error(
+        'JWT_REFRESH_SECRET is required. Please set it in your .env file.',
+      );
     }
 
     try {
       // Verify refresh token using jsonwebtoken directly since it uses a different secret
-      const payload = jwt.verify(refreshToken, refreshSecret as string) as any;
+      interface RefreshTokenPayload {
+        sub: string;
+        type: string;
+        companyId?: string;
+      }
+      const payload = jwt.verify(
+        refreshToken,
+        refreshSecret,
+      ) as RefreshTokenPayload;
 
       if (payload.type !== 'refresh') {
         throw new BusinessException(
@@ -405,9 +465,3 @@ export class AuthService {
     }
   }
 }
-
-
-
-
-
-

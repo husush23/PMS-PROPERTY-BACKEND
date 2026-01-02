@@ -14,7 +14,7 @@ function parseDatabaseUrl(databaseUrl: string) {
   try {
     // Use URL constructor to parse, but extract components manually
     const url = new URL(databaseUrl);
-    
+
     return {
       host: url.hostname,
       port: parseInt(url.port || '5432', 10),
@@ -23,8 +23,9 @@ function parseDatabaseUrl(databaseUrl: string) {
       database: url.pathname.slice(1), // Remove leading '/'
     };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `Failed to parse DATABASE_URL: ${error.message}\n` +
+      `Failed to parse DATABASE_URL: ${errorMessage}\n` +
         `Please ensure your connection string follows the format: postgresql://user:password@host:port/database`,
     );
   }
@@ -50,5 +51,3 @@ const dbConfig = parseDatabaseUrl(process.env.DATABASE_URL);
   exports: [TypeOrmModule],
 })
 export class DatabaseModule {}
-
-

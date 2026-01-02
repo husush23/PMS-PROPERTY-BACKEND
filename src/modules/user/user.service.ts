@@ -1,5 +1,14 @@
-import { Injectable, ConflictException, NotFoundException, ForbiddenException, HttpStatus } from '@nestjs/common';
-import { BusinessException, ErrorCode } from '../../common/exceptions/business.exception';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+  ForbiddenException,
+  HttpStatus,
+} from '@nestjs/common';
+import {
+  BusinessException,
+  ErrorCode,
+} from '../../common/exceptions/business.exception';
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -23,7 +32,10 @@ export class UserService {
     private companyService: CompanyService,
   ) {}
 
-  async findAll(companyId: string, paginationQuery?: PaginationQueryDto): Promise<{
+  async findAll(
+    companyId: string,
+    paginationQuery?: PaginationQueryDto,
+  ): Promise<{
     data: UserResponseDto[];
     pagination: {
       total: number;
@@ -37,15 +49,16 @@ export class UserService {
     const skip = (page - 1) * limit;
 
     // Get users in the company via UserCompany join table
-    const [userCompanies, total] = await this.userCompanyRepository.findAndCount({
-      where: { companyId, isActive: true },
-      relations: ['user'],
-      skip,
-      take: limit,
-      order: {
-        joinedAt: 'DESC',
-      },
-    });
+    const [userCompanies, total] =
+      await this.userCompanyRepository.findAndCount({
+        where: { companyId, isActive: true },
+        relations: ['user'],
+        skip,
+        take: limit,
+        order: {
+          joinedAt: 'DESC',
+        },
+      });
 
     const totalPages = Math.ceil(total / limit);
 
@@ -107,7 +120,7 @@ export class UserService {
     const superAdminCount = await this.userRepository.count({
       where: { isSuperAdmin: true },
     });
-    
+
     if (superAdminCount <= 1) {
       throw new BusinessException(
         ErrorCode.CANNOT_REMOVE_LAST_SUPER_ADMIN,
@@ -115,7 +128,7 @@ export class UserService {
         HttpStatus.BAD_REQUEST,
       );
     }
-    
+
     await this.userRepository.update(userId, { isSuperAdmin: false });
   }
 
@@ -130,10 +143,17 @@ export class UserService {
       // If user exists and companyId provided, add them to company
       if (companyId) {
         try {
-          await this.companyService.assignUserToCompany(existingUser.id, companyId, role);
+          await this.companyService.assignUserToCompany(
+            existingUser.id,
+            companyId,
+            role,
+          );
           return this.toResponseDto(existingUser);
         } catch (error) {
-          if (error instanceof ConflictException || error instanceof BusinessException) {
+          if (
+            error instanceof ConflictException ||
+            error instanceof BusinessException
+          ) {
             throw new BusinessException(
               ErrorCode.USER_ALREADY_IN_COMPANY,
               ERROR_MESSAGES.USER_ALREADY_IN_COMPANY,
@@ -166,7 +186,11 @@ export class UserService {
 
     // Assign user to company if companyId provided
     if (companyId) {
-      await this.companyService.assignUserToCompany(savedUser.id, companyId, role);
+      await this.companyService.assignUserToCompany(
+        savedUser.id,
+        companyId,
+        role,
+      );
     }
 
     return this.toResponseDto(savedUser);
@@ -228,7 +252,9 @@ export class UserService {
     }
 
     // Remove user from company (soft delete by setting isActive to false)
-    await this.userCompanyRepository.update(userCompany.id, { isActive: false });
+    await this.userCompanyRepository.update(userCompany.id, {
+      isActive: false,
+    });
     return true;
   }
 
@@ -237,9 +263,3 @@ export class UserService {
     return userResponse as UserResponseDto;
   }
 }
-
-
-
-
-
-

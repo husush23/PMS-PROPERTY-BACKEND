@@ -147,31 +147,31 @@ export class LeaseResponseDto {
   // Financial
   @ApiProperty({
     description: 'Monthly rent amount',
-    example: 1500.00,
+    example: 1500.0,
   })
   monthlyRent: number;
 
   @ApiPropertyOptional({
     description: 'Security deposit amount',
-    example: 1500.00,
+    example: 1500.0,
   })
   securityDeposit?: number;
 
   @ApiPropertyOptional({
     description: 'Pet deposit amount',
-    example: 500.00,
+    example: 500.0,
   })
   petDeposit?: number;
 
   @ApiPropertyOptional({
     description: 'Pet rent amount per month',
-    example: 50.00,
+    example: 50.0,
   })
   petRent?: number;
 
   @ApiPropertyOptional({
     description: 'Late fee amount',
-    example: 50.00,
+    example: 50.0,
   })
   lateFeeAmount?: number;
 
@@ -183,7 +183,7 @@ export class LeaseResponseDto {
 
   @ApiPropertyOptional({
     description: 'Utility costs if not included in rent',
-    example: 100.00,
+    example: 100.0,
   })
   utilityCosts?: number;
 
@@ -300,4 +300,3 @@ export class LeaseResponseDto {
   })
   updatedAt: Date;
 }
-

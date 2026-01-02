@@ -50,4 +50,3 @@ export class Company {
   @UpdateDateColumn()
   updatedAt: Date;
 }
-

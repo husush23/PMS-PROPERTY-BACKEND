@@ -111,4 +111,3 @@ export class Payment {
   @JoinColumn({ name: 'recordedBy' })
   recordedByUser: User;
 }
-

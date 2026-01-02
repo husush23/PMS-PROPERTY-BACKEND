@@ -37,7 +37,9 @@ export class CreatePropertyDto {
     enum: PropertyType,
     example: PropertyType.APARTMENT,
   })
-  @IsEnum(PropertyType, { message: 'Property type must be a valid PropertyType enum value' })
+  @IsEnum(PropertyType, {
+    message: 'Property type must be a valid PropertyType enum value',
+  })
   propertyType: PropertyType;
 
   @ApiPropertyOptional({
@@ -46,7 +48,9 @@ export class CreatePropertyDto {
     example: PropertyStatus.AVAILABLE,
   })
   @IsOptional()
-  @IsEnum(PropertyStatus, { message: 'Status must be a valid PropertyStatus enum value' })
+  @IsEnum(PropertyStatus, {
+    message: 'Status must be a valid PropertyStatus enum value',
+  })
   status?: PropertyStatus;
 
   @ApiPropertyOptional({
@@ -183,7 +187,10 @@ export class CreatePropertyDto {
 
   @ApiPropertyOptional({
     description: 'Array of image URLs',
-    example: ['https://example.com/image1.jpg', 'https://example.com/image2.jpg'],
+    example: [
+      'https://example.com/image1.jpg',
+      'https://example.com/image2.jpg',
+    ],
     type: [String],
   })
   @IsOptional()
@@ -191,4 +198,3 @@ export class CreatePropertyDto {
   @IsString({ each: true })
   images?: string[];
 }
-

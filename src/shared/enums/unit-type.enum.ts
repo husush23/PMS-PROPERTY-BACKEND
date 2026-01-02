@@ -10,4 +10,3 @@ export enum UnitType {
   PARKING = 'PARKING',
   PENTHOUSE = 'PENTHOUSE',
 }
-

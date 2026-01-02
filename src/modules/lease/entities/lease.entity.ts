@@ -204,4 +204,3 @@ export class Lease {
   @JoinColumn({ name: 'renewedToLeaseId' })
   renewedTo: Lease;
 }
-

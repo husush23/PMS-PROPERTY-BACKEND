@@ -44,7 +44,7 @@ export class UnitResponseDto {
 
   @ApiProperty({
     description: 'Monthly rent amount',
-    example: 1500.00,
+    example: 1500.0,
   })
   monthlyRent: number;
 
@@ -71,7 +71,7 @@ export class UnitResponseDto {
 
   @ApiPropertyOptional({
     description: 'Security deposit amount',
-    example: 1500.00,
+    example: 1500.0,
     nullable: true,
   })
   depositAmount: number | null;
@@ -165,21 +165,21 @@ export class UnitResponseDto {
 
   @ApiPropertyOptional({
     description: 'Late fee amount',
-    example: 50.00,
+    example: 50.0,
     nullable: true,
   })
   lateFeeAmount: number | null;
 
   @ApiPropertyOptional({
     description: 'Pet deposit amount',
-    example: 300.00,
+    example: 300.0,
     nullable: true,
   })
   petDeposit: number | null;
 
   @ApiPropertyOptional({
     description: 'Additional monthly pet rent',
-    example: 50.00,
+    example: 50.0,
     nullable: true,
   })
   petRent: number | null;
@@ -209,4 +209,3 @@ export class UnitResponseDto {
   })
   updatedAt: Date;
 }
-

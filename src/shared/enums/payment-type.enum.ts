@@ -8,4 +8,3 @@ export enum PaymentType {
   MAINTENANCE = 'MAINTENANCE',
   OTHER = 'OTHER',
 }
-

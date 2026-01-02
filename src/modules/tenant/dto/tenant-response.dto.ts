@@ -190,4 +190,3 @@ export class TenantResponseDto {
   })
   updatedAt: Date;
 }
-

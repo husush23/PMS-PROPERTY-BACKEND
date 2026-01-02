@@ -65,4 +65,3 @@ export class ListTenantsQueryDto {
   @IsString()
   sortOrder?: 'ASC' | 'DESC' = 'DESC';
 }
-

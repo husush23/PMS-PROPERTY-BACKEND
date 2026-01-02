@@ -5,4 +5,3 @@ export enum PaymentStatus {
   REFUNDED = 'REFUNDED',
   CANCELLED = 'CANCELLED',
 }
-

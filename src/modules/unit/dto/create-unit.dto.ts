@@ -25,7 +25,8 @@ export class CreateUnitDto {
   propertyId: string;
 
   @ApiPropertyOptional({
-    description: 'Company ID (will be auto-populated from Property if not provided)',
+    description:
+      'Company ID (will be auto-populated from Property if not provided)',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
   @IsOptional()
@@ -46,7 +47,9 @@ export class CreateUnitDto {
     example: UnitStatus.AVAILABLE,
   })
   @IsOptional()
-  @IsEnum(UnitStatus, { message: 'Status must be a valid UnitStatus enum value' })
+  @IsEnum(UnitStatus, {
+    message: 'Status must be a valid UnitStatus enum value',
+  })
   status?: UnitStatus;
 
   @ApiProperty({
@@ -54,14 +57,22 @@ export class CreateUnitDto {
     enum: UnitType,
     example: UnitType.ONE_BEDROOM,
   })
-  @IsEnum(UnitType, { message: 'Unit type must be a valid UnitType enum value' })
+  @IsEnum(UnitType, {
+    message: 'Unit type must be a valid UnitType enum value',
+  })
   unitType: UnitType;
 
   @ApiProperty({
     description: 'Monthly rent amount',
-    example: 1500.00,
+    example: 1500.0,
   })
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Monthly rent must be a valid number with up to 2 decimal places' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    {
+      message:
+        'Monthly rent must be a valid number with up to 2 decimal places',
+    },
+  )
   @Min(0, { message: 'Monthly rent must be a positive number' })
   @Type(() => Number)
   monthlyRent: number;
@@ -92,17 +103,26 @@ export class CreateUnitDto {
   })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 1 }, { message: 'Bathrooms must be a valid number with up to 1 decimal place' })
+  @IsNumber(
+    { maxDecimalPlaces: 1 },
+    { message: 'Bathrooms must be a valid number with up to 1 decimal place' },
+  )
   @Min(0, { message: 'Bathrooms must be a non-negative number' })
   bathrooms?: number;
 
   @ApiPropertyOptional({
     description: 'Security deposit amount',
-    example: 1500.00,
+    example: 1500.0,
   })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Deposit amount must be a valid number with up to 2 decimal places' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    {
+      message:
+        'Deposit amount must be a valid number with up to 2 decimal places',
+    },
+  )
   @Min(0, { message: 'Deposit amount must be a positive number' })
   depositAmount?: number;
 
@@ -157,7 +177,9 @@ export class CreateUnitDto {
     example: LeaseType.LONG_TERM,
   })
   @IsOptional()
-  @IsEnum(LeaseType, { message: 'Lease type must be a valid LeaseType enum value' })
+  @IsEnum(LeaseType, {
+    message: 'Lease type must be a valid LeaseType enum value',
+  })
   leaseType?: LeaseType;
 
   @ApiPropertyOptional({
@@ -214,31 +236,45 @@ export class CreateUnitDto {
 
   @ApiPropertyOptional({
     description: 'Late fee amount',
-    example: 50.00,
+    example: 50.0,
   })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Late fee amount must be a valid number with up to 2 decimal places' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    {
+      message:
+        'Late fee amount must be a valid number with up to 2 decimal places',
+    },
+  )
   @Min(0, { message: 'Late fee amount must be a positive number' })
   lateFeeAmount?: number;
 
   @ApiPropertyOptional({
     description: 'Pet deposit amount',
-    example: 300.00,
+    example: 300.0,
   })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Pet deposit must be a valid number with up to 2 decimal places' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    {
+      message: 'Pet deposit must be a valid number with up to 2 decimal places',
+    },
+  )
   @Min(0, { message: 'Pet deposit must be a positive number' })
   petDeposit?: number;
 
   @ApiPropertyOptional({
     description: 'Additional monthly pet rent',
-    example: 50.00,
+    example: 50.0,
   })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Pet rent must be a valid number with up to 2 decimal places' })
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'Pet rent must be a valid number with up to 2 decimal places' },
+  )
   @Min(0, { message: 'Pet rent must be a positive number' })
   petRent?: number;
 
@@ -250,4 +286,3 @@ export class CreateUnitDto {
   @IsString()
   accessCode?: string;
 }
-

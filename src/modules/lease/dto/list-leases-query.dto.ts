@@ -1,4 +1,14 @@
-import { IsOptional, IsInt, Min, Max, IsEnum, IsString, IsUUID, IsDateString, IsBoolean } from 'class-validator';
+import {
+  IsOptional,
+  IsInt,
+  Min,
+  Max,
+  IsEnum,
+  IsString,
+  IsUUID,
+  IsDateString,
+  IsBoolean,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { LeaseStatus } from '../../../shared/enums/lease-status.enum';
@@ -148,4 +158,3 @@ export class ListLeasesQueryDto {
   @IsString()
   sortOrder?: 'ASC' | 'DESC' = 'DESC';
 }
-

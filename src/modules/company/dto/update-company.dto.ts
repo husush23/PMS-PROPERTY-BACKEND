@@ -12,4 +12,3 @@ export class UpdateCompanyDto extends PartialType(CreateCompanyDto) {
   @IsBoolean()
   isActive?: boolean;
 }
-

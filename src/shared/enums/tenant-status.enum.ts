@@ -3,4 +3,3 @@ export enum TenantStatus {
   ACTIVE = 'ACTIVE', // Has an active lease
   FORMER = 'FORMER', // All leases ended
 }
-

@@ -23,7 +23,15 @@ export class SampleService {
     return this.itemRepository.save(item);
   }
 
-  async update(id: string, data: { name?: string; description?: string; price?: number; isActive?: boolean }) {
+  async update(
+    id: string,
+    data: {
+      name?: string;
+      description?: string;
+      price?: number;
+      isActive?: boolean;
+    },
+  ) {
     await this.itemRepository.update(id, data);
     return this.itemRepository.findOne({ where: { id } });
   }
@@ -33,4 +41,3 @@ export class SampleService {
     return (result.affected ?? 0) > 0;
   }
 }
-

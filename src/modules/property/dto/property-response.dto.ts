@@ -141,7 +141,8 @@ export class PropertyResponseDto {
   totalUnits: number | null;
 
   @ApiPropertyOptional({
-    description: 'Number of units (computed from Units relation, 0 if no units exist)',
+    description:
+      'Number of units (computed from Units relation, 0 if no units exist)',
     example: 45,
   })
   numberOfUnits: number;
@@ -172,4 +173,3 @@ export class PropertyResponseDto {
   })
   updatedAt: Date;
 }
-

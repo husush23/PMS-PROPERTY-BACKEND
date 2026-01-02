@@ -67,7 +67,9 @@ export class ListPaymentsQueryDto {
     example: PaymentStatus.PAID,
   })
   @IsOptional()
-  @IsEnum(PaymentStatus, { message: 'Status must be a valid PaymentStatus enum value' })
+  @IsEnum(PaymentStatus, {
+    message: 'Status must be a valid PaymentStatus enum value',
+  })
   status?: PaymentStatus;
 
   @ApiPropertyOptional({
@@ -76,7 +78,9 @@ export class ListPaymentsQueryDto {
     example: PaymentType.RENT,
   })
   @IsOptional()
-  @IsEnum(PaymentType, { message: 'Payment type must be a valid PaymentType enum value' })
+  @IsEnum(PaymentType, {
+    message: 'Payment type must be a valid PaymentType enum value',
+  })
   paymentType?: PaymentType;
 
   @ApiPropertyOptional({
@@ -85,7 +89,9 @@ export class ListPaymentsQueryDto {
     example: PaymentMethod.CASH,
   })
   @IsOptional()
-  @IsEnum(PaymentMethod, { message: 'Payment method must be a valid PaymentMethod enum value' })
+  @IsEnum(PaymentMethod, {
+    message: 'Payment method must be a valid PaymentMethod enum value',
+  })
   paymentMethod?: PaymentMethod;
 
   @ApiPropertyOptional({
@@ -123,4 +129,3 @@ export class ListPaymentsQueryDto {
   @IsString()
   sortOrder?: 'ASC' | 'DESC' = 'DESC';
 }
-

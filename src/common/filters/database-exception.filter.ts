@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { QueryFailedError } from 'typeorm';
-import { BusinessException, ErrorCode } from '../exceptions/business.exception';
+import { ErrorCode } from '../exceptions/business.exception';
 import { ERROR_MESSAGES } from '../constants/error-messages.constant';
 
 @Catch(QueryFailedError)
@@ -21,10 +21,13 @@ export class DatabaseExceptionFilter implements ExceptionFilter {
     let humanReadableMessage: string = ERROR_MESSAGES.INTERNAL_SERVER_ERROR;
     let errorCode = ErrorCode.INTERNAL_SERVER_ERROR;
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
-    let details: any = {};
+    let details: Record<string, unknown> = {};
 
     // Unique constraint violation
-    if (errorMessage.includes('duplicate key') || errorMessage.includes('UNIQUE constraint')) {
+    if (
+      errorMessage.includes('duplicate key') ||
+      errorMessage.includes('UNIQUE constraint')
+    ) {
       const field = this.extractFieldFromError(errorMessage);
       if (field === 'email') {
         humanReadableMessage = ERROR_MESSAGES.EMAIL_ALREADY_EXISTS;
@@ -42,13 +45,20 @@ export class DatabaseExceptionFilter implements ExceptionFilter {
       details = { field };
     }
     // Foreign key constraint violation
-    else if (errorMessage.includes('foreign key') || errorMessage.includes('FOREIGN KEY constraint')) {
-      humanReadableMessage = 'This operation cannot be completed because it would violate data integrity.';
+    else if (
+      errorMessage.includes('foreign key') ||
+      errorMessage.includes('FOREIGN KEY constraint')
+    ) {
+      humanReadableMessage =
+        'This operation cannot be completed because it would violate data integrity.';
       errorCode = ErrorCode.BAD_REQUEST;
       statusCode = HttpStatus.BAD_REQUEST;
     }
     // Not null constraint violation
-    else if (errorMessage.includes('NOT NULL constraint') || errorMessage.includes('null value')) {
+    else if (
+      errorMessage.includes('NOT NULL constraint') ||
+      errorMessage.includes('null value')
+    ) {
       const field = this.extractFieldFromError(errorMessage);
       humanReadableMessage = `The field "${field}" is required and cannot be empty.`;
       errorCode = ErrorCode.VALIDATION_ERROR;
@@ -56,15 +66,19 @@ export class DatabaseExceptionFilter implements ExceptionFilter {
       details = { field };
     }
     // Connection errors
-    else if (errorMessage.includes('connection') || errorMessage.includes('ECONNREFUSED')) {
-      humanReadableMessage = 'Unable to connect to the database. Please try again later.';
+    else if (
+      errorMessage.includes('connection') ||
+      errorMessage.includes('ECONNREFUSED')
+    ) {
+      humanReadableMessage =
+        'Unable to connect to the database. Please try again later.';
       errorCode = ErrorCode.INTERNAL_SERVER_ERROR;
       statusCode = HttpStatus.SERVICE_UNAVAILABLE;
     }
 
     // In development, include original error in details
     if (process.env.NODE_ENV !== 'production') {
-      details.originalError = errorMessage;
+      details = { ...details, originalError: errorMessage };
     }
 
     return response.status(statusCode).json({
@@ -98,4 +112,3 @@ export class DatabaseExceptionFilter implements ExceptionFilter {
     return 'unknown';
   }
 }
-

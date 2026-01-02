@@ -19,4 +19,3 @@ export class ReversePaymentDto {
   @IsString()
   notes?: string;
 }
-

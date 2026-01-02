@@ -12,7 +12,10 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { Public } from '../../common/decorators/public.decorator';
-import { BusinessException, ErrorCode } from '../../common/exceptions/business.exception';
+import {
+  BusinessException,
+  ErrorCode,
+} from '../../common/exceptions/business.exception';
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import {
   ApiTags,
@@ -39,7 +42,10 @@ export class TenantController {
   @Post('invite')
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Invite a tenant to a company by email only (creates user if needed, sends invitation). Profile data will be collected when tenant accepts the invitation.' })
+  @ApiOperation({
+    summary:
+      'Invite a tenant to a company by email only (creates user if needed, sends invitation). Profile data will be collected when tenant accepts the invitation.',
+  })
   @ApiResponse({
     status: 201,
     description: 'Tenant invitation sent successfully',
@@ -58,12 +64,13 @@ export class TenantController {
   })
   async inviteTenant(
     @Body() inviteDto: InviteTenantDto & { companyId?: string },
-    @AuthUser() user: { id: string; companyId?: string; isSuperAdmin?: boolean },
+    @AuthUser()
+    user: { id: string; companyId?: string; isSuperAdmin?: boolean },
   ) {
     // For super admins, companyId must be provided in request body
     // For regular users, use request body or fallback to JWT companyId
     const companyId = inviteDto.companyId || user.companyId;
-    
+
     if (!companyId) {
       // Super admin must provide companyId in request body
       if (user.isSuperAdmin) {
@@ -73,7 +80,7 @@ export class TenantController {
           HttpStatus.BAD_REQUEST,
         );
       }
-      
+
       // Regular users need to select a company first
       throw new BusinessException(
         ErrorCode.COMPANY_CONTEXT_REQUIRED,
@@ -81,7 +88,7 @@ export class TenantController {
         HttpStatus.BAD_REQUEST,
       );
     }
-    
+
     await this.tenantService.inviteTenant(companyId, inviteDto, user.id);
     return {
       success: true,
@@ -92,7 +99,10 @@ export class TenantController {
   @Post('accept-invitation')
   @HttpCode(HttpStatus.OK)
   @Public()
-  @ApiOperation({ summary: 'Accept tenant invitation and complete profile (public endpoint, token-based). Requires token, password, name, and optional profile fields.' })
+  @ApiOperation({
+    summary:
+      'Accept tenant invitation and complete profile (public endpoint, token-based). Requires token, password, name, and optional profile fields.',
+  })
   @ApiResponse({
     status: 200,
     description: 'Invitation accepted successfully and profile completed',
@@ -119,7 +129,9 @@ export class TenantController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Create a tenant directly (COMPANY_ADMIN/MANAGER only)' })
+  @ApiOperation({
+    summary: 'Create a tenant directly (COMPANY_ADMIN/MANAGER only)',
+  })
   @ApiResponse({
     status: 201,
     description: 'Tenant created successfully',
@@ -143,12 +155,13 @@ export class TenantController {
   })
   async create(
     @Body() createDto: CreateTenantDto & { companyId?: string },
-    @AuthUser() user: { id: string; companyId?: string; isSuperAdmin?: boolean },
+    @AuthUser()
+    user: { id: string; companyId?: string; isSuperAdmin?: boolean },
   ) {
     // For super admins, companyId must be provided in request body
     // For regular users, use request body or fallback to JWT companyId
     const companyId = createDto.companyId || user.companyId;
-    
+
     if (!companyId) {
       // Super admin must provide companyId in request body
       if (user.isSuperAdmin) {
@@ -158,7 +171,7 @@ export class TenantController {
           HttpStatus.BAD_REQUEST,
         );
       }
-      
+
       // Regular users need to select a company first
       throw new BusinessException(
         ErrorCode.COMPANY_CONTEXT_REQUIRED,
@@ -166,8 +179,12 @@ export class TenantController {
         HttpStatus.BAD_REQUEST,
       );
     }
-    
-    const tenant = await this.tenantService.create(companyId, createDto, user.id);
+
+    const tenant = await this.tenantService.create(
+      companyId,
+      createDto,
+      user.id,
+    );
     return {
       success: true,
       data: tenant,
@@ -177,7 +194,10 @@ export class TenantController {
 
   @Get()
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'List tenants (filtered by company, tenants can only see themselves)' })
+  @ApiOperation({
+    summary:
+      'List tenants (filtered by company, tenants can only see themselves)',
+  })
   @ApiQuery({ name: 'companyId', required: false, type: String })
   @ApiResponse({
     status: 200,
@@ -185,12 +205,13 @@ export class TenantController {
   })
   async findAll(
     @Query() query: ListTenantsQueryDto & { companyId?: string },
-    @AuthUser() user: { id: string; companyId?: string; isSuperAdmin?: boolean },
+    @AuthUser()
+    user: { id: string; companyId?: string; isSuperAdmin?: boolean },
   ) {
     // For super admins, companyId must be provided in query params
     // For regular users, use query params or fallback to JWT companyId
     const companyId = query.companyId || user.companyId;
-    
+
     if (!companyId) {
       // Super admin must provide companyId in query params
       if (user.isSuperAdmin) {
@@ -200,7 +221,7 @@ export class TenantController {
           HttpStatus.BAD_REQUEST,
         );
       }
-      
+
       // Regular users need to select a company first
       throw new BusinessException(
         ErrorCode.COMPANY_CONTEXT_REQUIRED,
@@ -208,7 +229,7 @@ export class TenantController {
         HttpStatus.BAD_REQUEST,
       );
     }
-    
+
     const result = await this.tenantService.findAll(companyId, query, user.id);
     return {
       success: true,
@@ -219,7 +240,9 @@ export class TenantController {
 
   @Get(':id')
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Get tenant details (tenant can only see own profile)' })
+  @ApiOperation({
+    summary: 'Get tenant details (tenant can only see own profile)',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,
@@ -261,7 +284,8 @@ export class TenantController {
   })
   @ApiResponse({
     status: 403,
-    description: 'Insufficient permissions (tenants can only update own profile)',
+    description:
+      'Insufficient permissions (tenants can only update own profile)',
   })
   @ApiResponse({
     status: 404,
@@ -272,7 +296,11 @@ export class TenantController {
     @Body() updateDto: UpdateTenantDto,
     @AuthUser() user: { id: string },
   ) {
-    const tenant = await this.tenantService.update(tenantId, updateDto, user.id);
+    const tenant = await this.tenantService.update(
+      tenantId,
+      updateDto,
+      user.id,
+    );
     return {
       success: true,
       data: tenant,

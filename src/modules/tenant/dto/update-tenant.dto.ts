@@ -159,12 +159,15 @@ export class UpdateTenantDto {
   smsNotifications?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Tenant status (PENDING, ACTIVE, FORMER). Note: Status is usually managed automatically based on active leases, but can be manually updated by admins/managers.',
+    description:
+      'Tenant status (PENDING, ACTIVE, FORMER). Note: Status is usually managed automatically based on active leases, but can be manually updated by admins/managers.',
     enum: TenantStatus,
     example: TenantStatus.ACTIVE,
   })
   @IsOptional()
-  @IsEnum(TenantStatus, { message: 'Status must be a valid TenantStatus enum value (PENDING, ACTIVE, or FORMER)' })
+  @IsEnum(TenantStatus, {
+    message:
+      'Status must be a valid TenantStatus enum value (PENDING, ACTIVE, or FORMER)',
+  })
   status?: TenantStatus;
 }
-

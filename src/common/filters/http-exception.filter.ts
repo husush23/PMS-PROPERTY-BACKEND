@@ -33,23 +33,26 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
 
     // Handle validation errors (from ValidationPipe)
-    if (status === HttpStatus.BAD_REQUEST) {
-      const responseBody = exceptionResponse as any;
-      
+    if (status === (HttpStatus.BAD_REQUEST as number)) {
+      const responseBody = exceptionResponse as { message?: string | string[] };
+
       // Check if it's a validation error with array of messages
       if (Array.isArray(responseBody.message)) {
         // Format validation errors from class-validator
-        const formattedErrors = responseBody.message.map((msg: string, index: number) => {
-          // Try to extract field name and constraint
-          const fieldMatch = msg.match(/^(\w+)\s/);
-          const field = fieldMatch ? fieldMatch[1] : `field${index}`;
-          
-          return {
-            field: field.toLowerCase(),
-            message: this.formatValidationMessage(msg),
-            value: request.body?.[field] || undefined,
-          };
-        });
+        const formattedErrors = responseBody.message.map(
+          (msg: string, index: number) => {
+            // Try to extract field name and constraint
+            const fieldMatch = msg.match(/^(\w+)\s/);
+            const field = fieldMatch ? fieldMatch[1] : `field${index}`;
+
+            return {
+              field: field.toLowerCase(),
+              message: this.formatValidationMessage(msg),
+              value:
+                (request.body as Record<string, unknown>)?.[field] || undefined,
+            };
+          },
+        );
 
         return response.status(status).json({
           success: false,
@@ -75,9 +78,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
       error: {
         code: errorCode,
         message: message,
-        details: typeof exceptionResponse === 'object' && exceptionResponse !== null
-          ? (exceptionResponse as any).details || {}
-          : {},
+        details:
+          typeof exceptionResponse === 'object' &&
+          exceptionResponse !== null &&
+          'details' in exceptionResponse
+            ? (exceptionResponse as { details?: Record<string, unknown> })
+                .details || {}
+            : {},
       },
       timestamp: new Date().toISOString(),
       path: request.url,
@@ -87,28 +94,44 @@ export class HttpExceptionFilter implements ExceptionFilter {
   private formatValidationMessage(message: string): string {
     // Make validation messages more user-friendly
     let formatted = message;
-    
+
     // Capitalize first letter
     formatted = formatted.charAt(0).toUpperCase() + formatted.slice(1);
-    
+
     // Replace technical terms
-    formatted = formatted.replace(/must be an email/, 'must be a valid email address');
-    formatted = formatted.replace(/must be longer than or equal to (\d+)/, 'must be at least $1 characters long');
-    formatted = formatted.replace(/must be shorter than or equal to (\d+)/, 'must be at most $1 characters long');
-    formatted = formatted.replace(/must be a UUID/, 'must be a valid identifier');
+    formatted = formatted.replace(
+      /must be an email/,
+      'must be a valid email address',
+    );
+    formatted = formatted.replace(
+      /must be longer than or equal to (\d+)/,
+      'must be at least $1 characters long',
+    );
+    formatted = formatted.replace(
+      /must be shorter than or equal to (\d+)/,
+      'must be at most $1 characters long',
+    );
+    formatted = formatted.replace(
+      /must be a UUID/,
+      'must be a valid identifier',
+    );
     formatted = formatted.replace(/should not be empty/, 'is required');
     formatted = formatted.replace(/must be a string/, 'must be text');
     formatted = formatted.replace(/must be a number/, 'must be a number');
-    
+
     return formatted;
   }
 
-  private getHumanReadableMessage(message: string, status: HttpStatus): string {
+  private getHumanReadableMessage(
+    message: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _status: HttpStatus,
+  ): string {
     // Map common technical messages to human-readable ones
     const messageMap: Record<string, string> = {
       'Not Found': ERROR_MESSAGES.NOT_FOUND,
-      'Unauthorized': ERROR_MESSAGES.UNAUTHORIZED,
-      'Forbidden': ERROR_MESSAGES.FORBIDDEN,
+      Unauthorized: ERROR_MESSAGES.UNAUTHORIZED,
+      Forbidden: ERROR_MESSAGES.FORBIDDEN,
       'Bad Request': ERROR_MESSAGES.BAD_REQUEST,
     };
 

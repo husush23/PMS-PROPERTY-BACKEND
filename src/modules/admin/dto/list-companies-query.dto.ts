@@ -34,4 +34,3 @@ export class ListCompaniesQueryDto {
   @IsOptional()
   search?: string;
 }
-

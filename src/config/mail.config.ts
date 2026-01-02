@@ -8,8 +8,3 @@ export default () => ({
     from: process.env.MAIL_FROM || 'noreply@pms.com',
   },
 });
-
-
-
-
-

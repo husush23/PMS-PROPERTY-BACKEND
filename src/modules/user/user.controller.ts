@@ -14,7 +14,10 @@ import {
   UseGuards,
   ForbiddenException,
 } from '@nestjs/common';
-import { BusinessException, ErrorCode } from '../../common/exceptions/business.exception';
+import {
+  BusinessException,
+  ErrorCode,
+} from '../../common/exceptions/business.exception';
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import {
   ApiTags,
@@ -49,8 +52,18 @@ export class UserController {
   @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: 'Get paginated list of users in current company' })
-  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 10, max: 100)' })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page number (default: 1)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Items per page (default: 10, max: 100)',
+  })
   @ApiResponse({
     status: 200,
     description: 'List of users retrieved successfully',
@@ -77,8 +90,16 @@ export class UserController {
 
   @Get(':id')
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Get a user by ID (must be in same company or viewing own profile)' })
-  @ApiParam({ name: 'id', type: 'string', format: 'uuid', description: 'User ID' })
+  @ApiOperation({
+    summary:
+      'Get a user by ID (must be in same company or viewing own profile)',
+  })
+  @ApiParam({
+    name: 'id',
+    type: 'string',
+    format: 'uuid',
+    description: 'User ID',
+  })
   @ApiResponse({
     status: 200,
     description: 'User retrieved successfully',
@@ -153,8 +174,12 @@ export class UserController {
   ) {
     // Default role based on who's creating (can be overridden later via company management)
     const defaultRole = UserRole.TENANT;
-    
-    const user = await this.userService.create(createUserDto, companyId, defaultRole);
+
+    const user = await this.userService.create(
+      createUserDto,
+      companyId,
+      defaultRole,
+    );
     return {
       success: true,
       data: user,
@@ -165,7 +190,12 @@ export class UserController {
   @Put(':id')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Update a user (full update)' })
-  @ApiParam({ name: 'id', type: 'string', format: 'uuid', description: 'User ID' })
+  @ApiParam({
+    name: 'id',
+    type: 'string',
+    format: 'uuid',
+    description: 'User ID',
+  })
   @ApiBody({ type: UpdateUserDto })
   @ApiResponse({
     status: 200,
@@ -239,7 +269,12 @@ export class UserController {
   @Patch(':id')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Update a user (partial update)' })
-  @ApiParam({ name: 'id', type: 'string', format: 'uuid', description: 'User ID' })
+  @ApiParam({
+    name: 'id',
+    type: 'string',
+    format: 'uuid',
+    description: 'User ID',
+  })
   @ApiBody({ type: UpdateUserDto })
   @ApiResponse({
     status: 200,
@@ -270,7 +305,12 @@ export class UserController {
   @UseGuards(RolesGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Remove user from company (COMPANY_ADMIN only)' })
-  @ApiParam({ name: 'id', type: 'string', format: 'uuid', description: 'User ID' })
+  @ApiParam({
+    name: 'id',
+    type: 'string',
+    format: 'uuid',
+    description: 'User ID',
+  })
   @ApiResponse({
     status: 200,
     description: 'User removed from company successfully',

@@ -4,4 +4,3 @@ export enum UnitStatus {
   MAINTENANCE = 'MAINTENANCE',
   UNAVAILABLE = 'UNAVAILABLE',
 }
-

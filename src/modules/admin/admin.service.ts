@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, HttpStatus } from '@nestjs/common';
+import { Injectable, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike } from 'typeorm';
 import { Company } from '../company/entities/company.entity';
@@ -7,13 +7,15 @@ import { CompanyResponseDto } from '../company/dto/company-response.dto';
 import { UserResponseDto } from '../user/dto/user-response.dto';
 import { CreateCompanyDto } from '../company/dto/create-company.dto';
 import { UpdateCompanyDto } from '../company/dto/update-company.dto';
-import { CreateUserDto } from '../user/dto/create-user.dto';
 import { UpdateUserDto } from '../user/dto/update-user.dto';
 import { ListCompaniesQueryDto } from './dto/list-companies-query.dto';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { SystemStatsResponseDto } from './dto/system-stats-response.dto';
 import { CreateAdminUserDto } from './dto/create-admin-user.dto';
-import { BusinessException, ErrorCode } from '../../common/exceptions/business.exception';
+import {
+  BusinessException,
+  ErrorCode,
+} from '../../common/exceptions/business.exception';
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import { UserService } from '../user/user.service';
 import { CompanyService } from '../company/company.service';
@@ -44,13 +46,16 @@ export class AdminService {
     const limit = query.limit || 10;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const whereConditions: { name?: ReturnType<typeof ILike<string>> } = {};
     if (query.search) {
-      where.name = ILike(`%${query.search}%`);
+      whereConditions.name = ILike(`%${query.search}%`);
     }
 
     const [companies, total] = await this.companyRepository.findAndCount({
-      where: where,
+      where:
+        Object.keys(whereConditions).length > 0
+          ? (whereConditions as { name: ReturnType<typeof ILike<string>> })
+          : undefined,
       skip,
       take: limit,
       order: {
@@ -84,7 +89,9 @@ export class AdminService {
     return this.toCompanyResponseDto(company);
   }
 
-  async createCompany(createCompanyDto: CreateCompanyDto): Promise<CompanyResponseDto> {
+  async createCompany(
+    createCompanyDto: CreateCompanyDto,
+  ): Promise<CompanyResponseDto> {
     // Check if slug already exists
     if (createCompanyDto.slug) {
       const existing = await this.companyRepository.findOne({
@@ -124,7 +131,10 @@ export class AdminService {
     return this.toCompanyResponseDto(savedCompany);
   }
 
-  async updateCompany(id: string, updateCompanyDto: UpdateCompanyDto): Promise<CompanyResponseDto> {
+  async updateCompany(
+    id: string,
+    updateCompanyDto: UpdateCompanyDto,
+  ): Promise<CompanyResponseDto> {
     const company = await this.companyRepository.findOne({ where: { id } });
     if (!company) {
       throw new BusinessException(
@@ -182,22 +192,22 @@ export class AdminService {
     const skip = (page - 1) * limit;
 
     const queryBuilder = this.userRepository.createQueryBuilder('user');
-    
+
     if (query.search) {
       queryBuilder.andWhere(
         '(user.email ILIKE :search OR user.name ILIKE :search)',
         { search: `%${query.search}%` },
       );
     }
-    
+
     if (query.isSuperAdmin !== undefined) {
       queryBuilder.andWhere('user.isSuperAdmin = :isSuperAdmin', {
         isSuperAdmin: query.isSuperAdmin,
       });
     }
-    
+
     queryBuilder.skip(skip).take(limit).orderBy('user.createdAt', 'DESC');
-    
+
     const [users, total] = await queryBuilder.getManyAndCount();
 
     const totalPages = Math.ceil(total / limit);
@@ -234,7 +244,10 @@ export class AdminService {
     await this.userService.removeSuperAdmin(userId);
   }
 
-  async activateUser(userId: string, isActive: boolean): Promise<UserResponseDto> {
+  async activateUser(
+    userId: string,
+    isActive: boolean,
+  ): Promise<UserResponseDto> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new BusinessException(
@@ -246,7 +259,9 @@ export class AdminService {
     }
 
     await this.userRepository.update(userId, { isActive });
-    const updated = await this.userRepository.findOne({ where: { id: userId } });
+    const updated = await this.userRepository.findOne({
+      where: { id: userId },
+    });
     return this.toUserResponseDto(updated!);
   }
 
@@ -254,7 +269,9 @@ export class AdminService {
     createUserDto: CreateAdminUserDto,
   ): Promise<UserResponseDto> {
     // Check for duplicate email
-    const existingUser = await this.userService.findByEmail(createUserDto.email);
+    const existingUser = await this.userService.findByEmail(
+      createUserDto.email,
+    );
     if (existingUser) {
       throw new BusinessException(
         ErrorCode.EMAIL_ALREADY_EXISTS,
@@ -305,7 +322,10 @@ export class AdminService {
     return this.toUserResponseDto(savedUser);
   }
 
-  async updateUser(userId: string, updateUserDto: UpdateUserDto): Promise<UserResponseDto> {
+  async updateUser(
+    userId: string,
+    updateUserDto: UpdateUserDto,
+  ): Promise<UserResponseDto> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new BusinessException(
@@ -317,8 +337,13 @@ export class AdminService {
     }
 
     // Check for duplicate email if email is being updated
-    if (updateUserDto.email && updateUserDto.email.toLowerCase() !== user.email) {
-      const emailExists = await this.userService.findByEmail(updateUserDto.email);
+    if (
+      updateUserDto.email &&
+      updateUserDto.email.toLowerCase() !== user.email
+    ) {
+      const emailExists = await this.userService.findByEmail(
+        updateUserDto.email,
+      );
       if (emailExists) {
         throw new BusinessException(
           ErrorCode.EMAIL_ALREADY_EXISTS,
@@ -341,7 +366,9 @@ export class AdminService {
     }
 
     await this.userRepository.update(userId, updateData);
-    const updated = await this.userRepository.findOne({ where: { id: userId } });
+    const updated = await this.userRepository.findOne({
+      where: { id: userId },
+    });
     return this.toUserResponseDto(updated!);
   }
 
@@ -379,7 +406,7 @@ export class AdminService {
     } else {
       // Soft delete: Deactivate user
       await this.userRepository.update(userId, { isActive: false });
-      
+
       // Optionally deactivate all UserCompany relationships
       // This is handled by CompanyService if needed, but we'll leave them active
       // so the user can be reactivated later if needed
@@ -426,7 +453,13 @@ export class AdminService {
   }
 
   private toUserResponseDto(user: User): UserResponseDto {
-    const { password, userCompanies, ...userResponse } = user;
+    const {
+      password: _password,
+      userCompanies: _userCompanies,
+      ...userResponse
+    } = user;
+    void _password;
+    void _userCompanies;
     return userResponse as UserResponseDto;
   }
 
@@ -439,4 +472,3 @@ export class AdminService {
       .replace(/^-+|-+$/g, '');
   }
 }
-

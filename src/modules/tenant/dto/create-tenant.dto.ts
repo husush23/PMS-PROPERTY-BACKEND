@@ -11,14 +11,16 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateTenantDto {
   @ApiProperty({
-    description: 'Email address (used to create/invite user if user does not exist)',
+    description:
+      'Email address (used to create/invite user if user does not exist)',
     example: 'tenant@example.com',
   })
   @IsEmail({}, { message: 'Please provide a valid email address' })
   email: string;
 
   @ApiPropertyOptional({
-    description: 'Password for the user account. If provided, user will be created as active and can login immediately. If not provided, invitation email will be sent.',
+    description:
+      'Password for the user account. If provided, user will be created as active and can login immediately. If not provided, invitation email will be sent.',
     example: 'SecurePassword123!',
     minLength: 8,
   })
@@ -176,4 +178,3 @@ export class CreateTenantDto {
   @IsBoolean()
   smsNotifications?: boolean;
 }
-

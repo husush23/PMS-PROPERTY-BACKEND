@@ -18,4 +18,3 @@ export class TransferLeaseDto {
   @IsUUID('4', { message: 'New unit ID must be a valid UUID' })
   newUnitId?: string;
 }
-

@@ -38,7 +38,9 @@ export class CompanyController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Create a new company (works for users without companies)' })
+  @ApiOperation({
+    summary: 'Create a new company (works for users without companies)',
+  })
   @ApiResponse({
     status: 201,
     description: 'Company created successfully',
@@ -122,7 +124,11 @@ export class CompanyController {
     @Body() updateCompanyDto: UpdateCompanyDto,
     @AuthUser() user: { id: string },
   ) {
-    const company = await this.companyService.update(id, updateCompanyDto, user.id);
+    const company = await this.companyService.update(
+      id,
+      updateCompanyDto,
+      user.id,
+    );
     return {
       success: true,
       data: company,
@@ -162,7 +168,9 @@ export class CompanyController {
   @Post(':id/invite-user')
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Invite user to company by email (COMPANY_ADMIN/MANAGER only)' })
+  @ApiOperation({
+    summary: 'Invite user to company by email (COMPANY_ADMIN/MANAGER only)',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 201,
@@ -181,7 +189,11 @@ export class CompanyController {
     @Body() inviteDto: InviteUserDto,
     @AuthUser() user: { id: string },
   ) {
-    await this.companyService.inviteUserToCompany(companyId, inviteDto, user.id);
+    await this.companyService.inviteUserToCompany(
+      companyId,
+      inviteDto,
+      user.id,
+    );
     return {
       success: true,
       message: 'Invitation sent successfully',
@@ -191,7 +203,9 @@ export class CompanyController {
   @Post(':id/accept-invite')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Accept company invitation (authenticated users only)' })
+  @ApiOperation({
+    summary: 'Accept company invitation (authenticated users only)',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,
@@ -210,7 +224,11 @@ export class CompanyController {
     @Body() acceptInviteDto: AcceptInviteDto,
     @AuthUser() user: { id: string },
   ) {
-    await this.companyService.acceptInvitation(companyId, acceptInviteDto.token, user.id);
+    await this.companyService.acceptInvitation(
+      companyId,
+      acceptInviteDto.token,
+      user.id,
+    );
     return {
       success: true,
       message: 'Invitation accepted successfully',
@@ -234,7 +252,10 @@ export class CompanyController {
     @Param('id', ParseUUIDPipe) companyId: string,
     @AuthUser() user: { id: string },
   ) {
-    const members = await this.companyService.getCompanyMembers(companyId, user.id);
+    const members = await this.companyService.getCompanyMembers(
+      companyId,
+      user.id,
+    );
     return {
       success: true,
       data: members,
@@ -298,4 +319,3 @@ export class CompanyController {
     };
   }
 }
-

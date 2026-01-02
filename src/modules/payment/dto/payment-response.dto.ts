@@ -42,7 +42,7 @@ export class PaymentResponseDto {
 
   @ApiProperty({
     description: 'Payment amount',
-    example: 1500.00,
+    example: 1500.0,
   })
   amount: number;
 
@@ -112,7 +112,7 @@ export class PaymentResponseDto {
 
   @ApiPropertyOptional({
     description: 'Balance after this payment (snapshot)',
-    example: 500.00,
+    example: 500.0,
   })
   balanceAfter?: number;
 
@@ -141,13 +141,13 @@ export class PaymentResponseDto {
   // Derived fields
   @ApiPropertyOptional({
     description: 'Tenant balance (computed)',
-    example: 500.00,
+    example: 500.0,
   })
   tenantBalance?: number;
 
   @ApiPropertyOptional({
     description: 'Lease balance (computed)',
-    example: 500.00,
+    example: 500.0,
   })
   leaseBalance?: number;
 
@@ -163,4 +163,3 @@ export class PaymentResponseDto {
   })
   lastPaymentDate?: Date;
 }
-

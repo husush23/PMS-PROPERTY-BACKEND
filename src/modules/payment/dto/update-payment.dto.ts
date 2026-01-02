@@ -1,9 +1,4 @@
-import {
-  IsString,
-  IsEnum,
-  IsOptional,
-  IsBoolean,
-} from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsBoolean } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentStatus } from '../../../shared/enums/payment-status.enum';
 
@@ -33,12 +28,14 @@ export class UpdatePaymentDto {
   period?: string;
 
   @ApiPropertyOptional({
-    description: 'Payment status (limited transitions: PENDING → PAID, PAID → REFUNDED)',
+    description:
+      'Payment status (limited transitions: PENDING → PAID, PAID → REFUNDED)',
     enum: PaymentStatus,
     example: PaymentStatus.PAID,
   })
   @IsOptional()
-  @IsEnum(PaymentStatus, { message: 'Status must be a valid PaymentStatus enum value' })
+  @IsEnum(PaymentStatus, {
+    message: 'Status must be a valid PaymentStatus enum value',
+  })
   status?: PaymentStatus;
 }
-

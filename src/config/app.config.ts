@@ -6,8 +6,3 @@ export default () => ({
     apiPrefix: process.env.API_PREFIX || 'api',
   },
 });
-
-
-
-
-

@@ -26,13 +26,25 @@ function parseExpiresIn(expiresIn: string): number {
 /**
  * Set access token cookie
  */
+interface JwtConfig {
+  cookieName: string;
+  refreshCookieName: string;
+  cookieHttpOnly: boolean;
+  cookieSecure: boolean;
+  cookieSameSite: 'strict' | 'lax' | 'none';
+  cookieDomain?: string;
+}
+
 export function setAccessTokenCookie(
   res: Response,
   token: string,
   expiresIn: string,
   configService: ConfigService,
 ): void {
-  const cookieConfig = configService.get('jwt');
+  const cookieConfig = configService.get<JwtConfig>('jwt');
+  if (!cookieConfig) {
+    throw new Error('JWT configuration not found');
+  }
   const maxAge = parseExpiresIn(expiresIn);
 
   res.cookie(cookieConfig.cookieName, token, {
@@ -54,7 +66,10 @@ export function setRefreshTokenCookie(
   expiresIn: string,
   configService: ConfigService,
 ): void {
-  const cookieConfig = configService.get('jwt');
+  const cookieConfig = configService.get<JwtConfig>('jwt');
+  if (!cookieConfig) {
+    throw new Error('JWT configuration not found');
+  }
   const maxAge = parseExpiresIn(expiresIn);
 
   res.cookie(cookieConfig.refreshCookieName, token, {
@@ -70,8 +85,14 @@ export function setRefreshTokenCookie(
 /**
  * Clear both access and refresh token cookies
  */
-export function clearAuthCookies(res: Response, configService: ConfigService): void {
-  const cookieConfig = configService.get('jwt');
+export function clearAuthCookies(
+  res: Response,
+  configService: ConfigService,
+): void {
+  const cookieConfig = configService.get<JwtConfig>('jwt');
+  if (!cookieConfig) {
+    throw new Error('JWT configuration not found');
+  }
 
   res.clearCookie(cookieConfig.cookieName, {
     httpOnly: cookieConfig.cookieHttpOnly,
@@ -89,4 +110,3 @@ export function clearAuthCookies(res: Response, configService: ConfigService): v
     ...(cookieConfig.cookieDomain && { domain: cookieConfig.cookieDomain }),
   });
 }
-

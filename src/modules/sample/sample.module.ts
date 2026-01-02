@@ -11,4 +11,3 @@ import { Item } from './entities/item.entity';
   exports: [SampleService],
 })
 export class SampleModule {}
-

@@ -18,4 +18,3 @@ export class InviteUserDto {
   @IsEnum(UserRole, { message: 'Role must be a valid UserRole enum value' })
   role: UserRole;
 }
-

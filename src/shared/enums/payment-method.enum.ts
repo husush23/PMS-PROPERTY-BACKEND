@@ -6,4 +6,3 @@ export enum PaymentMethod {
   CHECK = 'CHECK',
   OTHER = 'OTHER',
 }
-

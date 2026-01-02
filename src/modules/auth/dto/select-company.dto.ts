@@ -9,4 +9,3 @@ export class SelectCompanyDto {
   @IsUUID()
   companyId: string;
 }
-

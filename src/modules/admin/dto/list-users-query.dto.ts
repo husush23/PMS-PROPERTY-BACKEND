@@ -42,4 +42,3 @@ export class ListUsersQueryDto {
   @Type(() => Boolean)
   isSuperAdmin?: boolean;
 }
-

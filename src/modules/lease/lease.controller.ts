@@ -37,7 +37,10 @@ export class LeaseController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Create a new lease (starts as DRAFT) (COMPANY_ADMIN/MANAGER/LANDLORD only)' })
+  @ApiOperation({
+    summary:
+      'Create a new lease (starts as DRAFT) (COMPANY_ADMIN/MANAGER/LANDLORD only)',
+  })
   @ApiResponse({
     status: 201,
     description: 'Lease created successfully',
@@ -108,7 +111,10 @@ export class LeaseController {
 
   @Patch(':id')
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Update lease (limited if ACTIVE) (COMPANY_ADMIN/MANAGER/LANDLORD only)' })
+  @ApiOperation({
+    summary:
+      'Update lease (limited if ACTIVE) (COMPANY_ADMIN/MANAGER/LANDLORD only)',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,
@@ -139,7 +145,9 @@ export class LeaseController {
   @Post(':id/activate')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Activate lease (DRAFT → ACTIVE) (COMPANY_ADMIN/MANAGER only)' })
+  @ApiOperation({
+    summary: 'Activate lease (DRAFT → ACTIVE) (COMPANY_ADMIN/MANAGER only)',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,
@@ -169,7 +177,10 @@ export class LeaseController {
   @Post(':id/terminate')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Terminate lease (ACTIVE → TERMINATED) (COMPANY_ADMIN/MANAGER only)' })
+  @ApiOperation({
+    summary:
+      'Terminate lease (ACTIVE → TERMINATED) (COMPANY_ADMIN/MANAGER only)',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,
@@ -189,7 +200,11 @@ export class LeaseController {
     @Body() terminateLeaseDto: TerminateLeaseDto,
     @AuthUser() user: { id: string },
   ) {
-    const lease = await this.leaseService.terminate(id, terminateLeaseDto, user.id);
+    const lease = await this.leaseService.terminate(
+      id,
+      terminateLeaseDto,
+      user.id,
+    );
     return {
       success: true,
       data: lease,
@@ -200,7 +215,10 @@ export class LeaseController {
   @Post(':id/renew')
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Renew lease (create new from existing) (COMPANY_ADMIN/MANAGER only)' })
+  @ApiOperation({
+    summary:
+      'Renew lease (create new from existing) (COMPANY_ADMIN/MANAGER only)',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 201,
@@ -231,7 +249,10 @@ export class LeaseController {
   @Post(':id/transfer')
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Transfer lease (terminate old + create new) (COMPANY_ADMIN/MANAGER only)' })
+  @ApiOperation({
+    summary:
+      'Transfer lease (terminate old + create new) (COMPANY_ADMIN/MANAGER only)',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 201,
@@ -251,7 +272,11 @@ export class LeaseController {
     @Body() transferLeaseDto: TransferLeaseDto,
     @AuthUser() user: { id: string },
   ) {
-    const lease = await this.leaseService.transfer(id, transferLeaseDto, user.id);
+    const lease = await this.leaseService.transfer(
+      id,
+      transferLeaseDto,
+      user.id,
+    );
     return {
       success: true,
       data: lease,
@@ -262,7 +287,9 @@ export class LeaseController {
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Delete lease (only if DRAFT) (COMPANY_ADMIN/MANAGER only)' })
+  @ApiOperation({
+    summary: 'Delete lease (only if DRAFT) (COMPANY_ADMIN/MANAGER only)',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,
@@ -300,7 +327,10 @@ export class LeaseController {
     @Param('unitId', ParseUUIDPipe) unitId: string,
     @AuthUser() user: { id: string },
   ) {
-    const leases = await this.leaseService.getLeaseHistoryByUnit(unitId, user.id);
+    const leases = await this.leaseService.getLeaseHistoryByUnit(
+      unitId,
+      user.id,
+    );
     return {
       success: true,
       data: leases,
@@ -320,7 +350,10 @@ export class LeaseController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @AuthUser() user: { id: string },
   ) {
-    const leases = await this.leaseService.getLeaseHistoryByTenant(tenantId, user.id);
+    const leases = await this.leaseService.getLeaseHistoryByTenant(
+      tenantId,
+      user.id,
+    );
     return {
       success: true,
       data: leases,

@@ -57,10 +57,23 @@ export class TenantController {
   })
   async inviteTenant(
     @Body() createDto: CreateTenantDto & { companyId?: string },
-    @AuthUser() user: { id: string; companyId?: string },
+    @AuthUser() user: { id: string; companyId?: string; isSuperAdmin?: boolean },
   ) {
+    // For super admins, companyId must be provided in request body
+    // For regular users, use request body or fallback to JWT companyId
     const companyId = createDto.companyId || user.companyId;
+    
     if (!companyId) {
+      // Super admin must provide companyId in request body
+      if (user.isSuperAdmin) {
+        throw new BusinessException(
+          ErrorCode.COMPANY_CONTEXT_REQUIRED,
+          'Please specify the company ID in the request body.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      
+      // Regular users need to select a company first
       throw new BusinessException(
         ErrorCode.COMPANY_CONTEXT_REQUIRED,
         ERROR_MESSAGES.COMPANY_CONTEXT_REQUIRED,
@@ -132,10 +145,23 @@ export class TenantController {
   })
   async create(
     @Body() createDto: CreateTenantDto & { companyId?: string },
-    @AuthUser() user: { id: string; companyId?: string },
+    @AuthUser() user: { id: string; companyId?: string; isSuperAdmin?: boolean },
   ) {
+    // For super admins, companyId must be provided in request body
+    // For regular users, use request body or fallback to JWT companyId
     const companyId = createDto.companyId || user.companyId;
+    
     if (!companyId) {
+      // Super admin must provide companyId in request body
+      if (user.isSuperAdmin) {
+        throw new BusinessException(
+          ErrorCode.COMPANY_CONTEXT_REQUIRED,
+          'Please specify the company ID in the request body.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      
+      // Regular users need to select a company first
       throw new BusinessException(
         ErrorCode.COMPANY_CONTEXT_REQUIRED,
         ERROR_MESSAGES.COMPANY_CONTEXT_REQUIRED,
@@ -161,10 +187,23 @@ export class TenantController {
   })
   async findAll(
     @Query() query: ListTenantsQueryDto & { companyId?: string },
-    @AuthUser() user: { id: string; companyId?: string },
+    @AuthUser() user: { id: string; companyId?: string; isSuperAdmin?: boolean },
   ) {
+    // For super admins, companyId must be provided in query params
+    // For regular users, use query params or fallback to JWT companyId
     const companyId = query.companyId || user.companyId;
+    
     if (!companyId) {
+      // Super admin must provide companyId in query params
+      if (user.isSuperAdmin) {
+        throw new BusinessException(
+          ErrorCode.COMPANY_CONTEXT_REQUIRED,
+          'Please specify the company ID in the query parameters.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      
+      // Regular users need to select a company first
       throw new BusinessException(
         ErrorCode.COMPANY_CONTEXT_REQUIRED,
         ERROR_MESSAGES.COMPANY_CONTEXT_REQUIRED,

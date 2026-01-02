@@ -134,8 +134,29 @@ export class TenantService {
 
     const savedTenantProfile = await this.tenantProfileRepository.save(tenantProfile);
 
-    // Create UserCompany relationship with TENANT role
-    await this.companyService.assignUserToCompany(user.id, companyId, UserRole.TENANT);
+    // Create or ensure UserCompany relationship with TENANT role
+    // Check if relationship already exists (user might be tenant at multiple companies)
+    const existingUserCompany = await this.userCompanyRepository.findOne({
+      where: { userId: user.id, companyId },
+    });
+
+    if (!existingUserCompany) {
+      // Create UserCompany relationship if it doesn't exist
+      await this.companyService.assignUserToCompany(user.id, companyId, UserRole.TENANT);
+    } else if (existingUserCompany.role !== UserRole.TENANT) {
+      // If relationship exists but with different role, update to TENANT
+      await this.userCompanyRepository.update(existingUserCompany.id, {
+        role: UserRole.TENANT,
+        isActive: true,
+      });
+    } else {
+      // Relationship already exists with TENANT role, ensure it's active
+      if (!existingUserCompany.isActive) {
+        await this.userCompanyRepository.update(existingUserCompany.id, {
+          isActive: true,
+        });
+      }
+    }
 
     // Create TenantInvitation
     const token = randomUUID();

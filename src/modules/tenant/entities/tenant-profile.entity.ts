@@ -2,7 +2,6 @@ import {
   Entity,
   Column,
   PrimaryGeneratedColumn,
-  OneToOne,
   ManyToOne,
   JoinColumn,
   CreateDateColumn,
@@ -96,7 +95,7 @@ export class TenantProfile {
   smsNotifications: boolean;
 
   // Relationships
-  @OneToOne(() => User, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user: User;
 

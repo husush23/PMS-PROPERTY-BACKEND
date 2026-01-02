@@ -84,11 +84,11 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'User login (handles users with 0, 1, or multiple companies)' })
+  @ApiOperation({ summary: 'User login (handles users with 0, 1, or multiple companies). Add ?return_token=true to get token in response for API clients.' })
   @ApiBody({ type: LoginDto })
   @ApiResponse({
     status: 200,
-    description: 'User logged in successfully. Tokens are set as HTTP-only cookies. If companies.length === 0, token has no companyId. If 1 company, auto-selected. If multiple, requires selection.',
+    description: 'User logged in successfully. Tokens are set as HTTP-only cookies. Add ?return_token=true to get tokens in response body for API clients. If companies.length === 0, token has no companyId. If 1 company, auto-selected. If multiple, requires selection.',
     type: LoginResponseDto,
   })
   @ApiResponse({
@@ -99,17 +99,34 @@ export class AuthController {
     status: 401,
     description: 'Invalid email or password',
   })
-  async login(@Body() loginDto: LoginDto, @Res() res: Response) {
+  async login(@Body() loginDto: LoginDto, @Res() res: Response, @Req() req: Request) {
     const loginResponse = await this.authService.login(loginDto);
     
-    // Set cookies
+    // Set cookies (for browsers)
     const expiresIn = this.configService.get<string>('jwt.expiresIn') || '15m';
     const refreshExpiresIn = this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
     
     setAccessTokenCookie(res, loginResponse.access_token!, expiresIn, this.configService);
     setRefreshTokenCookie(res, loginResponse.refresh_token!, refreshExpiresIn, this.configService);
     
-    // Return response without tokens
+    // Check if client wants token in response (for API clients like Thunder Client, Postman, etc.)
+    // Check query parameter or header
+    const wantsTokenInResponse = 
+      req.query['return_token'] === 'true' || 
+      req.headers['x-return-token'] === 'true';
+    
+    if (wantsTokenInResponse) {
+      // Return token in response body for API clients
+      return res.json({
+        success: true,
+        data: loginResponse, // Include access_token and refresh_token
+        message: loginResponse.requiresCompanySelection
+          ? 'Please select a company'
+          : 'User logged in successfully',
+      });
+    }
+    
+    // Default: Return response without tokens (for browsers with cookies)
     const { access_token, refresh_token, ...responseData } = loginResponse;
     
     return res.json({

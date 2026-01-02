@@ -28,6 +28,8 @@ import { CreateCompanyDto } from '../company/dto/create-company.dto';
 import { UpdateCompanyDto } from '../company/dto/update-company.dto';
 import { CompanyResponseDto } from '../company/dto/company-response.dto';
 import { UserResponseDto } from '../user/dto/user-response.dto';
+import { UpdateUserDto } from '../user/dto/update-user.dto';
+import { CreateAdminUserDto } from './dto/create-admin-user.dto';
 import { ListCompaniesQueryDto } from './dto/list-companies-query.dto';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { SystemStatsResponseDto } from './dto/system-stats-response.dto';
@@ -248,6 +250,131 @@ export class AdminController {
       success: true,
       data: user,
       message: `User ${isActive ? 'activated' : 'deactivated'} successfully`,
+    };
+  }
+
+  @Post('users')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create a new user (super admin only). Optionally assign to a company.' })
+  @ApiBody({ type: CreateAdminUserDto })
+  @ApiResponse({
+    status: 201,
+    description: 'User created successfully',
+    type: UserResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Company not found (if companyId provided)',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'User with this email already exists',
+  })
+  async createUser(@Body() createUserDto: CreateAdminUserDto) {
+    const user = await this.adminService.createUser(createUserDto);
+    return {
+      success: true,
+      data: user,
+      message: 'User created successfully',
+    };
+  }
+
+  @Put('users/:id')
+  @ApiOperation({ summary: 'Update user (full update, super admin only)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiBody({ type: UpdateUserDto })
+  @ApiResponse({
+    status: 200,
+    description: 'User updated successfully',
+    type: UserResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'User not found',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Email already exists',
+  })
+  async updateUser(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateUserDto: UpdateUserDto,
+  ) {
+    const user = await this.adminService.updateUser(id, updateUserDto);
+    return {
+      success: true,
+      data: user,
+      message: 'User updated successfully',
+    };
+  }
+
+  @Patch('users/:id')
+  @ApiOperation({ summary: 'Update user (partial update, super admin only)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiBody({ type: UpdateUserDto })
+  @ApiResponse({
+    status: 200,
+    description: 'User updated successfully',
+    type: UserResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'User not found',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Email already exists',
+  })
+  async patchUser(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateUserDto: UpdateUserDto,
+  ) {
+    const user = await this.adminService.updateUser(id, updateUserDto);
+    return {
+      success: true,
+      data: user,
+      message: 'User updated successfully',
+    };
+  }
+
+  @Delete('users/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete user (soft delete by default, hard delete with ?hard=true, super admin only)' })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiQuery({ name: 'hard', required: false, type: Boolean, description: 'Set to true for hard delete (permanent removal)' })
+  @ApiResponse({
+    status: 200,
+    description: 'User deleted successfully',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Cannot delete last super admin',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'User not found',
+  })
+  async deleteUser(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('hard') hard?: string,
+  ) {
+    const hardDelete = hard === 'true';
+    await this.adminService.deleteUser(id, hardDelete);
+    return {
+      success: true,
+      message: `User ${hardDelete ? 'permanently deleted' : 'deactivated'} successfully`,
     };
   }
 

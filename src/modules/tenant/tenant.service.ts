@@ -14,6 +14,8 @@ import { User } from '../user/entities/user.entity';
 import { Company } from '../company/entities/company.entity';
 import { UserCompany } from '../company/entities/user-company.entity';
 import { CreateTenantDto } from './dto/create-tenant.dto';
+import { InviteTenantDto } from './dto/invite-tenant.dto';
+import { AcceptTenantInviteDto } from './dto/accept-tenant-invite.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { TenantResponseDto } from './dto/tenant-response.dto';
 import { ListTenantsQueryDto } from './dto/list-tenants-query.dto';
@@ -48,7 +50,7 @@ export class TenantService {
 
   async inviteTenant(
     companyId: string,
-    createDto: CreateTenantDto,
+    inviteDto: InviteTenantDto,
     requesterUserId: string,
   ): Promise<void> {
     // Permission check
@@ -90,7 +92,7 @@ export class TenantService {
 
     // Check if user exists
     let user = await this.userRepository.findOne({
-      where: { email: createDto.email.toLowerCase() },
+      where: { email: inviteDto.email.toLowerCase() },
     });
 
     // Check if user is already a tenant in this company
@@ -103,7 +105,7 @@ export class TenantService {
           ErrorCode.TENANT_ALREADY_EXISTS,
           ERROR_MESSAGES.TENANT_ALREADY_EXISTS,
           HttpStatus.CONFLICT,
-          { email: createDto.email, companyId },
+          { email: inviteDto.email, companyId },
         );
       }
     } else {
@@ -112,36 +114,22 @@ export class TenantService {
       const hashedPassword = await PasswordUtil.hash(tempPassword);
       
       user = this.userRepository.create({
-        email: createDto.email.toLowerCase(),
+        email: inviteDto.email.toLowerCase(),
         password: hashedPassword,
-        name: createDto.name || undefined,
+        name: undefined, // Name will be set when tenant accepts invitation
         isActive: false,
       });
       user = await this.userRepository.save(user);
     }
 
-    // Create TenantProfile with PENDING status
+    // Create minimal TenantProfile with PENDING status
+    // Profile data will be collected when tenant accepts the invitation
     const tenantProfile = this.tenantProfileRepository.create({
       userId: user.id,
       companyId,
-      phone: createDto.phone,
-      alternativePhone: createDto.alternativePhone,
-      dateOfBirth: createDto.dateOfBirth ? new Date(createDto.dateOfBirth) : undefined,
-      idNumber: createDto.idNumber,
-      idType: createDto.idType,
-      address: createDto.address,
-      city: createDto.city,
-      state: createDto.state,
-      zipCode: createDto.zipCode,
-      country: createDto.country,
-      emergencyContactName: createDto.emergencyContactName,
-      emergencyContactPhone: createDto.emergencyContactPhone,
-      emergencyContactRelationship: createDto.emergencyContactRelationship,
       status: TenantStatus.PENDING,
-      notes: createDto.notes,
-      tags: createDto.tags,
-      emailNotifications: createDto.emailNotifications ?? true,
-      smsNotifications: createDto.smsNotifications ?? true,
+      emailNotifications: true,
+      smsNotifications: true,
     });
 
     const savedTenantProfile = await this.tenantProfileRepository.save(tenantProfile);
@@ -155,7 +143,7 @@ export class TenantService {
     expiresAt.setDate(expiresAt.getDate() + 7);
 
     const invitation = this.tenantInvitationRepository.create({
-      email: createDto.email.toLowerCase(),
+      email: inviteDto.email.toLowerCase(),
       companyId,
       tenantProfileId: savedTenantProfile.id,
       token,
@@ -169,18 +157,17 @@ export class TenantService {
     // Send invitation email
     const inviterName = requesterUser?.name || requesterUser?.email || 'Someone';
     this.notificationService
-      .sendTenantInvitationEmail(createDto.email, company.name, token, inviterName)
+      .sendTenantInvitationEmail(inviteDto.email, company.name, token, inviterName)
       .catch((error) => {
         console.error('Failed to send tenant invitation email:', error);
       });
   }
 
   async acceptTenantInvitation(
-    token: string,
-    password: string,
+    acceptDto: AcceptTenantInviteDto,
   ): Promise<void> {
     const invitation = await this.tenantInvitationRepository.findOne({
-      where: { token },
+      where: { token: acceptDto.token },
       relations: ['company', 'tenantProfile'],
     });
 
@@ -189,7 +176,7 @@ export class TenantService {
         ErrorCode.TENANT_INVITATION_NOT_FOUND,
         ERROR_MESSAGES.TENANT_INVITATION_NOT_FOUND,
         HttpStatus.NOT_FOUND,
-        { token },
+        { token: acceptDto.token },
       );
     }
 
@@ -199,7 +186,7 @@ export class TenantService {
         ErrorCode.TENANT_INVITATION_ALREADY_ACCEPTED,
         ERROR_MESSAGES.TENANT_INVITATION_ALREADY_ACCEPTED,
         HttpStatus.BAD_REQUEST,
-        { token },
+        { token: acceptDto.token },
       );
     }
 
@@ -208,7 +195,7 @@ export class TenantService {
         ErrorCode.TENANT_INVITATION_EXPIRED,
         ERROR_MESSAGES.TENANT_INVITATION_EXPIRED,
         HttpStatus.BAD_REQUEST,
-        { token },
+        { token: acceptDto.token },
       );
     }
 
@@ -221,7 +208,7 @@ export class TenantService {
         ErrorCode.TENANT_INVITATION_EXPIRED,
         ERROR_MESSAGES.TENANT_INVITATION_EXPIRED,
         HttpStatus.BAD_REQUEST,
-        { token },
+        { token: acceptDto.token },
       );
     }
 
@@ -231,12 +218,12 @@ export class TenantService {
     });
 
     if (!user) {
-      // User doesn't exist yet, create it
-      const hashedPassword = await PasswordUtil.hash(password);
+      // User doesn't exist yet, create it with name from DTO
+      const hashedPassword = await PasswordUtil.hash(acceptDto.password);
       user = this.userRepository.create({
         email: invitation.email.toLowerCase(),
         password: hashedPassword,
-        name: undefined,
+        name: acceptDto.name,
         isActive: true,
       });
       user = await this.userRepository.save(user);
@@ -253,12 +240,62 @@ export class TenantService {
         }
       }
     } else {
-      // User exists, update password and activate
-      const hashedPassword = await PasswordUtil.hash(password);
-      await this.userRepository.update(user.id, {
+      // User exists, update password, name (if provided), and activate
+      const hashedPassword = await PasswordUtil.hash(acceptDto.password);
+      const updateData: Partial<User> = {
         password: hashedPassword,
         isActive: true,
-      });
+      };
+      // Update name if provided (tenant may want to update their name)
+      if (acceptDto.name) {
+        updateData.name = acceptDto.name;
+      }
+      await this.userRepository.update(user.id, updateData);
+    }
+
+    // Get or create tenant profile
+    let tenantProfile = await this.tenantProfileRepository.findOne({
+      where: { id: invitation.tenantProfileId },
+    });
+
+    // Prepare tenant profile data with all provided fields from DTO
+    const profileData: Partial<TenantProfile> = {
+      userId: user.id,
+      companyId: invitation.companyId,
+      status: TenantStatus.PENDING,
+      phone: acceptDto.phone,
+      alternativePhone: acceptDto.alternativePhone,
+      dateOfBirth: acceptDto.dateOfBirth ? new Date(acceptDto.dateOfBirth) : undefined,
+      idNumber: acceptDto.idNumber,
+      idType: acceptDto.idType,
+      address: acceptDto.address,
+      city: acceptDto.city,
+      state: acceptDto.state,
+      zipCode: acceptDto.zipCode,
+      country: acceptDto.country,
+      emergencyContactName: acceptDto.emergencyContactName,
+      emergencyContactPhone: acceptDto.emergencyContactPhone,
+      emergencyContactRelationship: acceptDto.emergencyContactRelationship,
+      notes: acceptDto.notes,
+      tags: acceptDto.tags,
+      emailNotifications: acceptDto.emailNotifications ?? true,
+      smsNotifications: acceptDto.smsNotifications ?? true,
+    };
+
+    // Remove undefined values to avoid overwriting with null
+    Object.keys(profileData).forEach((key) => {
+      if (profileData[key as keyof TenantProfile] === undefined) {
+        delete profileData[key as keyof TenantProfile];
+      }
+    });
+
+    if (!tenantProfile) {
+      // Create tenant profile if it doesn't exist
+      tenantProfile = this.tenantProfileRepository.create(profileData);
+      await this.tenantProfileRepository.save(tenantProfile);
+    } else {
+      // Update existing tenant profile
+      await this.tenantProfileRepository.update(tenantProfile.id, profileData);
     }
 
     // Ensure UserCompany relationship exists
@@ -606,6 +643,26 @@ export class TenantService {
       );
     }
 
+    // Check if tenant was deleted (soft delete)
+    // Check UserCompany relationship first - if inactive, tenant is deleted
+    const userCompany = await this.userCompanyRepository.findOne({
+      where: { 
+        userId: tenantProfile.userId, 
+        companyId: tenantProfile.companyId, 
+        isActive: true 
+      },
+    });
+
+    // If UserCompany is inactive or status is FORMER, tenant is deleted/removed
+    if (!userCompany || tenantProfile.status === TenantStatus.FORMER) {
+      throw new BusinessException(
+        ErrorCode.TENANT_NOT_FOUND,
+        ERROR_MESSAGES.TENANT_NOT_FOUND,
+        HttpStatus.NOT_FOUND,
+        { tenantId },
+      );
+    }
+
     // Access control
     const requesterUser = await this.userRepository.findOne({ where: { id: requesterUserId } });
     const isSuperAdmin = requesterUser?.isSuperAdmin || false;
@@ -638,11 +695,7 @@ export class TenantService {
       }
     }
 
-    const userCompany = await this.userCompanyRepository.findOne({
-      where: { userId: tenantProfile.userId, companyId: tenantProfile.companyId, isActive: true },
-    });
-
-    return this.toResponseDto(tenantProfile, tenantProfile.user, tenantProfile.companyId, userCompany!);
+    return this.toResponseDto(tenantProfile, tenantProfile.user, tenantProfile.companyId, userCompany);
   }
 
   async update(

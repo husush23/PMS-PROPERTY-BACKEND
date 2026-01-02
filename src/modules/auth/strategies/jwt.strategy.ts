@@ -32,6 +32,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
+        // First try to extract from Authorization Bearer header (for API clients like Thunder Client)
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        // Fallback to cookie (for browsers)
         (request: Request) => {
           // Extract token from cookie
           return request?.cookies?.[cookieName] || null;

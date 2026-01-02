@@ -25,6 +25,7 @@ import {
 import { TenantService } from './tenant.service';
 import { AuthUser } from '../../common/decorators/auth-user.decorator';
 import { CreateTenantDto } from './dto/create-tenant.dto';
+import { InviteTenantDto } from './dto/invite-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { TenantResponseDto } from './dto/tenant-response.dto';
 import { ListTenantsQueryDto } from './dto/list-tenants-query.dto';
@@ -38,7 +39,7 @@ export class TenantController {
   @Post('invite')
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Invite a tenant to a company (creates user if needed, sends invitation)' })
+  @ApiOperation({ summary: 'Invite a tenant to a company by email only (creates user if needed, sends invitation). Profile data will be collected when tenant accepts the invitation.' })
   @ApiResponse({
     status: 201,
     description: 'Tenant invitation sent successfully',
@@ -56,12 +57,12 @@ export class TenantController {
     description: 'Tenant already exists in this company',
   })
   async inviteTenant(
-    @Body() createDto: CreateTenantDto & { companyId?: string },
+    @Body() inviteDto: InviteTenantDto & { companyId?: string },
     @AuthUser() user: { id: string; companyId?: string; isSuperAdmin?: boolean },
   ) {
     // For super admins, companyId must be provided in request body
     // For regular users, use request body or fallback to JWT companyId
-    const companyId = createDto.companyId || user.companyId;
+    const companyId = inviteDto.companyId || user.companyId;
     
     if (!companyId) {
       // Super admin must provide companyId in request body
@@ -81,7 +82,7 @@ export class TenantController {
       );
     }
     
-    await this.tenantService.inviteTenant(companyId, createDto, user.id);
+    await this.tenantService.inviteTenant(companyId, inviteDto, user.id);
     return {
       success: true,
       message: 'Tenant invitation sent successfully',
@@ -91,10 +92,10 @@ export class TenantController {
   @Post('accept-invitation')
   @HttpCode(HttpStatus.OK)
   @Public()
-  @ApiOperation({ summary: 'Accept tenant invitation and set password (public endpoint, token-based)' })
+  @ApiOperation({ summary: 'Accept tenant invitation and complete profile (public endpoint, token-based). Requires token, password, name, and optional profile fields.' })
   @ApiResponse({
     status: 200,
-    description: 'Invitation accepted successfully',
+    description: 'Invitation accepted successfully and profile completed',
   })
   @ApiResponse({
     status: 400,
@@ -108,10 +109,7 @@ export class TenantController {
     @Body() acceptInviteDto: AcceptTenantInviteDto,
     @AuthUser() user: { id: string },
   ) {
-    await this.tenantService.acceptTenantInvitation(
-      acceptInviteDto.token,
-      acceptInviteDto.password,
-    );
+    await this.tenantService.acceptTenantInvitation(acceptInviteDto);
     return {
       success: true,
       message: 'Tenant invitation accepted successfully',

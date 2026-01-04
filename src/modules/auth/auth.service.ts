@@ -76,6 +76,7 @@ export class AuthService {
       name: user.name,
       isActive: user.isActive,
       isSuperAdmin: user.isSuperAdmin,
+      emailVerified: user.emailVerified,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

@@ -4,3 +4,4 @@ export enum PropertyStatus {
   MAINTENANCE = 'MAINTENANCE',
   UNAVAILABLE = 'UNAVAILABLE',
 }
+

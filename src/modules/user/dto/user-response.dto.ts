@@ -33,6 +33,12 @@ export class UserResponseDto {
   isSuperAdmin: boolean;
 
   @ApiProperty({
+    description: 'Email verification status',
+    example: true,
+  })
+  emailVerified: boolean;
+
+  @ApiProperty({
     description: 'User creation timestamp',
     example: '2024-01-01T00:00:00.000Z',
   })

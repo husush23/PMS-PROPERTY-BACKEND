@@ -111,7 +111,7 @@ export class TenantService {
         );
       }
     } else {
-      // Create user with inactive status and temporary password
+      // Create user with inactive status and temporary password (invitation flow)
       const tempPassword = randomUUID();
       const hashedPassword = await PasswordUtil.hash(tempPassword);
 
@@ -120,6 +120,7 @@ export class TenantService {
         password: hashedPassword,
         name: undefined, // Name will be set when tenant accepts invitation
         isActive: false,
+        emailVerified: false, // Not verified until invitation accepted
       });
       user = await this.userRepository.save(user);
     }
@@ -262,6 +263,7 @@ export class TenantService {
         password: hashedPassword,
         name: acceptDto.name,
         isActive: true,
+        emailVerified: true, // Verified when invitation accepted
       });
       user = await this.userRepository.save(user);
 
@@ -277,11 +279,12 @@ export class TenantService {
         }
       }
     } else {
-      // User exists, update password, name (if provided), and activate
+      // User exists, update password, name (if provided), activate, and verify
       const hashedPassword = await PasswordUtil.hash(acceptDto.password);
       const updateData: Partial<User> = {
         password: hashedPassword,
         isActive: true,
+        emailVerified: true, // Verify when invitation accepted
       };
       // Update name if provided (tenant may want to update their name)
       if (acceptDto.name) {
@@ -364,7 +367,7 @@ export class TenantService {
     companyId: string,
     createDto: CreateTenantDto,
     requesterUserId: string,
-  ): Promise<TenantResponseDto> {
+  ): Promise<{ tenant: TenantResponseDto; userAlreadyExisted: boolean }> {
     // Permission check
     const requesterUser = await this.userRepository.findOne({
       where: { id: requesterUserId },
@@ -406,53 +409,130 @@ export class TenantService {
       );
     }
 
-    // Check if user exists
-    let user = await this.userRepository.findOne({
-      where: { email: createDto.email.toLowerCase() },
-    });
+    // Check if user exists - use case-insensitive email lookup for robustness
+    const normalizedEmail = createDto.email.toLowerCase().trim();
+    let user = await this.userRepository
+      .createQueryBuilder('user')
+      .where('LOWER(user.email) = LOWER(:email)', { email: normalizedEmail })
+      .getOne();
+
+    let userAlreadyExisted = false;
 
     if (!user) {
-      // User doesn't exist - create user
-      if (createDto.password) {
-        // Password provided: create active user with provided password
-        const hashedPassword = await PasswordUtil.hash(createDto.password);
+      // User doesn't exist - create user with password (password is required for direct creation)
+      // Password provided: create active and verified user
+      const hashedPassword = await PasswordUtil.hash(createDto.password);
 
-        user = this.userRepository.create({
-          email: createDto.email.toLowerCase(),
-          password: hashedPassword,
-          name: createDto.name || undefined,
-          isActive: true, // Active immediately
-        });
-        user = await this.userRepository.save(user);
-      } else {
-        // No password: create inactive user with temp password (invitation flow)
-        const tempPassword = randomUUID();
-        const hashedPassword = await PasswordUtil.hash(tempPassword);
-
-        user = this.userRepository.create({
-          email: createDto.email.toLowerCase(),
-          password: hashedPassword,
-          name: createDto.name || undefined,
-          isActive: false, // Inactive, needs invitation
-        });
-        user = await this.userRepository.save(user);
-      }
+      user = this.userRepository.create({
+        email: normalizedEmail,
+        password: hashedPassword,
+        name: createDto.name,
+        isActive: true, // Active immediately
+        emailVerified: true, // Verified when created directly with password
+      });
+      user = await this.userRepository.save(user);
     } else {
-      // User exists - if password provided, update it and activate
-      if (createDto.password) {
-        const hashedPassword = await PasswordUtil.hash(createDto.password);
-        await this.userRepository.update(user.id, {
-          password: hashedPassword,
-          isActive: true, // Activate existing user
-        });
-        // Refresh user object to get updated isActive status
-        const updatedUser = await this.userRepository.findOne({
-          where: { id: user.id },
-        });
-        if (updatedUser) {
-          user = updatedUser;
-        }
+      // User exists - DO NOT modify ANY existing user information
+      // Preserve ALL existing user data (password, name, emailVerified, isActive, etc.)
+      // Just create tenant profile for this company
+      userAlreadyExisted = true;
+
+      // Save original user data for verification and protection
+      const originalUserData = {
+        name: user.name,
+        email: user.email,
+        password: user.password,
+        isActive: user.isActive,
+        emailVerified: user.emailVerified,
+      };
+
+      // Reload user from database with explicit field selection to avoid any mutations
+      const refreshedUser = await this.userRepository.findOne({
+        where: { id: user.id },
+        select: [
+          'id',
+          'email',
+          'password',
+          'name',
+          'isActive',
+          'emailVerified',
+          'isSuperAdmin',
+          'createdAt',
+          'updatedAt',
+        ],
+      });
+
+      if (!refreshedUser) {
+        throw new BusinessException(
+          ErrorCode.USER_NOT_FOUND,
+          `User with email ${normalizedEmail} was found but could not be reloaded. Please try again.`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+          { email: normalizedEmail },
+        );
       }
+
+      user = refreshedUser;
+
+      // Verify original data integrity - if something changed, restore it
+      if (user.name !== originalUserData.name) {
+        // Something modified the name - restore original
+        console.warn(
+          `[TENANT CREATE] User name was unexpectedly modified from "${originalUserData.name}" to "${user.name}". Restoring original name for user ${user.id}.`,
+        );
+        await this.userRepository.update(user.id, { name: originalUserData.name });
+        user.name = originalUserData.name;
+      }
+
+      // Ensure no other fields were modified
+      if (
+        user.email !== originalUserData.email ||
+        user.isActive !== originalUserData.isActive ||
+        user.emailVerified !== originalUserData.emailVerified
+      ) {
+        // Restore all original data
+        console.warn(
+          `[TENANT CREATE] User data was unexpectedly modified for user ${user.id}. Restoring original values.`,
+          {
+            email: { original: originalUserData.email, current: user.email },
+            isActive: { original: originalUserData.isActive, current: user.isActive },
+            emailVerified: { original: originalUserData.emailVerified, current: user.emailVerified },
+          },
+        );
+        await this.userRepository.update(user.id, {
+          email: originalUserData.email,
+          isActive: originalUserData.isActive,
+          emailVerified: originalUserData.emailVerified,
+        });
+        // Reload again
+        const restoredUser = await this.userRepository.findOne({
+          where: { id: user.id },
+          select: [
+            'id',
+            'email',
+            'password',
+            'name',
+            'isActive',
+            'emailVerified',
+            'isSuperAdmin',
+            'createdAt',
+            'updatedAt',
+          ],
+        });
+        if (!restoredUser) {
+          throw new BusinessException(
+            ErrorCode.USER_NOT_FOUND,
+            `User ${user.id} could not be restored after data integrity check.`,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            { userId: user.id, email: normalizedEmail },
+          );
+        }
+        user = restoredUser;
+      }
+
+      // Log successful protection
+      console.log(
+        `[TENANT CREATE] Existing user ${user.id} (${normalizedEmail}) data protected: name="${originalUserData.name}", password preserved, isActive=${originalUserData.isActive}, emailVerified=${originalUserData.emailVerified}`,
+      );
     }
 
     // Ensure user is not null at this point
@@ -479,43 +559,125 @@ export class TenantService {
     }
 
     // Create TenantProfile (status PENDING - no lease exists yet)
-    const tenantProfile = this.tenantProfileRepository.create({
+    // For existing users, create minimal profile - tenant can update their profile later
+    // For new users, use the provided data
+    const tenantProfileData: any = {
       userId: user.id,
       companyId,
-      phone: createDto.phone,
-      alternativePhone: createDto.alternativePhone,
-      dateOfBirth: createDto.dateOfBirth
-        ? new Date(createDto.dateOfBirth)
-        : undefined,
-      idNumber: createDto.idNumber,
-      idType: createDto.idType,
-      address: createDto.address,
-      city: createDto.city,
-      state: createDto.state,
-      zipCode: createDto.zipCode,
-      country: createDto.country,
-      emergencyContactName: createDto.emergencyContactName,
-      emergencyContactPhone: createDto.emergencyContactPhone,
-      emergencyContactRelationship: createDto.emergencyContactRelationship,
       status: TenantStatus.PENDING,
-      notes: createDto.notes,
-      tags: createDto.tags,
       emailNotifications: createDto.emailNotifications ?? true,
       smsNotifications: createDto.smsNotifications ?? true,
-    });
+    };
+
+    if (!userAlreadyExisted) {
+      // New user - populate all provided fields
+      tenantProfileData.phone = createDto.phone;
+      tenantProfileData.alternativePhone = createDto.alternativePhone;
+      tenantProfileData.dateOfBirth = createDto.dateOfBirth
+        ? new Date(createDto.dateOfBirth)
+        : undefined;
+      tenantProfileData.idNumber = createDto.idNumber;
+      tenantProfileData.idType = createDto.idType;
+      tenantProfileData.address = createDto.address;
+      tenantProfileData.city = createDto.city;
+      tenantProfileData.state = createDto.state;
+      tenantProfileData.zipCode = createDto.zipCode;
+      tenantProfileData.country = createDto.country;
+      tenantProfileData.emergencyContactName = createDto.emergencyContactName;
+      tenantProfileData.emergencyContactPhone = createDto.emergencyContactPhone;
+      tenantProfileData.emergencyContactRelationship =
+        createDto.emergencyContactRelationship;
+      tenantProfileData.notes = createDto.notes;
+      tenantProfileData.tags = createDto.tags;
+    } else {
+      // Existing user - create minimal profile (no personal data)
+      // Tenant will update their profile information themselves later
+      // This protects existing user data and prevents accidental overwrites
+      tenantProfileData.phone = null;
+      tenantProfileData.alternativePhone = null;
+      tenantProfileData.dateOfBirth = null;
+      tenantProfileData.idNumber = null;
+      tenantProfileData.idType = null;
+      tenantProfileData.address = null;
+      tenantProfileData.city = null;
+      tenantProfileData.state = null;
+      tenantProfileData.zipCode = null;
+      tenantProfileData.country = null;
+      tenantProfileData.emergencyContactName = null;
+      tenantProfileData.emergencyContactPhone = null;
+      tenantProfileData.emergencyContactRelationship = null;
+      tenantProfileData.notes = null;
+      tenantProfileData.tags = null;
+    }
+
+    const tenantProfile = this.tenantProfileRepository.create(tenantProfileData);
 
     const savedTenantProfile =
       await this.tenantProfileRepository.save(tenantProfile);
 
     // Create UserCompany relationship with TENANT role
-    await this.companyService.assignUserToCompany(
-      user.id,
-      companyId,
-      UserRole.TENANT,
-    );
+    try {
+      await this.companyService.assignUserToCompany(
+        user.id,
+        companyId,
+        UserRole.TENANT,
+      );
+    } catch (error) {
+      // If UserCompany assignment fails, clean up the tenant profile
+      if (error instanceof BusinessException && (error as any).errorCode === ErrorCode.USER_ALREADY_IN_COMPANY) {
+        // UserCompany relationship already exists - this is okay, user might be re-added
+        // Continue with the flow
+      } else {
+        // Other errors - clean up tenant profile if it was just created
+        if (savedTenantProfile) {
+          try {
+            await this.tenantProfileRepository.remove(savedTenantProfile);
+          } catch (cleanupError) {
+            // Log but don't throw - main error is more important
+            console.error('Failed to cleanup tenant profile after UserCompany assignment failure:', cleanupError);
+          }
+        }
+        // Re-throw the error with better context
+        throw new BusinessException(
+          ErrorCode.INTERNAL_SERVER_ERROR,
+          `Failed to assign user to company: ${error.message || 'Unknown error'}. Tenant profile creation rolled back.`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+          { userId: user.id, companyId, originalError: error.message },
+        );
+      }
+    }
 
-    // If user was just created (inactive), send invitation email
-    if (!user.isActive) {
+    // For existing users, reload from database one more time after all operations
+    // This ensures we return the actual saved data, not any cached or modified version
+    if (userAlreadyExisted) {
+      const finalUser = await this.userRepository.findOne({
+        where: { id: user.id },
+        select: [
+          'id',
+          'email',
+          'password',
+          'name',
+          'isActive',
+          'emailVerified',
+          'isSuperAdmin',
+          'createdAt',
+          'updatedAt',
+        ],
+      });
+      if (!finalUser) {
+        throw new BusinessException(
+          ErrorCode.USER_NOT_FOUND,
+          `User with ID ${user.id} could not be found after tenant profile creation. Data integrity issue.`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+          { userId: user.id, email: normalizedEmail },
+        );
+      }
+      user = finalUser;
+    }
+
+    // Only send invitation email for newly created users who are inactive
+    // Existing users should handle password reset themselves if needed
+    if (!userAlreadyExisted && !user.isActive) {
       const token = randomUUID();
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7);
@@ -550,7 +712,10 @@ export class TenantService {
         });
     }
 
-    return this.toResponseDto(savedTenantProfile, user, companyId);
+    return {
+      tenant: this.toResponseDto(savedTenantProfile, user, companyId),
+      userAlreadyExisted,
+    };
   }
 
   async findAll(

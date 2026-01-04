@@ -13,3 +13,4 @@ export class PasswordUtil {
     return bcrypt.compare(password, hashedPassword);
   }
 }
+

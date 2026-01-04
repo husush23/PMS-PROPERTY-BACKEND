@@ -18,25 +18,24 @@ export class CreateTenantDto {
   @IsEmail({}, { message: 'Please provide a valid email address' })
   email: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description:
-      'Password for the user account. If provided, user will be created as active and can login immediately. If not provided, invitation email will be sent.',
+      'Password for the user account. Required for new users. For existing users, password is ignored and existing password is preserved for security. Users can reset their password if needed.',
     example: 'SecurePassword123!',
     minLength: 8,
   })
-  @IsOptional()
   @IsString()
   @MinLength(8, { message: 'Password must be at least 8 characters long' })
-  password?: string;
+  password: string;
 
-  @ApiPropertyOptional({
-    description: "User's full name",
+  @ApiProperty({
+    description:
+      "User's full name. Required for new users. For existing users, name is ignored and existing name is preserved.",
     example: 'John Doe',
   })
-  @IsOptional()
   @IsString()
   @MinLength(2, { message: 'Name must be at least 2 characters long' })
-  name?: string;
+  name: string;
 
   @ApiPropertyOptional({
     description: 'Primary phone number',

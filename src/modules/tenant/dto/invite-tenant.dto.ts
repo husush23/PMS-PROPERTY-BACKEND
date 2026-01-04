@@ -9,3 +9,4 @@ export class InviteTenantDto {
   @IsEmail({}, { message: 'Please provide a valid email address' })
   email: string;
 }
+

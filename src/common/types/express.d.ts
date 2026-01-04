@@ -15,3 +15,4 @@ declare module 'express' {
     companyId?: string;
   }
 }
+

@@ -20,16 +20,22 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { PropertyService } from './property.service';
+import { UnitService } from '../unit/unit.service';
 import { AuthUser } from '../../common/decorators/auth-user.decorator';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { PropertyResponseDto } from './dto/property-response.dto';
 import { ListPropertiesQueryDto } from './dto/list-properties-query.dto';
+import { CreateUnitsGroupDto } from '../unit/dto/create-units-group.dto';
+import { CreateUnitsGroupResponseDto } from '../unit/dto/create-units-group-response.dto';
 
 @ApiTags('properties')
 @Controller({ path: 'properties', version: '1' })
 export class PropertyController {
-  constructor(private readonly propertyService: PropertyService) {}
+  constructor(
+    private readonly propertyService: PropertyService,
+    private readonly unitService: UnitService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -171,6 +177,47 @@ export class PropertyController {
     return {
       success: true,
       message: 'Property deleted successfully',
+    };
+  }
+
+  @Post(':propertyId/units/groups')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Create multiple units from groups (COMPANY_ADMIN only)',
+  })
+  @ApiParam({ name: 'propertyId', type: 'string', format: 'uuid' })
+  @ApiResponse({
+    status: 201,
+    description: 'Units created successfully',
+    type: CreateUnitsGroupResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Insufficient permissions - Only COMPANY_ADMIN can create units in groups',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Property not found',
+  })
+  async createUnitsFromGroups(
+    @Param('propertyId', ParseUUIDPipe) propertyId: string,
+    @Body() createUnitsGroupDto: CreateUnitsGroupDto,
+    @AuthUser() user: { id: string },
+  ) {
+    const result = await this.unitService.createUnitsFromGroups(
+      propertyId,
+      createUnitsGroupDto.groups,
+      user.id,
+    );
+    return {
+      success: true,
+      data: result,
+      message: `Successfully created ${result.createdUnits} unit(s)`,
     };
   }
 }

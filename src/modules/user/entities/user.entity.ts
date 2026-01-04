@@ -28,6 +28,9 @@ export class User {
   @Column({ default: false })
   isSuperAdmin: boolean;
 
+  @Column({ default: false })
+  emailVerified: boolean;
+
   @OneToMany(() => UserCompany, (userCompany) => userCompany.user)
   userCompanies: UserCompany[];
 

@@ -7,10 +7,12 @@ import { Company } from '../company/entities/company.entity';
 import { UserCompany } from '../company/entities/user-company.entity';
 import { User } from '../user/entities/user.entity';
 import { Unit } from '../unit/entities/unit.entity';
+import { UnitModule } from '../unit/unit.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Property, Company, UserCompany, User, Unit]),
+    UnitModule,
   ],
   controllers: [PropertyController],
   providers: [PropertyService],

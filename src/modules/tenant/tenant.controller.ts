@@ -130,11 +130,12 @@ export class TenantController {
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
-    summary: 'Create a tenant directly (COMPANY_ADMIN/MANAGER only)',
+    summary: 'Create a tenant directly (COMPANY_ADMIN/MANAGER only). Note: If user already exists in the system, all existing user information (password, name, etc.) is preserved for security. Response includes a notice if user already existed.',
   })
   @ApiResponse({
     status: 201,
-    description: 'Tenant created successfully',
+    description:
+      'Tenant created successfully. If user already existed, response message includes notice that existing user information was preserved.',
     type: TenantResponseDto,
   })
   @ApiResponse({
@@ -180,15 +181,25 @@ export class TenantController {
       );
     }
 
-    const tenant = await this.tenantService.create(
+    const { tenant, userAlreadyExisted } = await this.tenantService.create(
       companyId,
       createDto,
       user.id,
     );
+
+    let message = 'Tenant created successfully';
+    if (userAlreadyExisted) {
+      message =
+        'Tenant created successfully. Note: This user already exists in the system. ' +
+        'Their existing user account information (name, password, email) has been preserved for security reasons. ' +
+        'A minimal tenant profile has been created - the tenant can update their profile information (phone, address, etc.) themselves. ' +
+        'If the user needs to reset their password, they can use the password reset functionality.';
+    }
+
     return {
       success: true,
       data: tenant,
-      message: 'Tenant created successfully',
+      message,
     };
   }
 

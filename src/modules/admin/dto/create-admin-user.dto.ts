@@ -22,3 +22,4 @@ export class CreateAdminUserDto extends CreateUserDto {
   @IsEnum(UserRole)
   role?: UserRole;
 }
+

@@ -114,3 +114,4 @@ GET /api/v1/admin/users/:id
 - Email uniqueness is validated on create/update
 - Company assignment is optional during user creation
 
+

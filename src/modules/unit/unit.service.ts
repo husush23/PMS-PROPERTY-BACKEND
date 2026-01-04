@@ -15,8 +15,10 @@ import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
 import { UnitResponseDto } from './dto/unit-response.dto';
 import { ListUnitsQueryDto } from './dto/list-units-query.dto';
+import { UnitGroupDto } from './dto/create-units-group.dto';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { UnitStatus } from '../../shared/enums/unit-status.enum';
+import { UnitType } from '../../shared/enums/unit-type.enum';
 
 @Injectable()
 export class UnitService {
@@ -481,6 +483,126 @@ export class UnitService {
     });
 
     return units.map((unit) => this.toResponseDto(unit));
+  }
+
+  async createUnitsFromGroups(
+    propertyId: string,
+    groups: UnitGroupDto[],
+    userId: string,
+  ): Promise<{ createdUnits: number; propertyId: string }> {
+    // Verify property exists
+    const property = await this.propertyRepository.findOne({
+      where: { id: propertyId, isActive: true },
+    });
+
+    if (!property) {
+      throw new BusinessException(
+        ErrorCode.PROPERTY_NOT_FOUND,
+        ERROR_MESSAGES.PROPERTY_NOT_FOUND,
+        HttpStatus.NOT_FOUND,
+        { propertyId },
+      );
+    }
+
+    const companyId = property.companyId;
+
+    // Check if user is super admin
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    const isSuperAdmin = user?.isSuperAdmin || false;
+
+    if (!isSuperAdmin) {
+      // Verify user is COMPANY_ADMIN (this feature is COMPANY_ADMIN only)
+      const requester = await this.userCompanyRepository.findOne({
+        where: {
+          companyId,
+          userId,
+          isActive: true,
+        },
+      });
+
+      if (!requester || requester.role !== UserRole.COMPANY_ADMIN) {
+        throw new BusinessException(
+          ErrorCode.INSUFFICIENT_PERMISSIONS,
+          'Only company administrators can create units in groups.',
+          HttpStatus.FORBIDDEN,
+          { requiredRole: UserRole.COMPANY_ADMIN },
+        );
+      }
+    }
+
+    // Get existing units for this property to determine starting unit number
+    const existingUnits = await this.unitRepository.find({
+      where: { propertyId, isActive: true },
+      select: ['unitNumber'],
+    });
+
+    // Extract numeric suffixes from unit numbers matching pattern "A\d+"
+    const unitNumberPattern = /^A(\d+)$/;
+    const existingNumbers = existingUnits
+      .map((unit) => {
+        const match = unit.unitNumber.match(unitNumberPattern);
+        return match ? parseInt(match[1], 10) : null;
+      })
+      .filter((num): num is number => num !== null);
+
+    // Find the highest numeric suffix, start from next number
+    const nextNumber = existingNumbers.length > 0
+      ? Math.max(...existingNumbers) + 1
+      : 1;
+
+    // Generate unit numbers and create units
+    const unitsToCreate: Unit[] = [];
+    let currentNumber = nextNumber;
+
+    for (const group of groups) {
+      // Derive unitType from bedrooms if not provided
+      let unitType = group.unitType;
+      if (!unitType) {
+        if (group.bedrooms === undefined || group.bedrooms === null || group.bedrooms === 0) {
+          unitType = UnitType.STUDIO;
+        } else if (group.bedrooms === 1) {
+          unitType = UnitType.ONE_BEDROOM;
+        } else if (group.bedrooms === 2) {
+          unitType = UnitType.TWO_BEDROOM;
+        } else if (group.bedrooms === 3) {
+          unitType = UnitType.THREE_BEDROOM;
+        } else {
+          unitType = UnitType.FOUR_PLUS_BEDROOM;
+        }
+      }
+
+      // Create units for this group
+      for (let i = 0; i < group.count; i++) {
+        const unitNumber = `A${currentNumber}`;
+        currentNumber++;
+
+        const unitData: Partial<Unit> = {
+          propertyId,
+          companyId,
+          unitNumber,
+          status: UnitStatus.AVAILABLE,
+          unitType,
+          monthlyRent: group.rent,
+          squareFootage: group.size,
+          bedrooms: group.bedrooms,
+          bathrooms: group.bathrooms,
+          depositAmount: group.depositAmount,
+          floorNumber: group.floorNumber,
+          description: group.description,
+          notes: group.notes,
+        };
+
+        unitsToCreate.push(this.unitRepository.create(unitData));
+      }
+    }
+
+    // Save all units (TypeORM will handle this efficiently)
+    await this.unitRepository.save(unitsToCreate);
+
+    return {
+      createdUnits: unitsToCreate.length,
+      propertyId,
+    };
   }
 
   private toResponseDto(unit: Unit): UnitResponseDto {

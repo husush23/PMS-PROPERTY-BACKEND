@@ -305,6 +305,7 @@ export class AdminService {
       password: hashedPassword,
       name: createUserDto.name,
       isActive: true,
+      emailVerified: true, // Admin-created users are verified
     });
 
     const savedUser = await this.userRepository.save(user);

@@ -35,6 +35,22 @@ export class CreatePaymentDto {
   amount: number;
 
   @ApiPropertyOptional({
+    description: 'Amount due for this payment period (auto-calculated if not provided)',
+    example: 1500.0,
+  })
+  @IsOptional()
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    {
+      message:
+        'Amount due must be a valid number with up to 2 decimal places',
+    },
+  )
+  @Min(0, { message: 'Amount due must be a non-negative number' })
+  @Type(() => Number)
+  amountDue?: number;
+
+  @ApiPropertyOptional({
     description: 'Currency code (default: KES)',
     default: 'KES',
     example: 'KES',
@@ -50,6 +66,14 @@ export class CreatePaymentDto {
   })
   @IsDateString({}, { message: 'Payment date must be a valid date string' })
   paymentDate: string;
+
+  @ApiPropertyOptional({
+    description: 'Due date for this payment (auto-calculated from lease if not provided)',
+    example: '2024-01-15',
+  })
+  @IsOptional()
+  @IsDateString({}, { message: 'Due date must be a valid date string' })
+  dueDate?: string;
 
   @ApiProperty({
     description: 'Payment method',

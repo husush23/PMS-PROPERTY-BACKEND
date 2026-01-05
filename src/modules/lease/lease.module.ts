@@ -9,7 +9,9 @@ import { Company } from '../company/entities/company.entity';
 import { User } from '../user/entities/user.entity';
 import { TenantProfile } from '../tenant/entities/tenant-profile.entity';
 import { UserCompany } from '../company/entities/user-company.entity';
+import { Payment } from '../payment/entities/payment.entity';
 import { TenantModule } from '../tenant/tenant.module';
+import { PaymentModule } from '../payment/payment.module';
 
 @Module({
   imports: [
@@ -21,8 +23,10 @@ import { TenantModule } from '../tenant/tenant.module';
       User,
       TenantProfile,
       UserCompany,
+      Payment,
     ]),
     forwardRef(() => TenantModule),
+    forwardRef(() => PaymentModule),
   ],
   controllers: [LeaseController],
   providers: [LeaseService],

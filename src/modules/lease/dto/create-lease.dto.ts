@@ -10,12 +10,15 @@ import {
   IsArray,
   IsObject,
   Min,
+  Max,
   MinLength,
   ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { LeaseType } from '../../../shared/enums/lease-type.enum';
+import { PaymentFrequency } from '../../../shared/enums/payment-frequency.enum';
+import { LateFeeType } from '../../../shared/enums/late-fee-type.enum';
 
 export class CreateLeaseDto {
   @ApiProperty({
@@ -53,9 +56,10 @@ export class CreateLeaseDto {
     description: 'Lease type',
     enum: LeaseType,
     example: LeaseType.LONG_TERM,
+    enumName: 'LeaseType',
   })
   @IsEnum(LeaseType, {
-    message: 'Lease type must be a valid LeaseType enum value',
+    message: `Lease type must be one of: ${Object.values(LeaseType).join(', ')}`,
   })
   leaseType: LeaseType;
 
@@ -145,6 +149,57 @@ export class CreateLeaseDto {
   @IsInt({ message: 'Grace period days must be an integer' })
   @Min(0, { message: 'Grace period days must be a non-negative number' })
   gracePeriodDays?: number;
+
+  @ApiPropertyOptional({
+    description: 'Day of month when rent is due (1-28)',
+    example: 5,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'Rent due day must be a whole number between 1 and 28' })
+  @Min(1, { message: 'Rent due day must be at least 1' })
+  @Max(28, { message: 'Rent due day must be at most 28' })
+  rentDueDay?: number;
+
+  @ApiPropertyOptional({
+    description: 'Payment frequency',
+    enum: PaymentFrequency,
+    default: PaymentFrequency.MONTHLY,
+    enumName: 'PaymentFrequency',
+  })
+  @IsOptional()
+  @IsEnum(PaymentFrequency, {
+    message: `Payment frequency must be one of: ${Object.values(PaymentFrequency).join(', ')}`,
+  })
+  paymentFrequency?: PaymentFrequency;
+
+  @ApiPropertyOptional({
+    description: 'Late fee type',
+    enum: LateFeeType,
+    default: LateFeeType.FIXED,
+    enumName: 'LateFeeType',
+  })
+  @IsOptional()
+  @IsEnum(LateFeeType, {
+    message: `Late fee type must be one of: ${Object.values(LateFeeType).join(', ')}`,
+  })
+  lateFeeType?: LateFeeType;
+
+  @ApiPropertyOptional({
+    description: 'Late fee value (amount if FIXED, percentage if PERCENTAGE)',
+    example: 50.0,
+  })
+  @IsOptional()
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    {
+      message:
+        'Late fee value must be a valid number with up to 2 decimal places',
+    },
+  )
+  @Min(0, { message: 'Late fee value must be a non-negative number' })
+  @Type(() => Number)
+  lateFeeValue?: number;
 
   // Financial
   @ApiProperty({

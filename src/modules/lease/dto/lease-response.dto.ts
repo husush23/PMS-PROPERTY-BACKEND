@@ -1,6 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { LeaseStatus } from '../../../shared/enums/lease-status.enum';
 import { LeaseType } from '../../../shared/enums/lease-type.enum';
+import { PaymentFrequency } from '../../../shared/enums/payment-frequency.enum';
+import { LateFeeType } from '../../../shared/enums/late-fee-type.enum';
 
 export class LeaseResponseDto {
   @ApiProperty({
@@ -143,6 +145,38 @@ export class LeaseResponseDto {
     default: 0,
   })
   gracePeriodDays?: number;
+
+  @ApiPropertyOptional({
+    description: 'Day of month when rent is due (1-28)',
+    example: 5,
+  })
+  rentDueDay?: number;
+
+  @ApiPropertyOptional({
+    description: 'Next rent due date',
+    example: '2024-02-05',
+  })
+  nextRentDueDate?: Date;
+
+  @ApiPropertyOptional({
+    description: 'Payment frequency',
+    enum: PaymentFrequency,
+    default: PaymentFrequency.MONTHLY,
+  })
+  paymentFrequency?: PaymentFrequency;
+
+  @ApiPropertyOptional({
+    description: 'Late fee type',
+    enum: LateFeeType,
+    default: LateFeeType.FIXED,
+  })
+  lateFeeType?: LateFeeType;
+
+  @ApiPropertyOptional({
+    description: 'Late fee value (amount if FIXED, percentage if PERCENTAGE)',
+    example: 50.0,
+  })
+  lateFeeValue?: number;
 
   // Financial
   @ApiProperty({

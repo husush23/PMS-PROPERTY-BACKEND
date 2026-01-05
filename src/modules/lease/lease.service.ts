@@ -25,6 +25,11 @@ import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { UnitStatus } from '../../shared/enums/unit-status.enum';
 import { TenantStatus } from '../../shared/enums/tenant-status.enum';
 import { TenantService } from '../tenant/tenant.service';
+import { RentGenerationService } from '../payment/rent-generation.service';
+import { Payment } from '../payment/entities/payment.entity';
+import { PaymentStatus } from '../../shared/enums/payment-status.enum';
+import { PaymentFrequency } from '../../shared/enums/payment-frequency.enum';
+import { LateFeeType } from '../../shared/enums/late-fee-type.enum';
 
 @Injectable()
 export class LeaseService {
@@ -43,8 +48,12 @@ export class LeaseService {
     private userCompanyRepository: Repository<UserCompany>,
     @InjectRepository(TenantProfile)
     private tenantProfileRepository: Repository<TenantProfile>,
+    @InjectRepository(Payment)
+    private paymentRepository: Repository<Payment>,
     @Inject(forwardRef(() => TenantService))
     private tenantService: TenantService,
+    @Inject(forwardRef(() => RentGenerationService))
+    private rentGenerationService: RentGenerationService,
   ) {}
 
   async create(
@@ -244,6 +253,27 @@ export class LeaseService {
         : undefined,
       proratedFirstMonth: createDto.proratedFirstMonth ?? false,
       gracePeriodDays: createDto.gracePeriodDays ?? 0,
+      rentDueDay: (() => {
+        // Validate rentDueDay if provided
+        if (createDto.rentDueDay !== undefined) {
+          if (createDto.rentDueDay < 1 || createDto.rentDueDay > 28) {
+            throw new BusinessException(
+              ErrorCode.VALIDATION_ERROR,
+              'Rent due day must be between 1 and 28 (representing the day of the month).',
+              HttpStatus.BAD_REQUEST,
+              { rentDueDay: createDto.rentDueDay },
+            );
+          }
+          return createDto.rentDueDay;
+        }
+        // Default to day of billingStartDate or startDate
+        return createDto.billingStartDate
+          ? new Date(createDto.billingStartDate).getDate()
+          : new Date(createDto.startDate).getDate() || 1;
+      })(),
+      paymentFrequency: createDto.paymentFrequency || PaymentFrequency.MONTHLY,
+      lateFeeType: createDto.lateFeeType || LateFeeType.FIXED,
+      lateFeeValue: createDto.lateFeeValue || createDto.lateFeeAmount,
       monthlyRent: createDto.monthlyRent,
       securityDeposit: createDto.securityDeposit,
       petDeposit: createDto.petDeposit,
@@ -817,6 +847,17 @@ export class LeaseService {
       activeLeasesCount,
     );
 
+    // Generate first rent payment
+    try {
+      await this.rentGenerationService.generateFirstPayment(leaseId);
+    } catch (error) {
+      // Log error but don't fail activation if payment generation fails
+      console.error(
+        `Failed to generate first payment for lease ${leaseId}:`,
+        error.message,
+      );
+    }
+
     return this.findOne(leaseId, requesterUserId);
   }
 
@@ -881,12 +922,34 @@ export class LeaseService {
       ? new Date(terminationDto.actualTerminationDate)
       : new Date();
 
+    // Check for outstanding payments (balance > 0)
+    const outstandingPayments = await this.paymentRepository.find({
+      where: {
+        leaseId,
+        isActive: true,
+      },
+    });
+
+    const totalOutstanding = outstandingPayments
+      .filter((p) => Number(p.balance || 0) > 0)
+      .reduce((sum, p) => sum + Number(p.balance || 0), 0);
+
+    if (totalOutstanding > 0) {
+      // Log warning but allow termination
+      console.warn(
+        `Lease ${leaseId} terminated with outstanding balance: ${lease.currency} ${totalOutstanding.toFixed(2)}`,
+      );
+    }
+
     // Set termination metadata and status to TERMINATED
+    // This will stop future rent generation (rent generation checks for ACTIVE status)
     await this.leaseRepository.update(leaseId, {
       status: LeaseStatus.TERMINATED,
       terminationReason: terminationDto.terminationReason,
       terminatedBy: requesterUserId,
-      terminationNotes: terminationDto.terminationNotes,
+      terminationNotes: terminationDto.terminationNotes
+        ? `${terminationDto.terminationNotes}\n\nOutstanding balance at termination: ${lease.currency} ${totalOutstanding.toFixed(2)}`
+        : `Outstanding balance at termination: ${lease.currency} ${totalOutstanding.toFixed(2)}`,
       actualTerminationDate,
       moveOutDate: actualTerminationDate,
     });
@@ -1410,6 +1473,15 @@ export class LeaseService {
       billingStartDate: lease.billingStartDate,
       proratedFirstMonth: lease.proratedFirstMonth,
       gracePeriodDays: lease.gracePeriodDays,
+      rentDueDay: lease.rentDueDay,
+      nextRentDueDate: lease.nextRentDueDate,
+      paymentFrequency: lease.paymentFrequency,
+      lateFeeType: lease.lateFeeType,
+      lateFeeValue: lease.lateFeeValue
+        ? typeof lease.lateFeeValue === 'string'
+          ? Number(lease.lateFeeValue)
+          : lease.lateFeeValue
+        : undefined,
       monthlyRent:
         typeof lease.monthlyRent === 'string'
           ? Number(lease.monthlyRent)

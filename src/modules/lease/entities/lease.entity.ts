@@ -13,6 +13,8 @@ import { Unit } from '../../unit/entities/unit.entity';
 import { Company } from '../../company/entities/company.entity';
 import { LeaseStatus } from '../../../shared/enums/lease-status.enum';
 import { LeaseType } from '../../../shared/enums/lease-type.enum';
+import { PaymentFrequency } from '../../../shared/enums/payment-frequency.enum';
+import { LateFeeType } from '../../../shared/enums/late-fee-type.enum';
 
 @Entity('leases')
 @Index(['unitId'])
@@ -86,6 +88,30 @@ export class Lease {
 
   @Column({ type: 'int', default: 0 })
   gracePeriodDays: number;
+
+  // Payment Configuration
+  @Column({ type: 'int', nullable: true })
+  rentDueDay: number; // 1-28, day of month when rent is due
+
+  @Column({ type: 'date', nullable: true })
+  nextRentDueDate: Date; // Calculated next due date
+
+  @Column({
+    type: 'enum',
+    enum: PaymentFrequency,
+    default: PaymentFrequency.MONTHLY,
+  })
+  paymentFrequency: PaymentFrequency;
+
+  @Column({
+    type: 'enum',
+    enum: LateFeeType,
+    default: LateFeeType.FIXED,
+  })
+  lateFeeType: LateFeeType;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  lateFeeValue: number; // Amount if FIXED, percentage if PERCENTAGE
 
   // Financial
   @Column({ type: 'decimal', precision: 10, scale: 2 })

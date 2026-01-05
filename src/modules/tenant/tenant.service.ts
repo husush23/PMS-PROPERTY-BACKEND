@@ -612,8 +612,7 @@ export class TenantService {
 
     const tenantProfile = this.tenantProfileRepository.create(tenantProfileData);
 
-    const savedTenantProfile =
-      await this.tenantProfileRepository.save(tenantProfile);
+    const savedTenantProfile = await this.tenantProfileRepository.save(tenantProfile) as unknown as TenantProfile;
 
     // Create UserCompany relationship with TENANT role
     try {

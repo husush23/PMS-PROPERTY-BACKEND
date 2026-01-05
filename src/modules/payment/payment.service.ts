@@ -17,6 +17,7 @@ import { ListPaymentsQueryDto } from './dto/list-payments-query.dto';
 import { ReversePaymentDto } from './dto/reverse-payment.dto';
 import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 import { UserRole } from '../../shared/enums/user-role.enum';
+import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 
 @Injectable()
 export class PaymentService {
@@ -53,6 +54,20 @@ export class PaymentService {
         ERROR_MESSAGES.LEASE_NOT_FOUND_FOR_PAYMENT,
         HttpStatus.NOT_FOUND,
         { leaseId: createDto.leaseId },
+      );
+    }
+
+    // Validate lease is ACTIVE before accepting payment
+    if (lease.status !== LeaseStatus.ACTIVE) {
+      throw new BusinessException(
+        ErrorCode.LEASE_NOT_ACTIVE,
+        ERROR_MESSAGES.CANNOT_CREATE_PAYMENT_FOR_INACTIVE_LEASE,
+        HttpStatus.BAD_REQUEST,
+        {
+          leaseId: createDto.leaseId,
+          status: lease.status,
+          message: `The lease is currently ${lease.status.toLowerCase()}. Only active leases can accept payments.`,
+        },
       );
     }
 
@@ -114,24 +129,91 @@ export class PaymentService {
       );
     }
 
+    // Calculate amountDue from lease if not provided
+    let amountDue = createDto.amountDue;
+    if (!amountDue) {
+      // Try to find existing payment for this period to get amountDue
+      if (createDto.period) {
+        const existingPayment = await this.paymentRepository.findOne({
+          where: {
+            leaseId: createDto.leaseId,
+            period: createDto.period,
+            paymentType: createDto.paymentType,
+            isActive: true,
+          },
+          order: { createdAt: 'DESC' },
+        });
+        if (existingPayment) {
+          amountDue = Number(existingPayment.amountDue);
+        }
+      }
+      // If still no amountDue, use payment amount as default
+      if (!amountDue) {
+        amountDue = createDto.amount;
+      }
+    }
+
+    // Validate amountPaid cannot exceed amountDue
+    if (createDto.amount > amountDue) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_ERROR,
+        ERROR_MESSAGES.PAYMENT_AMOUNT_EXCEEDS_DUE,
+        HttpStatus.BAD_REQUEST,
+        {
+          amount: createDto.amount,
+          amountDue,
+          message: `The payment amount (${createDto.amount}) exceeds the amount due (${amountDue}). Please adjust the payment amount.`,
+        },
+      );
+    }
+
+    // Calculate dueDate from lease nextRentDueDate or use payment date
+    let dueDate = createDto.dueDate ? new Date(createDto.dueDate) : null;
+    if (!dueDate && lease.nextRentDueDate) {
+      dueDate = new Date(lease.nextRentDueDate);
+    }
+    if (!dueDate) {
+      // Default to payment date if no due date available
+      dueDate = paymentDate;
+    }
+
+    // Initialize amountPaid and balance
+    // For new payments, amountPaid starts at the payment amount
+    // If this is a payment against an existing invoice, we should use recordPayment instead
+    const amountPaid = createDto.amount;
+    const balance = Math.max(0, amountDue - amountPaid); // Ensure balance is never negative
+
+    // Determine status based on balance
+    let status = PaymentStatus.PENDING;
+    if (balance <= 0) {
+      status = PaymentStatus.PAID;
+    } else if (amountPaid > 0) {
+      status = PaymentStatus.PARTIAL;
+    }
+
     // Create payment entity
     const payment = this.paymentRepository.create({
       companyId: lease.companyId,
       tenantId: lease.tenantId,
       leaseId: createDto.leaseId,
       amount: createDto.amount,
-      currency: createDto.currency || 'KES',
+      amountDue: amountDue,
+      amountPaid: amountPaid,
+      balance: balance,
+      currency: createDto.currency || lease.currency || 'KES',
       paymentDate: paymentDate,
+      dueDate: dueDate,
       paymentMethod: createDto.paymentMethod,
       paymentType: createDto.paymentType,
-      status: PaymentStatus.PENDING,
+      status: status,
       reference: createDto.reference,
       recordedBy: requesterUserId,
       period: createDto.period,
       notes: createDto.notes,
-      isPartial: createDto.isPartial || false,
-      balanceAfter: createDto.balanceAfter,
+      isPartial: balance > 0,
+      balanceAfter: createDto.balanceAfter || balance,
       attachmentUrl: createDto.attachmentUrl,
+      paidAt: balance <= 0 ? new Date() : undefined,
     });
 
     const savedPayment = await this.paymentRepository.save(payment);
@@ -373,9 +455,170 @@ export class PaymentService {
     if (updateDto.period !== undefined) {
       payment.period = updateDto.period;
     }
+
+    // Handle status changes
+    const previousStatus = payment.status;
     if (updateDto.status !== undefined) {
       payment.status = updateDto.status;
+
+      // When status changes to PAID
+      if (updateDto.status === PaymentStatus.PAID && previousStatus !== PaymentStatus.PAID) {
+        payment.amountPaid = Number(payment.amountDue);
+        payment.balance = 0;
+        payment.paidAt = new Date();
+        payment.isPartial = false;
+      }
+
+      // When status changes from PAID to something else, reset paidAt
+      if (previousStatus === PaymentStatus.PAID && updateDto.status !== PaymentStatus.PAID) {
+        payment.paidAt = null;
+        // Recalculate balance if needed
+        if (payment.amountPaid < payment.amountDue) {
+          payment.balance = Number(payment.amountDue) - Number(payment.amountPaid);
+        }
+      }
     }
+
+    // Update balance and status based on amountPaid if it changed
+    // Note: amountPaid can be updated through recordPayment method
+    if (payment.amountPaid !== undefined && payment.amountDue !== undefined) {
+      payment.balance = Number(payment.amountDue) - Number(payment.amountPaid);
+      
+      // Auto-update status based on balance
+      if (payment.balance <= 0 && payment.status !== PaymentStatus.PAID) {
+        payment.status = PaymentStatus.PAID;
+        payment.paidAt = new Date();
+        payment.isPartial = false;
+      } else if (payment.balance > 0 && payment.amountPaid > 0 && payment.status !== PaymentStatus.PARTIAL) {
+        payment.status = PaymentStatus.PARTIAL;
+        payment.isPartial = true;
+        payment.paidAt = null;
+      } else if (payment.balance === payment.amountDue && payment.status !== PaymentStatus.PENDING) {
+        payment.status = PaymentStatus.PENDING;
+        payment.isPartial = false;
+        payment.paidAt = null;
+      }
+    }
+
+    const updatedPayment = await this.paymentRepository.save(payment);
+    return this.toResponseDto(updatedPayment, requesterUserId);
+  }
+
+  /**
+   * Record a payment against an existing payment record (for partial payments)
+   */
+  async recordPayment(
+    paymentId: string,
+    amount: number,
+    requesterUserId: string,
+  ): Promise<PaymentResponseDto> {
+    const payment = await this.paymentRepository.findOne({
+      where: { id: paymentId, isActive: true },
+    });
+
+    if (!payment) {
+      throw new BusinessException(
+        ErrorCode.PAYMENT_NOT_FOUND,
+        ERROR_MESSAGES.PAYMENT_NOT_FOUND,
+        HttpStatus.NOT_FOUND,
+        { paymentId },
+      );
+    }
+
+    // Access control
+    await this.validateAccess(payment, requesterUserId);
+
+    // Permission check
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
+    const isSuperAdmin = requesterUser?.isSuperAdmin || false;
+
+    if (!isSuperAdmin) {
+      const requester = await this.userCompanyRepository.findOne({
+        where: {
+          companyId: payment.companyId,
+          userId: requesterUserId,
+          isActive: true,
+        },
+      });
+
+      if (
+        !requester ||
+        ![UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD].includes(
+          requester.role,
+        )
+      ) {
+        throw new BusinessException(
+          ErrorCode.INSUFFICIENT_PERMISSIONS,
+          'Only company administrators, managers, and landlords can record payments.',
+          HttpStatus.FORBIDDEN,
+          {
+            requiredRoles: [
+              UserRole.COMPANY_ADMIN,
+              UserRole.MANAGER,
+              UserRole.LANDLORD,
+            ],
+          },
+        );
+      }
+    }
+
+    // Validate amount
+    if (amount <= 0) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_ERROR,
+        'Payment amount must be greater than 0.',
+        HttpStatus.BAD_REQUEST,
+        { amount },
+      );
+    }
+
+    // Validate payment is not already fully paid
+    if (Number(payment.balance) <= 0) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_ERROR,
+        ERROR_MESSAGES.PAYMENT_ALREADY_FULLY_PAID,
+        HttpStatus.BAD_REQUEST,
+        {
+          paymentId,
+          balance: payment.balance,
+          message: 'This payment has already been fully paid. No additional payments can be recorded.',
+        },
+      );
+    }
+
+    // Update amountPaid and balance
+    const newAmountPaid = Number(payment.amountPaid || 0) + amount;
+    const amountDue = Number(payment.amountDue || payment.amount);
+
+    if (newAmountPaid > amountDue) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_ERROR,
+        `Payment amount exceeds amount due. Amount due: ${amountDue}, Current paid: ${payment.amountPaid}, Attempting to add: ${amount}`,
+        HttpStatus.BAD_REQUEST,
+        { amountDue, currentPaid: payment.amountPaid, amount },
+      );
+    }
+
+    payment.amountPaid = newAmountPaid;
+    payment.balance = amountDue - newAmountPaid;
+
+    // Update status based on balance
+    if (payment.balance <= 0) {
+      payment.status = PaymentStatus.PAID;
+      payment.paidAt = new Date();
+      payment.isPartial = false;
+    } else {
+      payment.status = PaymentStatus.PARTIAL;
+      payment.isPartial = true;
+      payment.paidAt = null;
+    }
+
+    // Update notes
+    payment.notes = payment.notes
+      ? `${payment.notes}\nAdditional payment of ${payment.currency} ${amount.toFixed(2)} recorded on ${new Date().toISOString()}`
+      : `Additional payment of ${payment.currency} ${amount.toFixed(2)} recorded on ${new Date().toISOString()}`;
 
     const updatedPayment = await this.paymentRepository.save(payment);
     return this.toResponseDto(updatedPayment, requesterUserId);
@@ -876,8 +1119,20 @@ export class PaymentService {
     const allowedTransitions: Record<PaymentStatus, PaymentStatus[]> = {
       [PaymentStatus.PENDING]: [
         PaymentStatus.PAID,
+        PaymentStatus.PARTIAL,
+        PaymentStatus.OVERDUE,
         PaymentStatus.FAILED,
         PaymentStatus.CANCELLED,
+      ],
+      [PaymentStatus.PARTIAL]: [
+        PaymentStatus.PAID,
+        PaymentStatus.OVERDUE,
+        PaymentStatus.PENDING,
+      ],
+      [PaymentStatus.OVERDUE]: [
+        PaymentStatus.PAID,
+        PaymentStatus.PARTIAL,
+        PaymentStatus.PENDING,
       ],
       [PaymentStatus.PAID]: [PaymentStatus.REFUNDED],
       [PaymentStatus.FAILED]: [],
@@ -944,10 +1199,17 @@ export class PaymentService {
       isActive: payment.isActive,
       createdAt: payment.createdAt,
       updatedAt: payment.updatedAt,
+      // New fields (handle backward compatibility for existing records)
+      amountDue: Number(payment.amountDue ?? payment.amount ?? 0),
+      amountPaid: Number(payment.amountPaid ?? 0),
+      balance: Number(payment.balance ?? (payment.amountDue ? Number(payment.amountDue) - Number(payment.amountPaid || 0) : 0)),
+      dueDate: payment.dueDate || payment.paymentDate,
+      paidAt: payment.paidAt || undefined,
+      lateFeeApplied: payment.lateFeeApplied ?? false,
       tenantBalance,
       leaseBalance,
       lastPaymentDate,
-      isOverdue: false, // This would require due date information, which we don't have in payments
+      isOverdue: this.calculateIsOverdue(payment),
     };
 
     return response;
@@ -1010,5 +1272,18 @@ export class PaymentService {
     });
 
     return payment?.paymentDate;
+  }
+
+  private calculateIsOverdue(payment: Payment): boolean {
+    if (!payment.dueDate || payment.balance <= 0) {
+      return false;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dueDate = new Date(payment.dueDate);
+    dueDate.setHours(0, 0, 0, 0);
+
+    return today > dueDate && payment.status === PaymentStatus.OVERDUE;
   }
 }

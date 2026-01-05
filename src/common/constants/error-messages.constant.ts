@@ -107,6 +107,12 @@ export const ERROR_MESSAGES = {
     'Completed or refunded payments cannot be deleted. Use reversal instead.',
   CANNOT_REVERSE_PAYMENT:
     'This payment cannot be reversed. Only paid payments can be reversed.',
+  PAYMENT_ALREADY_FULLY_PAID:
+    'This payment is already fully paid. No additional payments can be recorded.',
+  PAYMENT_AMOUNT_EXCEEDS_DUE:
+    'The payment amount exceeds the amount due for this payment period.',
+  CANNOT_CREATE_PAYMENT_FOR_INACTIVE_LEASE:
+    'Payments can only be created for active leases. Please activate the lease first.',
 
   // General
   INTERNAL_SERVER_ERROR:

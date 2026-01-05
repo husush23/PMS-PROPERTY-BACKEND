@@ -21,6 +21,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { PaymentService } from './payment.service';
+import { PaymentSchedulerService } from './payment-scheduler.service';
 import { AuthUser } from '../../common/decorators/auth-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -35,7 +36,10 @@ import { UserRole } from '../../shared/enums/user-role.enum';
 @Controller({ path: 'payments', version: '1' })
 @UseGuards(RolesGuard)
 export class PaymentController {
-  constructor(private readonly paymentService: PaymentService) {}
+  constructor(
+    private readonly paymentService: PaymentService,
+    private readonly paymentSchedulerService: PaymentSchedulerService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -354,6 +358,50 @@ export class PaymentController {
     return {
       success: true,
       message: 'Payment deleted successfully',
+    };
+  }
+
+  @Post('scheduler/generate-monthly')
+  @HttpCode(HttpStatus.OK)
+  @ApiCookieAuth('access_token')
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
+  @ApiOperation({
+    summary:
+      'Manually trigger monthly rent generation (COMPANY_ADMIN/MANAGER only)',
+    description:
+      'This endpoint generates monthly rent payments for all active leases. Typically called by a cron job daily.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Monthly rent generation completed',
+  })
+  async generateMonthlyPayments(@AuthUser() user: { id: string }) {
+    await this.paymentSchedulerService.generateMonthlyPayments();
+    return {
+      success: true,
+      message: 'Monthly rent generation completed successfully',
+    };
+  }
+
+  @Post('scheduler/check-overdue')
+  @HttpCode(HttpStatus.OK)
+  @ApiCookieAuth('access_token')
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
+  @ApiOperation({
+    summary:
+      'Manually trigger overdue payment check (COMPANY_ADMIN/MANAGER only)',
+    description:
+      'This endpoint checks for overdue payments and applies late fees. Typically called by a cron job daily.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Overdue payment check completed',
+  })
+  async checkOverdue(@AuthUser() user: { id: string }) {
+    await this.paymentSchedulerService.checkAndMarkOverdue();
+    return {
+      success: true,
+      message: 'Overdue payment check completed successfully',
     };
   }
 }

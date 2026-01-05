@@ -1,5 +1,6 @@
 export enum LeaseType {
   SHORT_TERM = 'SHORT_TERM',
   LONG_TERM = 'LONG_TERM',
+  FIXED_TERM = 'FIXED_TERM',
   MONTH_TO_MONTH = 'MONTH_TO_MONTH',
 }

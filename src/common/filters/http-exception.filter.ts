@@ -34,20 +34,87 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     // Handle validation errors (from ValidationPipe)
     if (status === (HttpStatus.BAD_REQUEST as number)) {
-      const responseBody = exceptionResponse as { message?: string | string[] };
+      const responseBody = exceptionResponse as
+        | { message?: string | string[]; property?: string }
+        | Array<{ property: string; constraints?: Record<string, string> }>;
 
-      // Check if it's a validation error with array of messages
-      if (Array.isArray(responseBody.message)) {
-        // Format validation errors from class-validator
-        const formattedErrors = responseBody.message.map(
+      // Check if it's a validation error with array of messages (class-validator format)
+      if (Array.isArray(responseBody)) {
+        // This is the detailed format from class-validator
+        const formattedErrors = responseBody.map((error) => {
+          const field = error.property;
+          let message = 'Invalid value';
+
+          // Extract the first constraint message
+          if (error.constraints) {
+            const constraintKeys = Object.keys(error.constraints);
+            if (constraintKeys.length > 0) {
+              message = this.formatValidationMessage(
+                error.constraints[constraintKeys[0]],
+              );
+            }
+          }
+
+          return {
+            field: field,
+            message: message,
+            value: (request.body as Record<string, unknown>)?.[field],
+          };
+        });
+
+        return response.status(status).json({
+          success: false,
+          error: {
+            code: ErrorCode.VALIDATION_ERROR,
+            message: 'Please check the following fields and try again:',
+            details: {
+              fields: formattedErrors,
+            },
+          },
+          timestamp: new Date().toISOString(),
+          path: request.url,
+        });
+      }
+
+      // Check if it's a validation error with array of messages (string format)
+      if (
+        typeof responseBody === 'object' &&
+        responseBody !== null &&
+        Array.isArray(responseBody.message)
+      ) {
+        // Format validation errors from class-validator (string messages)
+        const formattedErrors = (responseBody.message as string[]).map(
           (msg: string, index: number) => {
-            // Try to extract field name and constraint
-            const fieldMatch = msg.match(/^(\w+)\s/);
-            const field = fieldMatch ? fieldMatch[1] : `field${index}`;
+            // Try to extract field name from various message formats
+            let field = `field${index}`;
+            let message = msg;
+
+            // Pattern 1: "property propertyName should not exist"
+            const shouldNotExistMatch = msg.match(
+              /property\s+(\w+)\s+should\s+not\s+exist/i,
+            );
+            if (shouldNotExistMatch) {
+              field = shouldNotExistMatch[1];
+              message = `The field '${field}' is not allowed or is not recognized. Please check the API documentation for valid fields.`;
+            } else {
+              // Pattern 2: "fieldName must be..."
+              const mustBeMatch = msg.match(/^(\w+)\s+(must|should)/i);
+              if (mustBeMatch) {
+                field = mustBeMatch[1];
+                message = this.formatValidationMessage(msg);
+              } else {
+                // Pattern 3: Extract field from "each value in fieldName"
+                const eachValueMatch = msg.match(/each\s+value\s+in\s+(\w+)/i);
+                if (eachValueMatch) {
+                  field = eachValueMatch[1];
+                  message = this.formatValidationMessage(msg);
+                }
+              }
+            }
 
             return {
-              field: field.toLowerCase(),
-              message: this.formatValidationMessage(msg),
+              field: field,
+              message: message,
               value:
                 (request.body as Record<string, unknown>)?.[field] || undefined,
             };
@@ -58,7 +125,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
           success: false,
           error: {
             code: ErrorCode.VALIDATION_ERROR,
-            message: ERROR_MESSAGES.VALIDATION_ERROR,
+            message: 'Please check the following fields and try again:',
             details: {
               fields: formattedErrors,
             },
@@ -95,12 +162,25 @@ export class HttpExceptionFilter implements ExceptionFilter {
     // Make validation messages more user-friendly
     let formatted = message;
 
-    // Capitalize first letter
-    formatted = formatted.charAt(0).toUpperCase() + formatted.slice(1);
+    // Handle enum validation errors
+    formatted = formatted.replace(
+      /must be a valid (\w+) enum value/i,
+      'must be one of the allowed values for $1',
+    );
+    formatted = formatted.replace(
+      /must be one of the following values: (.+)/i,
+      'must be one of: $1',
+    );
+
+    // Handle "should not exist" errors with better context
+    formatted = formatted.replace(
+      /property\s+(\w+)\s+should\s+not\s+exist/i,
+      "The field '$1' is not recognized. Please check the API documentation for valid fields.",
+    );
 
     // Replace technical terms
     formatted = formatted.replace(
-      /must be an email/,
+      /must be an email/i,
       'must be a valid email address',
     );
     formatted = formatted.replace(
@@ -112,12 +192,27 @@ export class HttpExceptionFilter implements ExceptionFilter {
       'must be at most $1 characters long',
     );
     formatted = formatted.replace(
-      /must be a UUID/,
-      'must be a valid identifier',
+      /must be a UUID/i,
+      'must be a valid identifier (UUID)',
     );
-    formatted = formatted.replace(/should not be empty/, 'is required');
-    formatted = formatted.replace(/must be a string/, 'must be text');
-    formatted = formatted.replace(/must be a number/, 'must be a number');
+    formatted = formatted.replace(/should not be empty/i, 'is required');
+    formatted = formatted.replace(/must be a string/i, 'must be text');
+    formatted = formatted.replace(/must be a number/i, 'must be a number');
+    formatted = formatted.replace(
+      /must be an integer/i,
+      'must be a whole number',
+    );
+    formatted = formatted.replace(
+      /must be a positive number/i,
+      'must be a number greater than 0',
+    );
+    formatted = formatted.replace(
+      /must be a non-negative number/i,
+      'must be a number greater than or equal to 0',
+    );
+
+    // Capitalize first letter
+    formatted = formatted.charAt(0).toUpperCase() + formatted.slice(1);
 
     return formatted;
   }

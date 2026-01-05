@@ -1,6 +1,8 @@
 export enum PaymentStatus {
   PENDING = 'PENDING',
   PAID = 'PAID',
+  PARTIAL = 'PARTIAL',
+  OVERDUE = 'OVERDUE',
   FAILED = 'FAILED',
   REFUNDED = 'REFUNDED',
   CANCELLED = 'CANCELLED',

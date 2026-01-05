@@ -23,6 +23,8 @@ import { PaymentType } from '../../../shared/enums/payment-type.enum';
 @Index(['status'])
 @Index(['companyId', 'tenantId'])
 @Index(['leaseId', 'paymentDate'])
+@Index(['dueDate'])
+@Index(['status', 'dueDate'])
 export class Payment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -39,11 +41,26 @@ export class Payment {
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   amount: number;
 
+  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  amountDue: number; // Expected amount for this payment period
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  amountPaid: number; // Actual amount paid
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  balance: number; // amountDue - amountPaid
+
   @Column({ default: 'KES' })
   currency: string;
 
   @Column({ type: 'date' })
   paymentDate: Date;
+
+  @Column({ type: 'date' })
+  dueDate: Date; // When payment is due
+
+  @Column({ type: 'timestamp', nullable: true })
+  paidAt: Date | null; // When fully paid (balance = 0)
 
   @Column({
     type: 'enum',
@@ -81,6 +98,9 @@ export class Payment {
 
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   balanceAfter: number;
+
+  @Column({ default: false })
+  lateFeeApplied: boolean; // Late fee already applied
 
   @Column({ nullable: true })
   attachmentUrl: string;

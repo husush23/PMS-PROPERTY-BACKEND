@@ -15,6 +15,8 @@ import {
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { LeaseType } from '../../../shared/enums/lease-type.enum';
+import { PaymentFrequency } from '../../../shared/enums/payment-frequency.enum';
+import { LateFeeType } from '../../../shared/enums/late-fee-type.enum';
 
 export class UpdateLeaseDto {
   @ApiPropertyOptional({
@@ -129,6 +131,52 @@ export class UpdateLeaseDto {
   @IsInt({ message: 'Grace period days must be an integer' })
   @Min(0, { message: 'Grace period days must be a non-negative number' })
   gracePeriodDays?: number;
+
+  @ApiPropertyOptional({
+    description: 'Day of month when rent is due (1-28)',
+    example: 5,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'Rent due day must be an integer' })
+  @Min(1, { message: 'Rent due day must be between 1 and 28' })
+  rentDueDay?: number;
+
+  @ApiPropertyOptional({
+    description: 'Payment frequency',
+    enum: PaymentFrequency,
+  })
+  @IsOptional()
+  @IsEnum(PaymentFrequency, {
+    message: 'Payment frequency must be a valid PaymentFrequency enum value',
+  })
+  paymentFrequency?: PaymentFrequency;
+
+  @ApiPropertyOptional({
+    description: 'Late fee type',
+    enum: LateFeeType,
+  })
+  @IsOptional()
+  @IsEnum(LateFeeType, {
+    message: 'Late fee type must be a valid LateFeeType enum value',
+  })
+  lateFeeType?: LateFeeType;
+
+  @ApiPropertyOptional({
+    description: 'Late fee value (amount if FIXED, percentage if PERCENTAGE)',
+    example: 50.0,
+  })
+  @IsOptional()
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    {
+      message:
+        'Late fee value must be a valid number with up to 2 decimal places',
+    },
+  )
+  @Min(0, { message: 'Late fee value must be a non-negative number' })
+  @Type(() => Number)
+  lateFeeValue?: number;
 
   // Financial
   @ApiPropertyOptional({

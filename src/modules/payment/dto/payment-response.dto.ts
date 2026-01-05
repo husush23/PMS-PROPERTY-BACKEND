@@ -47,6 +47,24 @@ export class PaymentResponseDto {
   amount: number;
 
   @ApiProperty({
+    description: 'Amount due for this payment period',
+    example: 1500.0,
+  })
+  amountDue: number;
+
+  @ApiProperty({
+    description: 'Amount paid so far',
+    example: 1500.0,
+  })
+  amountPaid: number;
+
+  @ApiProperty({
+    description: 'Remaining balance (amountDue - amountPaid)',
+    example: 0.0,
+  })
+  balance: number;
+
+  @ApiProperty({
     description: 'Currency code',
     default: 'KES',
     example: 'KES',
@@ -58,6 +76,18 @@ export class PaymentResponseDto {
     example: '2024-01-15',
   })
   paymentDate: Date;
+
+  @ApiProperty({
+    description: 'Due date for this payment',
+    example: '2024-01-15',
+  })
+  dueDate: Date;
+
+  @ApiPropertyOptional({
+    description: 'Timestamp when payment was fully paid',
+    example: '2024-01-15T10:30:00Z',
+  })
+  paidAt?: Date;
 
   @ApiProperty({
     description: 'Payment method',
@@ -115,6 +145,12 @@ export class PaymentResponseDto {
     example: 500.0,
   })
   balanceAfter?: number;
+
+  @ApiProperty({
+    description: 'Whether late fee has been applied',
+    default: false,
+  })
+  lateFeeApplied: boolean;
 
   @ApiPropertyOptional({
     description: 'Receipt/image/PDF attachment URL',

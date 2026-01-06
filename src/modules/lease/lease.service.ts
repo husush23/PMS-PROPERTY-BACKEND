@@ -26,6 +26,7 @@ import { UnitStatus } from '../../shared/enums/unit-status.enum';
 import { TenantStatus } from '../../shared/enums/tenant-status.enum';
 import { TenantService } from '../tenant/tenant.service';
 import { RentGenerationService } from '../payment/rent-generation.service';
+import { RentCycleGenerationService } from '../rent-cycle/rent-cycle-generation.service';
 import { Payment } from '../payment/entities/payment.entity';
 import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 import { PaymentFrequency } from '../../shared/enums/payment-frequency.enum';
@@ -54,6 +55,8 @@ export class LeaseService {
     private tenantService: TenantService,
     @Inject(forwardRef(() => RentGenerationService))
     private rentGenerationService: RentGenerationService,
+    @Inject(forwardRef(() => RentCycleGenerationService))
+    private rentCycleGenerationService: RentCycleGenerationService,
   ) {}
 
   async create(
@@ -847,14 +850,22 @@ export class LeaseService {
       activeLeasesCount,
     );
 
-    // Generate first rent payment
+    // Generate first rent cycle (invoice)
     try {
-      await this.rentGenerationService.generateFirstPayment(leaseId);
+      await this.rentCycleGenerationService.generateFirstCycle(leaseId);
     } catch (error) {
-      // Log error but don't fail activation if payment generation fails
+      // Log detailed error for debugging
       console.error(
-        `Failed to generate first payment for lease ${leaseId}:`,
+        `Failed to generate first rent cycle for lease ${leaseId}:`,
         error.message,
+        error.stack,
+      );
+      // Re-throw error to fail activation - rent cycle generation is critical
+      throw new BusinessException(
+        ErrorCode.BAD_REQUEST,
+        `Lease activation failed: Unable to generate first rent cycle. ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        { leaseId, originalError: error.message },
       );
     }
 

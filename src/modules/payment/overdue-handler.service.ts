@@ -1,13 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan } from 'typeorm';
 import { Payment } from './entities/payment.entity';
 import { Lease } from '../lease/entities/lease.entity';
+import { RentCycle } from '../rent-cycle/entities/rent-cycle.entity';
 import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 import { PaymentType } from '../../shared/enums/payment-type.enum';
 import { PaymentMethod } from '../../shared/enums/payment-method.enum';
 import { LateFeeType } from '../../shared/enums/late-fee-type.enum';
 import { LeaseStatus } from '../../shared/enums/lease-status.enum';
+import { RentCycleStatus } from '../../shared/enums/rent-cycle-status.enum';
+import { RentCycleService } from '../rent-cycle/rent-cycle.service';
 
 @Injectable()
 export class OverdueHandlerService {
@@ -16,60 +19,75 @@ export class OverdueHandlerService {
     private paymentRepository: Repository<Payment>,
     @InjectRepository(Lease)
     private leaseRepository: Repository<Lease>,
+    @InjectRepository(RentCycle)
+    private rentCycleRepository: Repository<RentCycle>,
+    @Inject(forwardRef(() => RentCycleService))
+    private rentCycleService: RentCycleService,
   ) {}
 
   /**
-   * Check and mark overdue payments, apply late fees (cron job)
+   * Check and mark overdue rent cycles, apply late fees (cron job)
    */
   async checkAndMarkOverdue(): Promise<void> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Find payments that are past due date + grace period and not fully paid
-    const payments = await this.paymentRepository
-      .createQueryBuilder('payment')
-      .leftJoinAndSelect('payment.lease', 'lease')
-      .where('payment.status IN (:...statuses)', {
-        statuses: [PaymentStatus.PENDING, PaymentStatus.PARTIAL],
-      })
-      .andWhere('payment.balance > 0')
-      .andWhere('payment.isActive = :isActive', { isActive: true })
-      .andWhere('lease.status = :leaseStatus', {
+    // Find rent cycles that are past due date + grace period and not fully paid
+    const rentCycles = await this.rentCycleRepository
+      .createQueryBuilder('rentCycle')
+      .leftJoinAndSelect('rentCycle.lease', 'lease')
+      .leftJoinAndSelect('rentCycle.lineItems', 'lineItems')
+      .where('lease.status = :leaseStatus', {
         leaseStatus: LeaseStatus.ACTIVE,
       })
+      .andWhere('lease.isActive = :isActive', { isActive: true })
       .getMany();
 
-    for (const payment of payments) {
+    for (const rentCycle of rentCycles) {
       try {
-        const lease = payment.lease;
+        const lease = rentCycle.lease;
         if (!lease) {
           continue;
         }
 
+        // Load payments for this cycle
+        const payments = await this.paymentRepository.find({
+          where: {
+            rentCycleId: rentCycle.id,
+            isActive: true,
+          },
+        });
+
+        // Calculate status and amounts
+        const status = this.rentCycleService.calculateStatus({
+          ...rentCycle,
+          payments,
+        });
+        const amounts = this.rentCycleService.calculateAmounts({
+          ...rentCycle,
+          payments,
+        });
+
         // Calculate grace period end date
-        const gracePeriodEnd = new Date(payment.dueDate);
+        const gracePeriodEnd = new Date(rentCycle.dueDate);
         gracePeriodEnd.setDate(
           gracePeriodEnd.getDate() + (lease.gracePeriodDays || 0),
         );
 
-        // Check if payment is overdue (past grace period)
-        if (today > gracePeriodEnd && payment.balance > 0) {
-          // Mark as overdue if not already
-          if (payment.status !== PaymentStatus.OVERDUE) {
-            await this.paymentRepository.update(payment.id, {
-              status: PaymentStatus.OVERDUE,
-            });
-          }
+        // Check if cycle is overdue (past grace period)
+        if (today > gracePeriodEnd && amounts.balance > 0) {
+          // Check if late fee already applied
+          const hasLateFee = rentCycle.lineItems.some((item) => item.isLateFee);
 
           // Apply late fee if not already applied
-          if (!payment.lateFeeApplied && lease.lateFeeType !== LateFeeType.NONE) {
-            await this.applyLateFee(payment.id);
+          if (!hasLateFee && lease.lateFeeType !== LateFeeType.NONE) {
+            await this.applyLateFee(rentCycle.id, lease);
           }
         }
       } catch (error) {
-        // Log error but continue with other payments
+        // Log error but continue with other cycles
         console.error(
-          `Error processing overdue payment ${payment.id}:`,
+          `Error processing overdue rent cycle ${rentCycle.id}:`,
           error.message,
         );
       }
@@ -77,69 +95,40 @@ export class OverdueHandlerService {
   }
 
   /**
-   * Apply late fee to a payment
+   * Apply late fee to a rent cycle (adds as line item)
    */
-  private async applyLateFee(paymentId: string): Promise<void> {
-    const payment = await this.paymentRepository.findOne({
-      where: { id: paymentId },
-      relations: ['lease'],
+  private async applyLateFee(
+    rentCycleId: string,
+    lease: Lease,
+  ): Promise<void> {
+    const rentCycle = await this.rentCycleRepository.findOne({
+      where: { id: rentCycleId },
+      relations: ['lineItems'],
     });
 
-    if (!payment || !payment.lease) {
+    if (!rentCycle) {
       return;
     }
 
-    const lease = payment.lease;
-    const lateFeeAmount = this.calculateLateFee(lease, payment);
+    const lateFeeAmount = this.calculateLateFee(lease, rentCycle);
 
     if (lateFeeAmount > 0) {
-      // Update payment balance with late fee
-      const newBalance = Number(payment.balance) + lateFeeAmount;
-      const newAmountDue = Number(payment.amountDue) + lateFeeAmount;
-
-      await this.paymentRepository.update(payment.id, {
-        lateFeeApplied: true,
-        balance: newBalance,
-        amountDue: newAmountDue,
-        notes: payment.notes
-          ? `${payment.notes}\nLate fee applied: ${lease.currency} ${lateFeeAmount.toFixed(2)}`
-          : `Late fee applied: ${lease.currency} ${lateFeeAmount.toFixed(2)}`,
-      });
-
-      // Create a separate late fee payment record for tracking
-      const lateFeePayment = this.paymentRepository.create({
-        companyId: payment.companyId,
-        tenantId: payment.tenantId,
-        leaseId: payment.leaseId,
-        amount: lateFeeAmount,
-        amountDue: lateFeeAmount,
-        amountPaid: 0,
-        balance: lateFeeAmount,
-        currency: lease.currency,
-        paymentDate: new Date(),
-        dueDate: payment.dueDate, // Same due date as original payment
-        paymentMethod: PaymentMethod.OTHER, // System-generated
-        paymentType: PaymentType.LATE_FEE,
-        status: PaymentStatus.PENDING,
-        period: payment.period,
-        isPartial: false,
-        recordedBy: lease.createdBy || payment.tenantId,
-        notes: `Late fee for payment period ${payment.period}`,
-      });
-
-      await this.paymentRepository.save(lateFeePayment);
-    } else {
-      // Mark as applied even if amount is 0 (NONE type)
-      await this.paymentRepository.update(payment.id, {
-        lateFeeApplied: true,
-      });
+      // Use RentCycleService to apply late fee (adds line item)
+      // Note: We need a userId, but for system operations we can use a system user ID
+      // In production, you might want to pass a system user ID or make applyLateFee accept optional userId
+      try {
+        await this.rentCycleService.applyLateFee(rentCycleId, lease.createdBy || rentCycle.tenantId);
+      } catch (error) {
+        // If applyLateFee fails (e.g., already applied), continue
+        console.error(`Error applying late fee to rent cycle ${rentCycleId}:`, error.message);
+      }
     }
   }
 
   /**
    * Calculate late fee amount based on lease configuration
    */
-  private calculateLateFee(lease: Lease, payment: Payment): number {
+  private calculateLateFee(lease: Lease, rentCycle: RentCycle): number {
     if (lease.lateFeeType === LateFeeType.NONE) {
       return 0;
     }
@@ -150,10 +139,10 @@ export class OverdueHandlerService {
     }
 
     if (lease.lateFeeType === LateFeeType.PERCENTAGE) {
-      // Calculate percentage of amountDue
+      // Calculate percentage of totalAmountDue
       const percentage = Number(lease.lateFeeValue || 0);
       if (percentage > 0) {
-        return Math.round((Number(payment.amountDue) * percentage) / 100 * 100) / 100;
+        return Math.round((Number(rentCycle.totalAmountDue) * percentage) / 100 * 100) / 100;
       }
     }
 

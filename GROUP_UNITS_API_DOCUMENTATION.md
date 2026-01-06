@@ -784,3 +784,4 @@ curl -X POST \
 - Automatic unit type derivation from bedrooms
 - COMPANY_ADMIN only access control
 
+

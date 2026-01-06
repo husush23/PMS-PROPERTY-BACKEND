@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PaymentController } from './payment.controller';
 import { PaymentService } from './payment.service';
@@ -10,10 +10,13 @@ import { Lease } from '../lease/entities/lease.entity';
 import { User } from '../user/entities/user.entity';
 import { Company } from '../company/entities/company.entity';
 import { UserCompany } from '../company/entities/user-company.entity';
+import { RentCycleModule } from '../rent-cycle/rent-cycle.module';
+import { RentCycle } from '../rent-cycle/entities/rent-cycle.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Payment, Lease, User, Company, UserCompany]),
+    TypeOrmModule.forFeature([Payment, Lease, User, Company, UserCompany, RentCycle]),
+    forwardRef(() => RentCycleModule),
   ],
   controllers: [PaymentController],
   providers: [

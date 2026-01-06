@@ -22,6 +22,14 @@ export class CreatePaymentDto {
   @IsUUID('4', { message: 'Lease ID must be a valid UUID' })
   leaseId: string;
 
+  @ApiPropertyOptional({
+    description: 'Rent Cycle ID (Invoice ID) - if not provided, system will find or create one',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @IsOptional()
+  @IsUUID('4', { message: 'Rent Cycle ID must be a valid UUID' })
+  rentCycleId?: string;
+
   @ApiProperty({
     description: 'Payment amount',
     example: 1500.0,

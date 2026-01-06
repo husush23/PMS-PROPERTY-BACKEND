@@ -383,6 +383,28 @@ export class PaymentController {
     };
   }
 
+  @Post('scheduler/check-due')
+  @HttpCode(HttpStatus.OK)
+  @ApiCookieAuth('access_token')
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
+  @ApiOperation({
+    summary:
+      'Manually trigger due payment check (COMPANY_ADMIN/MANAGER only)',
+    description:
+      'This endpoint checks for payments that are due today and marks them as DUE. Typically called by a cron job daily before the overdue check.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Due payment check completed',
+  })
+  async checkDue(@AuthUser() user: { id: string }) {
+    await this.paymentSchedulerService.checkAndMarkDue();
+    return {
+      success: true,
+      message: 'Due payment check completed successfully',
+    };
+  }
+
   @Post('scheduler/check-overdue')
   @HttpCode(HttpStatus.OK)
   @ApiCookieAuth('access_token')
@@ -391,7 +413,7 @@ export class PaymentController {
     summary:
       'Manually trigger overdue payment check (COMPANY_ADMIN/MANAGER only)',
     description:
-      'This endpoint checks for overdue payments and applies late fees. Typically called by a cron job daily.',
+      'This endpoint checks for overdue payments and applies late fees. Typically called by a cron job daily after the due check.',
   })
   @ApiResponse({
     status: 200,

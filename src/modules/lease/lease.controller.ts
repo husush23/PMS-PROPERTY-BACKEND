@@ -142,7 +142,7 @@ export class LeaseController {
     };
   }
 
-  @Post(':id/activate')
+  @Patch(':id/activate')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({

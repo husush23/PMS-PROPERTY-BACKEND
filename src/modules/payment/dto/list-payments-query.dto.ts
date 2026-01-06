@@ -54,6 +54,14 @@ export class ListPaymentsQueryDto {
   leaseId?: string;
 
   @ApiPropertyOptional({
+    description: 'Filter by rent cycle ID (invoice ID)',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @IsOptional()
+  @IsUUID('4', { message: 'Rent Cycle ID must be a valid UUID' })
+  rentCycleId?: string;
+
+  @ApiPropertyOptional({
     description: 'Filter by company ID',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })

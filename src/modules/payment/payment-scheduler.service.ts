@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { RentGenerationService } from './rent-generation.service';
 import { OverdueHandlerService } from './overdue-handler.service';
+import { PaymentService } from './payment.service';
+import { RentCycleGenerationService } from '../rent-cycle/rent-cycle-generation.service';
 
 @Injectable()
 export class PaymentSchedulerService {
@@ -9,20 +11,41 @@ export class PaymentSchedulerService {
   constructor(
     private readonly rentGenerationService: RentGenerationService,
     private readonly overdueHandlerService: OverdueHandlerService,
+    private readonly paymentService: PaymentService,
+    @Inject(forwardRef(() => RentCycleGenerationService))
+    private readonly rentCycleGenerationService: RentCycleGenerationService,
   ) {}
 
   /**
-   * Generate monthly payments for all active leases
+   * Generate monthly rent cycles for all active leases
    * Should be called daily (e.g., at 2 AM)
    */
   async generateMonthlyPayments(): Promise<void> {
-    this.logger.log('Starting monthly rent generation job...');
+    this.logger.log('Starting monthly rent cycle generation job...');
     try {
-      await this.rentGenerationService.generateMonthlyPayments();
-      this.logger.log('Monthly rent generation job completed successfully');
+      await this.rentCycleGenerationService.generateMonthlyCycles();
+      this.logger.log('Monthly rent cycle generation job completed successfully');
     } catch (error) {
       this.logger.error(
-        `Error in monthly rent generation job: ${error.message}`,
+        `Error in monthly rent cycle generation job: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Check and mark payments as DUE when due date arrives
+   * Should be called daily (e.g., at 1 AM) before overdue check
+   */
+  async checkAndMarkDue(): Promise<void> {
+    this.logger.log('Starting due payment check job...');
+    try {
+      await this.paymentService.checkAndMarkDue();
+      this.logger.log('Due payment check job completed successfully');
+    } catch (error) {
+      this.logger.error(
+        `Error in due payment check job: ${error.message}`,
         error.stack,
       );
       throw error;
@@ -31,7 +54,7 @@ export class PaymentSchedulerService {
 
   /**
    * Check and mark overdue payments, apply late fees
-   * Should be called daily (e.g., at 3 AM)
+   * Should be called daily (e.g., at 3 AM) after due check
    */
   async checkAndMarkOverdue(): Promise<void> {
     this.logger.log('Starting overdue payment check job...');

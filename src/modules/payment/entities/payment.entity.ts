@@ -25,6 +25,7 @@ import { PaymentType } from '../../../shared/enums/payment-type.enum';
 @Index(['leaseId', 'paymentDate'])
 @Index(['dueDate'])
 @Index(['status', 'dueDate'])
+@Index(['rentCycleId'])
 export class Payment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -37,6 +38,9 @@ export class Payment {
 
   @Column('uuid')
   leaseId: string;
+
+  @Column('uuid', { nullable: true })
+  rentCycleId: string | null; // Link to RentCycle (Invoice)
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   amount: number;
@@ -108,6 +112,9 @@ export class Payment {
   @Column({ default: true })
   isActive: boolean;
 
+  @Column({ default: false })
+  isLegacy: boolean; // True for old payments before RentCycle system
+
   @CreateDateColumn()
   createdAt: Date;
 
@@ -130,4 +137,12 @@ export class Payment {
   @ManyToOne(() => User, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'recordedBy' })
   recordedByUser: User;
+
+  // RentCycle relationship - using string to avoid circular dependency
+  @ManyToOne('RentCycle', 'payments', {
+    onDelete: 'SET NULL',
+    nullable: true,
+  })
+  @JoinColumn({ name: 'rentCycleId' })
+  rentCycle?: any; // Type will be resolved at runtime
 }

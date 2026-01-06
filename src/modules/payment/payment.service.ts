@@ -1,4 +1,4 @@
-import { Injectable, HttpStatus } from '@nestjs/common';
+import { Injectable, HttpStatus, forwardRef, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -18,6 +18,7 @@ import { ReversePaymentDto } from './dto/reverse-payment.dto';
 import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { LeaseStatus } from '../../shared/enums/lease-status.enum';
+import { RentCycle } from '../rent-cycle/entities/rent-cycle.entity';
 
 @Injectable()
 export class PaymentService {
@@ -30,6 +31,8 @@ export class PaymentService {
     private userRepository: Repository<User>,
     @InjectRepository(UserCompany)
     private userCompanyRepository: Repository<UserCompany>,
+    @InjectRepository(RentCycle)
+    private rentCycleRepository: Repository<RentCycle>,
   ) {}
 
   async create(
@@ -167,9 +170,33 @@ export class PaymentService {
       );
     }
 
-    // Calculate dueDate from lease nextRentDueDate or use payment date
+    // Find or create RentCycle if rentCycleId not provided
+    let rentCycleId = createDto.rentCycleId;
+    let rentCycle: RentCycle | null = null;
+
+    if (!rentCycleId && createDto.period) {
+      // Try to find existing RentCycle for this lease + period
+      rentCycle = await this.rentCycleRepository.findOne({
+        where: {
+          leaseId: createDto.leaseId,
+          period: createDto.period,
+        },
+      });
+
+      if (rentCycle) {
+        rentCycleId = rentCycle.id;
+        // Use RentCycle's amountDue if not provided
+        if (!amountDue) {
+          amountDue = Number(rentCycle.totalAmountDue);
+        }
+      }
+    }
+
+    // Calculate dueDate from RentCycle, lease nextRentDueDate, or use payment date
     let dueDate = createDto.dueDate ? new Date(createDto.dueDate) : null;
-    if (!dueDate && lease.nextRentDueDate) {
+    if (!dueDate && rentCycle) {
+      dueDate = new Date(rentCycle.dueDate);
+    } else if (!dueDate && lease.nextRentDueDate) {
       dueDate = new Date(lease.nextRentDueDate);
     }
     if (!dueDate) {
@@ -183,12 +210,21 @@ export class PaymentService {
     const amountPaid = createDto.amount;
     const balance = Math.max(0, amountDue - amountPaid); // Ensure balance is never negative
 
-    // Determine status based on balance
+    // Determine status based on balance and due date
     let status = PaymentStatus.PENDING;
     if (balance <= 0) {
       status = PaymentStatus.PAID;
     } else if (amountPaid > 0) {
       status = PaymentStatus.PARTIAL;
+    } else {
+      // Check if payment is due today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const dueDateCheck = new Date(dueDate);
+      dueDateCheck.setHours(0, 0, 0, 0);
+      if (dueDateCheck.getTime() === today.getTime()) {
+        status = PaymentStatus.DUE;
+      }
     }
 
     // Create payment entity
@@ -196,6 +232,7 @@ export class PaymentService {
       companyId: lease.companyId,
       tenantId: lease.tenantId,
       leaseId: createDto.leaseId,
+      rentCycleId: rentCycleId || null,
       amount: createDto.amount,
       amountDue: amountDue,
       amountPaid: amountPaid,
@@ -214,6 +251,7 @@ export class PaymentService {
       balanceAfter: createDto.balanceAfter || balance,
       attachmentUrl: createDto.attachmentUrl,
       paidAt: balance <= 0 ? new Date() : undefined,
+      isLegacy: false, // New payments are not legacy
     });
 
     const savedPayment = await this.paymentRepository.save(payment);
@@ -299,6 +337,12 @@ export class PaymentService {
     if (queryDto.leaseId) {
       queryBuilder.andWhere('payment.leaseId = :leaseId', {
         leaseId: queryDto.leaseId,
+      });
+    }
+
+    if (queryDto.rentCycleId) {
+      queryBuilder.andWhere('payment.rentCycleId = :rentCycleId', {
+        rentCycleId: queryDto.rentCycleId,
       });
     }
 
@@ -1118,20 +1162,31 @@ export class PaymentService {
   ): void {
     const allowedTransitions: Record<PaymentStatus, PaymentStatus[]> = {
       [PaymentStatus.PENDING]: [
+        PaymentStatus.DUE,
         PaymentStatus.PAID,
         PaymentStatus.PARTIAL,
         PaymentStatus.OVERDUE,
         PaymentStatus.FAILED,
         PaymentStatus.CANCELLED,
       ],
+      [PaymentStatus.DUE]: [
+        PaymentStatus.PAID,
+        PaymentStatus.PARTIAL,
+        PaymentStatus.OVERDUE,
+        PaymentStatus.PENDING,
+        PaymentStatus.FAILED,
+        PaymentStatus.CANCELLED,
+      ],
       [PaymentStatus.PARTIAL]: [
         PaymentStatus.PAID,
         PaymentStatus.OVERDUE,
+        PaymentStatus.DUE,
         PaymentStatus.PENDING,
       ],
       [PaymentStatus.OVERDUE]: [
         PaymentStatus.PAID,
         PaymentStatus.PARTIAL,
+        PaymentStatus.DUE,
         PaymentStatus.PENDING,
       ],
       [PaymentStatus.PAID]: [PaymentStatus.REFUNDED],
@@ -1161,6 +1216,28 @@ export class PaymentService {
           where: { id: payment.id },
           relations: ['lease', 'tenant', 'company', 'recordedByUser'],
         })) || payment;
+    }
+
+    // Check and update DUE status if payment is due today
+    if (
+      payment.status === PaymentStatus.PENDING &&
+      payment.dueDate &&
+      payment.balance > 0 &&
+      payment.lease &&
+      payment.lease.status === LeaseStatus.ACTIVE
+    ) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const dueDate = new Date(payment.dueDate);
+      dueDate.setHours(0, 0, 0, 0);
+
+      if (dueDate.getTime() === today.getTime()) {
+        // Update status to DUE if not already updated
+        await this.paymentRepository.update(payment.id, {
+          status: PaymentStatus.DUE,
+        });
+        payment.status = PaymentStatus.DUE;
+      }
     }
 
     // Calculate derived fields
@@ -1284,6 +1361,57 @@ export class PaymentService {
     const dueDate = new Date(payment.dueDate);
     dueDate.setHours(0, 0, 0, 0);
 
-    return today > dueDate && payment.status === PaymentStatus.OVERDUE;
+    return (
+      today > dueDate &&
+      (payment.status === PaymentStatus.OVERDUE ||
+        payment.status === PaymentStatus.DUE)
+    );
+  }
+
+  /**
+   * Check and update payments to DUE status when due date arrives
+   * Should be called daily (e.g., at 1 AM) before overdue check
+   */
+  async checkAndMarkDue(): Promise<void> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Find payments that are due today and still PENDING
+    const payments = await this.paymentRepository.find({
+      where: {
+        status: PaymentStatus.PENDING,
+        isActive: true,
+      },
+      relations: ['lease'],
+    });
+
+    for (const payment of payments) {
+      try {
+        // Skip if lease is not active
+        if (!payment.lease || payment.lease.status !== LeaseStatus.ACTIVE) {
+          continue;
+        }
+
+        if (!payment.dueDate || payment.balance <= 0) {
+          continue;
+        }
+
+        const dueDate = new Date(payment.dueDate);
+        dueDate.setHours(0, 0, 0, 0);
+
+        // Check if payment is due today
+        if (dueDate.getTime() === today.getTime()) {
+          await this.paymentRepository.update(payment.id, {
+            status: PaymentStatus.DUE,
+          });
+        }
+      } catch (error) {
+        // Log error but continue with other payments
+        console.error(
+          `Error processing due payment ${payment.id}:`,
+          error.message,
+        );
+      }
+    }
   }
 }

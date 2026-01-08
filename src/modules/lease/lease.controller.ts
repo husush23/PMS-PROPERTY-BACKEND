@@ -10,6 +10,7 @@ import {
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -20,7 +21,11 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { LeaseService } from './lease.service';
+import { LeaseSchedulerService } from './lease-scheduler.service';
 import { AuthUser } from '../../common/decorators/auth-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { UserRole } from '../../shared/enums/user-role.enum';
 import { CreateLeaseDto } from './dto/create-lease.dto';
 import { UpdateLeaseDto } from './dto/update-lease.dto';
 import { LeaseResponseDto } from './dto/lease-response.dto';
@@ -31,15 +36,19 @@ import { TransferLeaseDto } from './dto/transfer-lease.dto';
 
 @ApiTags('leases')
 @Controller({ path: 'leases', version: '1' })
+@UseGuards(RolesGuard)
 export class LeaseController {
-  constructor(private readonly leaseService: LeaseService) {}
+  constructor(
+    private readonly leaseService: LeaseService,
+    private readonly leaseSchedulerService: LeaseSchedulerService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary:
-      'Create a new lease (starts as DRAFT) (COMPANY_ADMIN/MANAGER/LANDLORD only)',
+      'Create a new lease (auto-activates if startDate <= today) (COMPANY_ADMIN/MANAGER/LANDLORD only)',
   })
   @ApiResponse({
     status: 201,
@@ -142,35 +151,25 @@ export class LeaseController {
     };
   }
 
-  @Patch(':id/activate')
+  @Post('scheduler/check-activation')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth('JWT-auth')
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
   @ApiOperation({
-    summary: 'Activate lease (DRAFT → ACTIVE) (COMPANY_ADMIN/MANAGER only)',
+    summary:
+      'Manually trigger lease activation check (COMPANY_ADMIN/MANAGER only)',
+    description:
+      'This endpoint checks for DRAFT leases whose start date has been reached and activates them. Typically called by a cron job daily (e.g., at midnight).',
   })
-  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,
-    description: 'Lease activated successfully',
-    type: LeaseResponseDto,
+    description: 'Lease activation check completed',
   })
-  @ApiResponse({
-    status: 400,
-    description: 'Lease cannot be activated',
-  })
-  @ApiResponse({
-    status: 403,
-    description: 'Insufficient permissions',
-  })
-  async activate(
-    @Param('id', ParseUUIDPipe) id: string,
-    @AuthUser() user: { id: string },
-  ) {
-    const lease = await this.leaseService.activate(id, user.id);
+  async checkActivation(@AuthUser() user: { id: string }) {
+    await this.leaseSchedulerService.checkAndActivateLeases();
     return {
       success: true,
-      data: lease,
-      message: 'Lease activated successfully',
+      message: 'Lease activation check completed successfully',
     };
   }
 

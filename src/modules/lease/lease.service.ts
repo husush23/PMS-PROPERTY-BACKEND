@@ -5,7 +5,7 @@ import {
 } from '../../common/exceptions/business.exception';
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan, Not } from 'typeorm';
+import { Repository, LessThan, LessThanOrEqual, Not } from 'typeorm';
 import { Lease } from './entities/lease.entity';
 import { Unit } from '../unit/entities/unit.entity';
 import { Property } from '../property/entities/property.entity';
@@ -300,6 +300,28 @@ export class LeaseService {
     });
 
     const savedLease = await this.leaseRepository.save(lease);
+
+    // Check if lease should be activated immediately (start date is today or earlier)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const leaseStartDate = new Date(startDate);
+    leaseStartDate.setHours(0, 0, 0, 0);
+
+    if (leaseStartDate <= today) {
+      // Activate lease immediately
+      try {
+        await this.activateLeaseInternal(savedLease.id);
+      } catch (error) {
+        // If activation fails, throw error so user knows
+        throw new BusinessException(
+          ErrorCode.BAD_REQUEST,
+          `Lease created but activation failed: ${error.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+          { leaseId: savedLease.id, originalError: error.message },
+        );
+      }
+    }
+
     return this.findOne(savedLease.id, requesterUserId);
   }
 
@@ -727,16 +749,11 @@ export class LeaseService {
     return this.findOne(leaseId, requesterUserId);
   }
 
-  async activate(
-    leaseId: string,
-    requesterUserId: string,
-  ): Promise<LeaseResponseDto> {
-    // Permission check (COMPANY_ADMIN, MANAGER only)
-    const requesterUser = await this.userRepository.findOne({
-      where: { id: requesterUserId },
-    });
-    const isSuperAdmin = requesterUser?.isSuperAdmin || false;
-
+  /**
+   * Internal method to activate a lease
+   * Called automatically when start date is reached or during creation if start date is today/earlier
+   */
+  private async activateLeaseInternal(leaseId: string): Promise<void> {
     const lease = await this.leaseRepository.findOne({
       where: { id: leaseId, isActive: true },
       relations: ['unit', 'tenant'],
@@ -749,28 +766,6 @@ export class LeaseService {
         HttpStatus.NOT_FOUND,
         { leaseId },
       );
-    }
-
-    if (!isSuperAdmin) {
-      const requester = await this.userCompanyRepository.findOne({
-        where: {
-          companyId: lease.companyId,
-          userId: requesterUserId,
-          isActive: true,
-        },
-      });
-
-      if (
-        !requester ||
-        ![UserRole.COMPANY_ADMIN, UserRole.MANAGER].includes(requester.role)
-      ) {
-        throw new BusinessException(
-          ErrorCode.INSUFFICIENT_PERMISSIONS,
-          'Only company administrators and managers can activate leases.',
-          HttpStatus.FORBIDDEN,
-          { requiredRoles: [UserRole.COMPANY_ADMIN, UserRole.MANAGER] },
-        );
-      }
     }
 
     // Validate lease status is DRAFT
@@ -868,8 +863,6 @@ export class LeaseService {
         { leaseId, originalError: error.message },
       );
     }
-
-    return this.findOne(leaseId, requesterUserId);
   }
 
   async terminate(
@@ -1416,6 +1409,38 @@ export class LeaseService {
     });
 
     return leases.map((lease) => this.toResponseDto(lease));
+  }
+
+  /**
+   * Check and activate leases whose start date has been reached
+   * Called by scheduler service
+   */
+  async checkAndActivateLeases(): Promise<void> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const leasesToActivate = await this.leaseRepository.find({
+      where: {
+        status: LeaseStatus.DRAFT,
+        startDate: LessThanOrEqual(today),
+        isActive: true,
+      },
+      relations: ['unit', 'tenant'],
+    });
+
+    for (const lease of leasesToActivate) {
+      try {
+        await this.activateLeaseInternal(lease.id);
+        console.log(`Successfully activated lease ${lease.leaseNumber} (${lease.id})`);
+      } catch (error) {
+        // Log error but continue with other leases
+        console.error(
+          `Failed to activate lease ${lease.leaseNumber} (${lease.id}):`,
+          error.message,
+          error.stack,
+        );
+      }
+    }
   }
 
   async checkAndExpireLeases(): Promise<void> {

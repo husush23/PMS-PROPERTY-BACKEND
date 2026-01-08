@@ -8,6 +8,7 @@ import { RentCycleLineItem } from './entities/rent-cycle-line-item.entity';
 import { Lease } from '../lease/entities/lease.entity';
 import { Payment } from '../payment/entities/payment.entity';
 import { UserCompany } from '../company/entities/user-company.entity';
+import { User } from '../user/entities/user.entity';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { UserCompany } from '../company/entities/user-company.entity';
       Lease,
       Payment,
       UserCompany,
+      User,
     ]),
   ],
   controllers: [RentCycleController],

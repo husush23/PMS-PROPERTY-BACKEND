@@ -17,17 +17,17 @@ export class PaymentSchedulerService {
   ) {}
 
   /**
-   * Generate monthly rent cycles for all active leases
+   * Generate rent cycles for all active leases (supports all payment frequencies)
    * Should be called daily (e.g., at 2 AM)
    */
   async generateMonthlyPayments(): Promise<void> {
-    this.logger.log('Starting monthly rent cycle generation job...');
+    this.logger.log('Starting rent cycle generation job...');
     try {
-      await this.rentCycleGenerationService.generateMonthlyCycles();
-      this.logger.log('Monthly rent cycle generation job completed successfully');
+      await this.rentCycleGenerationService.generateRentCycles();
+      this.logger.log('Rent cycle generation job completed successfully');
     } catch (error) {
       this.logger.error(
-        `Error in monthly rent cycle generation job: ${error.message}`,
+        `Error in rent cycle generation job: ${error.message}`,
         error.stack,
       );
       throw error;

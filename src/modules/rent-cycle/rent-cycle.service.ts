@@ -1,6 +1,6 @@
 import { Injectable, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, Not, IsNull } from 'typeorm';
 import {
   BusinessException,
   ErrorCode,
@@ -10,6 +10,7 @@ import { RentCycle } from './entities/rent-cycle.entity';
 import { RentCycleLineItem } from './entities/rent-cycle-line-item.entity';
 import { Lease } from '../lease/entities/lease.entity';
 import { UserCompany } from '../company/entities/user-company.entity';
+import { User } from '../user/entities/user.entity';
 import { CreateRentCycleDto } from './dto/create-rent-cycle.dto';
 import { RentCycleResponseDto } from './dto/rent-cycle-response.dto';
 import { ListRentCyclesQueryDto } from './dto/list-rent-cycles-query.dto';
@@ -17,6 +18,7 @@ import { RentCycleStatus } from '../../shared/enums/rent-cycle-status.enum';
 import { RentCycleLineItemType } from '../../shared/enums/rent-cycle-line-item-type.enum';
 import { Payment } from '../payment/entities/payment.entity';
 import { PaymentStatus } from '../../shared/enums/payment-status.enum';
+import { UserRole } from '../../shared/enums/user-role.enum';
 
 @Injectable()
 export class RentCycleService {
@@ -31,6 +33,8 @@ export class RentCycleService {
     private userCompanyRepository: Repository<UserCompany>,
     @InjectRepository(Payment)
     private paymentRepository: Repository<Payment>,
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
   ) {}
 
   async create(
@@ -78,11 +82,70 @@ export class RentCycleService {
       0,
     );
 
-    // Generate invoice number
-    const invoiceNumber = await this.generateInvoiceNumber(
+    // Generate invoice number - now checks globally for uniqueness
+    let invoiceNumber = await this.generateInvoiceNumber(
       lease.companyId,
       createDto.period,
     );
+
+    // Double-check if this invoice number already exists (race condition protection)
+    const existingWithNumber = await this.rentCycleRepository.findOne({
+      where: { invoiceNumber },
+    });
+
+    if (existingWithNumber) {
+      // If it exists, generate a new one with a higher sequence
+      // This handles the rare race condition where two requests generate the same number
+      const [year, month] = createDto.period.split('-');
+      const prefix = `INV-${year}-${month}-`;
+      
+      // Get all existing invoice numbers for this period
+      const allExisting = await this.rentCycleRepository
+        .createQueryBuilder('cycle')
+        .where('cycle.invoiceNumber LIKE :prefix', {
+          prefix: `${prefix}%`,
+        })
+        .select('cycle.invoiceNumber', 'invoiceNumber')
+        .getRawMany();
+
+      // Extract all sequence numbers
+      const usedSequences = allExisting
+        .map((inv) => {
+          const parts = inv.invoiceNumber.split('-');
+          const seq = parseInt(parts[parts.length - 1] || '0', 10);
+          return isNaN(seq) ? 0 : seq;
+        })
+        .filter((seq) => seq > 0)
+        .sort((a, b) => b - a);
+
+      // Use the highest sequence + 1
+      const nextSequence = usedSequences.length > 0 ? usedSequences[0] + 1 : 1;
+      invoiceNumber = `${prefix}${nextSequence.toString().padStart(3, '0')}`;
+      
+      // Final check - if this also exists, something is very wrong
+      const finalCheck = await this.rentCycleRepository.findOne({
+        where: { invoiceNumber },
+      });
+      
+      if (finalCheck) {
+        throw new BusinessException(
+          ErrorCode.INTERNAL_SERVER_ERROR,
+          'Unable to generate unique invoice number. Please contact support.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+          { period: createDto.period },
+        );
+      }
+    }
+
+    // Safety check: invoiceNumber should always be assigned at this point
+    if (!invoiceNumber) {
+      throw new BusinessException(
+        ErrorCode.INTERNAL_SERVER_ERROR,
+        'Failed to generate invoice number',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        { period: createDto.period },
+      );
+    }
 
     // Create rent cycle
     const rentCycle = this.rentCycleRepository.create({
@@ -95,7 +158,34 @@ export class RentCycleService {
       totalAmountDue,
     });
 
-    const savedCycle = await this.rentCycleRepository.save(rentCycle);
+    let savedCycle: RentCycle;
+    try {
+      savedCycle = await this.rentCycleRepository.save(rentCycle);
+    } catch (error: any) {
+      // Handle duplicate invoice number error (race condition)
+      // PostgreSQL error code 23505 = unique_violation
+      // Check both constraint name and error message
+      if (
+        error.code === '23505' ||
+        (error.constraint &&
+          error.constraint.includes('UQ_rent_cycles_invoice_number')) ||
+        (error.message &&
+          error.message.includes('UQ_rent_cycles_invoice_number'))
+      ) {
+        throw new BusinessException(
+          ErrorCode.BAD_REQUEST,
+          'An invoice with this number already exists. This may happen if multiple invoices are being created simultaneously. Please try again.',
+          HttpStatus.BAD_REQUEST,
+          {
+            invoiceNumber,
+            period: createDto.period,
+            message: 'Invoice number conflict detected. Please retry the request.',
+          },
+        );
+      }
+      // Re-throw other errors
+      throw error;
+    }
 
     // Create line items
     const lineItems = createDto.lineItems.map((item) =>
@@ -136,15 +226,16 @@ export class RentCycleService {
     const skip = (page - 1) * limit;
 
     // Check if user is super admin
-    const requesterUser = await this.userCompanyRepository
-      .createQueryBuilder('uc')
-      .leftJoin('uc.user', 'user')
-      .where('uc.userId = :userId', { userId: requesterUserId })
-      .andWhere('uc.isActive = :isActive', { isActive: true })
-      .select(['uc.companyId', 'user.isSuperAdmin'])
-      .getRawOne();
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
+    const isSuperAdmin = requesterUser?.isSuperAdmin || false;
 
-    const isSuperAdmin = requesterUser?.user_isSuperAdmin || false;
+    // Check if user is a tenant
+    const userCompany = await this.userCompanyRepository.findOne({
+      where: { userId: requesterUserId, isActive: true },
+    });
+    const isTenant = userCompany?.role === UserRole.TENANT;
 
     const queryBuilder = this.rentCycleRepository
       .createQueryBuilder('rentCycle')
@@ -153,29 +244,37 @@ export class RentCycleService {
       .leftJoin('lease.tenant', 'tenant')
       .addSelect(['tenant.id', 'tenant.name', 'tenant.email']);
 
-    // Company scoping
+    // Company scoping and tenant filtering
     if (!isSuperAdmin) {
-      const userCompanies = await this.userCompanyRepository.find({
-        where: { userId: requesterUserId, isActive: true },
-        select: ['companyId'],
-      });
+      if (isTenant) {
+        // Tenants can only see their own invoices
+        queryBuilder.andWhere('rentCycle.tenantId = :tenantId', {
+          tenantId: requesterUserId,
+        });
+      } else {
+        // Admins/Managers/Staff can see invoices in their companies
+        const userCompanies = await this.userCompanyRepository.find({
+          where: { userId: requesterUserId, isActive: true },
+          select: ['companyId'],
+        });
 
-      if (userCompanies.length === 0) {
-        return {
-          data: [],
-          pagination: {
-            total: 0,
-            page,
-            limit,
-            totalPages: 0,
-          },
-        };
+        if (userCompanies.length === 0) {
+          return {
+            data: [],
+            pagination: {
+              total: 0,
+              page,
+              limit,
+              totalPages: 0,
+            },
+          };
+        }
+
+        const companyIds = userCompanies.map((uc) => uc.companyId);
+        queryBuilder.andWhere('rentCycle.companyId IN (:...companyIds)', {
+          companyIds,
+        });
       }
-
-      const companyIds = userCompanies.map((uc) => uc.companyId);
-      queryBuilder.andWhere('rentCycle.companyId IN (:...companyIds)', {
-        companyIds,
-      });
     }
 
     // Apply filters
@@ -239,12 +338,7 @@ export class RentCycleService {
     // Load payments for each cycle
     const cyclesWithPayments = await Promise.all(
       cycles.map(async (cycle) => {
-        const payments = await this.paymentRepository.find({
-          where: {
-            rentCycleId: cycle.id,
-            isActive: true,
-          },
-        });
+        const payments = await this.loadPaymentsForCycle(cycle);
         return { ...cycle, payments };
       }),
     );
@@ -294,16 +388,11 @@ export class RentCycleService {
       );
     }
 
-    // Check access
-    await this.validateCompanyAccess(cycle.companyId, requesterUserId);
+    // Check access (handles tenant and company access)
+    await this.validateAccess(cycle, requesterUserId);
 
     // Load payments
-    const payments = await this.paymentRepository.find({
-      where: {
-        rentCycleId: cycle.id,
-        isActive: true,
-      },
-    });
+    const payments = await this.loadPaymentsForCycle(cycle);
 
     return this.toResponseDto({ ...cycle, payments }, requesterUserId);
   }
@@ -325,7 +414,34 @@ export class RentCycleService {
       );
     }
 
-    await this.validateCompanyAccess(lease.companyId, requesterUserId);
+    // Check if user is super admin
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
+    const isSuperAdmin = requesterUser?.isSuperAdmin || false;
+
+    // Check if user is a tenant
+    const userCompany = await this.userCompanyRepository.findOne({
+      where: { userId: requesterUserId, isActive: true },
+    });
+    const isTenant = userCompany?.role === UserRole.TENANT;
+
+    // Validate access based on role
+    if (!isSuperAdmin) {
+      if (isTenant) {
+        // Tenants can only see invoices for their own leases
+        if (lease.tenantId !== requesterUserId) {
+          throw new BusinessException(
+            ErrorCode.INSUFFICIENT_PERMISSIONS,
+            'You can only view invoices for your own leases.',
+            HttpStatus.FORBIDDEN,
+          );
+        }
+      } else {
+        // Other users must belong to the same company
+        await this.validateCompanyAccess(lease.companyId, requesterUserId);
+      }
+    }
 
     const cycles = await this.rentCycleRepository.find({
       where: { leaseId },
@@ -335,12 +451,7 @@ export class RentCycleService {
 
     const cyclesWithPayments = await Promise.all(
       cycles.map(async (cycle) => {
-        const payments = await this.paymentRepository.find({
-          where: {
-            rentCycleId: cycle.id,
-            isActive: true,
-          },
-        });
+        const payments = await this.loadPaymentsForCycle(cycle);
         return { ...cycle, payments };
       }),
     );
@@ -548,6 +659,40 @@ export class RentCycleService {
     };
   }
 
+  /**
+   * Load payments for a rent cycle
+   * This method handles both directly linked payments (via rentCycleId) and
+   * unlinked payments that match by leaseId + period (for backward compatibility)
+   */
+  private async loadPaymentsForCycle(
+    cycle: RentCycle,
+  ): Promise<Payment[]> {
+    // First, try to find payments linked directly via rentCycleId
+    let payments = await this.paymentRepository.find({
+      where: {
+        rentCycleId: cycle.id,
+        isActive: true,
+      },
+    });
+
+    // If no directly linked payments, try to find by leaseId + period
+    // This handles cases where payments were created before rent cycles existed
+    // or payments were created without rentCycleId
+    if (payments.length === 0) {
+      payments = await this.paymentRepository.find({
+        where: {
+          leaseId: cycle.leaseId,
+          period: cycle.period,
+          rentCycleId: IsNull(),
+          isActive: true,
+          status: Not(PaymentStatus.REFUNDED),
+        },
+      });
+    }
+
+    return payments;
+  }
+
   private async generateInvoiceNumber(
     companyId: string,
     period: string,
@@ -556,22 +701,36 @@ export class RentCycleService {
     const [year, month] = period.split('-');
     const prefix = `INV-${year}-${month}-`;
 
-    // Find the highest sequence number for this period and company
-    const existing = await this.rentCycleRepository
+    // Find ALL existing invoice numbers for this period (globally, not just company)
+    // This ensures uniqueness across the entire system
+    const existingInvoices = await this.rentCycleRepository
       .createQueryBuilder('cycle')
-      .where('cycle.companyId = :companyId', { companyId })
-      .andWhere('cycle.invoiceNumber LIKE :prefix', {
+      .where('cycle.invoiceNumber LIKE :prefix', {
         prefix: `${prefix}%`,
       })
+      .select('cycle.invoiceNumber', 'invoiceNumber')
       .orderBy('cycle.invoiceNumber', 'DESC')
-      .getOne();
+      .getRawMany();
 
+    // Extract sequence numbers and find the next available one
+    const usedSequences = existingInvoices
+      .map((inv) => {
+        const parts = inv.invoiceNumber.split('-');
+        const seq = parseInt(parts[parts.length - 1] || '0', 10);
+        return isNaN(seq) ? 0 : seq;
+      })
+      .filter((seq) => seq > 0)
+      .sort((a, b) => b - a); // Sort descending
+
+    // Find the next available sequence number
     let sequence = 1;
-    if (existing) {
-      const lastSequence = parseInt(
-        existing.invoiceNumber.split('-').pop() || '0',
-      );
-      sequence = lastSequence + 1;
+    if (usedSequences.length > 0) {
+      // Start from the highest sequence + 1
+      sequence = usedSequences[0] + 1;
+      
+      // Check if there are any gaps we can use (optimization)
+      // But for simplicity, we'll just use highest + 1
+      // This ensures we always get a unique number
     }
 
     return `${prefix}${sequence.toString().padStart(3, '0')}`;
@@ -595,6 +754,53 @@ export class RentCycleService {
         ERROR_MESSAGES.INSUFFICIENT_PERMISSIONS,
         HttpStatus.FORBIDDEN,
       );
+    }
+  }
+
+  private async validateAccess(
+    rentCycle: RentCycle,
+    requesterUserId: string,
+  ): Promise<void> {
+    const requesterUser = await this.userRepository.findOne({
+      where: { id: requesterUserId },
+    });
+    const isSuperAdmin = requesterUser?.isSuperAdmin || false;
+
+    if (isSuperAdmin) {
+      return;
+    }
+
+    const userCompany = await this.userCompanyRepository.findOne({
+      where: { userId: requesterUserId, isActive: true },
+    });
+    const isTenant = userCompany?.role === UserRole.TENANT;
+
+    if (isTenant) {
+      // Tenants can only access their own invoices
+      if (rentCycle.tenantId !== requesterUserId) {
+        throw new BusinessException(
+          ErrorCode.INSUFFICIENT_PERMISSIONS,
+          'You can only view your own invoices.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+    } else {
+      // Other users must belong to the same company
+      const requester = await this.userCompanyRepository.findOne({
+        where: {
+          companyId: rentCycle.companyId,
+          userId: requesterUserId,
+          isActive: true,
+        },
+      });
+
+      if (!requester) {
+        throw new BusinessException(
+          ErrorCode.INSUFFICIENT_PERMISSIONS,
+          ERROR_MESSAGES.INSUFFICIENT_PERMISSIONS,
+          HttpStatus.FORBIDDEN,
+        );
+      }
     }
   }
 }

@@ -1,179 +1,214 @@
 # Lease API Documentation
 
-## 📋 Table of Contents
-- [Overview](#overview)
-- [Base Configuration](#base-configuration)
-- [Core Concepts](#core-concepts)
-- [API Routes](#api-routes)
-- [DTOs & Enums](#dtos--enums)
-- [Use Cases & Flow Diagrams](#use-cases--flow-diagrams)
-- [Permissions & Access Control](#permissions--access-control)
-- [Error Handling](#error-handling)
-- [Code Examples](#code-examples)
-- [Best Practices](#best-practices)
+Complete documentation for Lease CRUD operations and related actions in the Property Management System.
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Base URL](#base-url)
+3. [Authentication](#authentication)
+4. [Lease Entity Structure](#lease-entity-structure)
+5. [Enums](#enums)
+6. [CRUD Operations](#crud-operations)
+7. [Lease Actions](#lease-actions)
+8. [Query & Filtering](#query--filtering)
+9. [Lease History](#lease-history)
+10. [Business Rules & Validations](#business-rules--validations)
+11. [Error Handling](#error-handling)
+12. [Examples](#examples)
 
 ---
 
 ## Overview
 
-This documentation covers all lease management API endpoints for the Property Management System. The lease system supports:
+The Lease API provides comprehensive functionality for managing property leases, including creation, activation, termination, renewal, and transfer operations. Leases go through a lifecycle from DRAFT → ACTIVE → TERMINATED/EXPIRED/RENEWED.
 
-- Creating and managing leases that connect tenants to units
-- Lease lifecycle management (DRAFT → ACTIVE → TERMINATED/EXPIRED/RENEWED)
-- Automated status management (updates Unit and Tenant status)
-- Lease renewal and transfer operations
-- Comprehensive filtering, pagination, and search capabilities
-- Company-scoped lease access with tenant filtering
-- Billing controls and financial management
-- Lease history tracking
+### Key Features
 
-**Important**: All routes require JWT Bearer token authentication and company context (unless you're a super admin). Leases are scoped to companies, and tenants can only view their own leases.
+- **CRUD Operations**: Create, Read, Update, Delete leases
+- **Automatic Activation**: Leases automatically activate when start date is reached
+- **Lease Lifecycle Management**: Terminate, Renew, Transfer
+- **Advanced Filtering**: Filter by status, type, dates, tenant, unit, property, company
+- **Lease History**: View lease history by unit or tenant
+- **Automatic Rent Generation**: First rent cycle generated upon activation
+- **Status Management**: Automatic status updates (e.g., EXPIRED when end date passes)
 
 ---
 
-## Base Configuration
+## Base URL
 
-### Base URL Structure
 ```
-Base URL: http://localhost:8000/api/v1
+/api/v1/leases
 ```
-*Note: The base URL may vary depending on your environment. Check with your backend team for the correct base URL.*
 
-### API Versioning
-All routes are versioned as `v1` in the URL path.
+---
 
-### Authentication Header Format
-All routes require JWT token authentication:
+## Authentication
+
+All endpoints require JWT authentication. Include the token in the Authorization header:
+
 ```
 Authorization: Bearer <your-jwt-token>
 ```
 
-### Response Format
-All responses follow this structure:
-```json
-{
-  "success": true/false,
-  "data": { ... },
-  "message": "Response message"
+---
+
+## Lease Entity Structure
+
+### Core Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | UUID | Auto | Unique lease identifier |
+| `tenantId` | UUID | Yes | Tenant user ID (from tenant profile) |
+| `unitId` | UUID | Yes | Unit being leased |
+| `companyId` | UUID | Auto | Company ID (from unit) |
+| `landlordUserId` | UUID | Optional | Landlord user ID |
+| `leaseNumber` | String | Auto | Auto-generated lease number (format: `LEASE-YYYY-###`) |
+| `status` | Enum | Auto | Lease status (default: `DRAFT`) |
+| `leaseType` | Enum | Yes | Type of lease |
+
+### Date Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `startDate` | Date | Lease start date |
+| `endDate` | Date | Lease end date |
+| `moveInDate` | Date | Actual move-in date |
+| `moveOutDate` | Date | Actual move-out date |
+| `signedDate` | Date | Date lease was signed |
+| `renewalDate` | Date | Renewal date |
+| `noticeToVacateDate` | Date | Notice to vacate date |
+| `billingStartDate` | Date | When billing starts (can differ from startDate) |
+| `actualTerminationDate` | Date | Actual termination date |
+
+### Billing & Payment Configuration
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `proratedFirstMonth` | Boolean | `false` | Whether first month is prorated |
+| `gracePeriodDays` | Number | `0` | Days after due date before late fees |
+| `rentDueDay` | Number (1-28) | Auto | Day of month when rent is due |
+| `nextRentDueDate` | Date | Auto | Calculated next rent due date |
+| `paymentFrequency` | Enum | `MONTHLY` | Payment frequency |
+| `lateFeeType` | Enum | `FIXED` | Late fee calculation type |
+| `lateFeeValue` | Number | - | Late fee amount or percentage |
+| `lateFeeAmount` | Number | - | Fixed late fee amount |
+
+### Financial Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `monthlyRent` | Decimal | Monthly rent amount |
+| `securityDeposit` | Decimal | Security deposit amount |
+| `petDeposit` | Decimal | Pet deposit amount |
+| `petRent` | Decimal | Monthly pet rent |
+| `utilitiesIncluded` | Boolean | Whether utilities are included |
+| `utilityCosts` | Decimal | Utility costs if not included |
+| `currency` | String | Currency code (default: `KES`) |
+
+### Terms & Conditions
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `leaseTerm` | Number | Lease term in months |
+| `renewalOptions` | String | Renewal options text |
+| `noticePeriod` | Number | Notice period in days |
+| `petPolicy` | String | Pet policy description |
+| `smokingPolicy` | String | Smoking policy description |
+| `terms` | String | General lease terms |
+
+### Additional Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `coTenants` | Array[UUID] | Co-tenant user IDs |
+| `guarantorInfo` | Object | Guarantor information (JSON) |
+| `documents` | Array[String] | Lease document URLs |
+| `notes` | String | Internal notes |
+| `tags` | Array[String] | Tags for categorization |
+| `createdBy` | UUID | User who created the lease |
+| `isActive` | Boolean | Soft delete flag |
+| `createdAt` | Date | Creation timestamp |
+| `updatedAt` | Date | Last update timestamp |
+
+### Termination Metadata
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `terminationReason` | String | Reason for termination |
+| `terminatedBy` | UUID | User who terminated the lease |
+| `terminationNotes` | String | Termination notes |
+| `actualTerminationDate` | Date | Actual termination date |
+
+### Renewal Linking
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `renewedFromLeaseId` | UUID | Previous lease ID if renewed |
+| `renewedToLeaseId` | UUID | New lease ID if this was renewed |
+
+---
+
+## Enums
+
+### LeaseStatus
+
+```typescript
+enum LeaseStatus {
+  DRAFT = 'DRAFT',           // Initial state, not yet active
+  ACTIVE = 'ACTIVE',         // Currently active lease
+  EXPIRED = 'EXPIRED',       // End date has passed
+  TERMINATED = 'TERMINATED', // Manually terminated
+  RENEWED = 'RENEWED'        // Lease was renewed (replaced by new lease)
 }
 ```
 
-For paginated responses, the structure includes pagination metadata:
-```json
-{
-  "success": true,
-  "data": [ ... ],
-  "pagination": {
-    "total": 100,
-    "page": 1,
-    "limit": 10,
-    "totalPages": 10
-  }
+### LeaseType
+
+```typescript
+enum LeaseType {
+  SHORT_TERM = 'SHORT_TERM',       // Short-term lease
+  LONG_TERM = 'LONG_TERM',         // Long-term lease
+  FIXED_TERM = 'FIXED_TERM',       // Fixed-term lease
+  MONTH_TO_MONTH = 'MONTH_TO_MONTH' // Month-to-month lease
+}
+```
+
+### PaymentFrequency
+
+```typescript
+enum PaymentFrequency {
+  MONTHLY = 'MONTHLY'  // Monthly payments
+}
+```
+
+### LateFeeType
+
+```typescript
+enum LateFeeType {
+  FIXED = 'FIXED',         // Fixed amount
+  PERCENTAGE = 'PERCENTAGE', // Percentage of rent
+  NONE = 'NONE'            // No late fees
 }
 ```
 
 ---
 
-## Core Concepts
-
-### Lease Lifecycle
-
-Leases have a clear lifecycle:
-
-1. **DRAFT** → Lease is created but not yet active
-   - Can be fully edited
-   - Can be deleted
-   - Does not affect unit or tenant status
-
-2. **ACTIVE** → Lease is currently in effect
-   - Limited editing (notes, tags, documents, dates)
-   - Cannot be deleted (must terminate first)
-   - Unit status: OCCUPIED
-   - Tenant status: ACTIVE (if no other active leases)
-
-3. **TERMINATED** → Lease was ended before expiration
-   - Read-only
-   - Unit status: AVAILABLE
-   - Tenant status: FORMER (if no other active leases)
-
-4. **EXPIRED** → Lease reached its end date
-   - Read-only
-   - Unit status: AVAILABLE
-   - Tenant status: FORMER (if no other active leases)
-
-5. **RENEWED** → Lease was renewed (replaced by new lease)
-   - Read-only
-   - Links to new lease via `renewedToLeaseId`
-
-### Lease-Tenant-Unit Relationship
-
-```
-Lease (N) ──── (1) Tenant (User)
-   │
-   ├─── (1) Unit (1) ──── (1) Property
-   │
-   └─── (1) Company
-```
-
-- Each lease connects one tenant to one unit
-- Property is derived from the unit (not duplicated)
-- Only one ACTIVE lease per unit is allowed
-- A tenant can have multiple leases (across different units/companies)
-
-### Lease Statuses
-
-Leases can have the following statuses (from `LeaseStatus` enum):
-
-- **DRAFT**: Lease is created but not yet active (default)
-- **ACTIVE**: Lease is currently active and in effect
-- **EXPIRED**: Lease reached its end date
-- **TERMINATED**: Lease was terminated before expiration
-- **RENEWED**: Lease was renewed (replaced by new lease)
-
-### Lease Types
-
-Leases can be one of the following types (from `LeaseType` enum):
-
-- **SHORT_TERM**: Short-term lease (typically less than 6 months)
-- **LONG_TERM**: Long-term lease (typically 6 months or more)
-- **MONTH_TO_MONTH**: Month-to-month lease
-
-### Key Business Rules
-
-1. **One Active Lease Per Unit**: Only one lease can be ACTIVE for a unit at a time
-2. **ACTIVE Leases are Read-Only**: Limited updates allowed (notes, tags, documents, some dates)
-3. **Lease Transfer**: Always terminate old lease + create new lease (not a single update)
-4. **Property Derived**: Property information is obtained via `unit.property`, not duplicated
-5. **Soft Delete**: Only DRAFT leases can be soft-deleted
-6. **Status Automation**: Automatically updates tenant and unit status when lease is activated/terminated
-
-### Status Update Flow
-
-#### When Lease Activated:
-1. Lease status: DRAFT → ACTIVE
-2. Unit status: AVAILABLE → OCCUPIED
-3. Tenant status: PENDING → ACTIVE (if no other active leases exist)
-
-#### When Lease Terminated/Expired:
-1. Lease status: ACTIVE → TERMINATED/EXPIRED
-2. Unit status: OCCUPIED → AVAILABLE
-3. Tenant status:
-   - If other active leases exist: Stay ACTIVE
-   - If no other active leases: ACTIVE → FORMER
-
----
-
-## API Routes
+## CRUD Operations
 
 ### 1. Create Lease
 
-**Endpoint**: `POST /api/v1/leases`
+Create a new lease. The lease status depends on the start date:
+- **If `startDate` is today or earlier**: Lease is automatically activated (status becomes `ACTIVE`)
+- **If `startDate` is in the future**: Lease remains `DRAFT` until the start date is reached
 
-**Description**: Creates a new lease. The lease starts as DRAFT and must be activated before it becomes active.
+**Endpoint:** `POST /api/v1/leases`
 
-**Required Permissions**: COMPANY_ADMIN, MANAGER, or LANDLORD
+**Required Roles:** `COMPANY_ADMIN`, `MANAGER`, `LANDLORD`
 
-**Request Body**:
+**Request Body:**
+
 ```json
 {
   "tenantId": "123e4567-e89b-12d3-a456-426614174000",
@@ -183,111 +218,107 @@ Leases can be one of the following types (from `LeaseType` enum):
   "endDate": "2024-12-31",
   "monthlyRent": 1500.00,
   "landlordUserId": "123e4567-e89b-12d3-a456-426614174002",
-  "leaseNumber": "LEASE-2024-001",
-  "moveInDate": "2024-01-01",
-  "signedDate": "2023-12-15",
   "billingStartDate": "2024-01-01",
   "proratedFirstMonth": false,
   "gracePeriodDays": 5,
-  "securityDeposit": 1500.00,
-  "petDeposit": 500.00,
-  "petRent": 50.00,
+  "rentDueDay": 5,
+  "paymentFrequency": "MONTHLY",
+  "lateFeeType": "FIXED",
   "lateFeeAmount": 50.00,
-  "utilitiesIncluded": false,
-  "utilityCosts": 100.00,
+  "securityDeposit": 1500.00,
   "currency": "KES",
   "leaseTerm": 12,
-  "noticePeriod": 30,
-  "petPolicy": "Dogs and cats allowed, max 2 pets",
-  "smokingPolicy": "No smoking allowed",
-  "terms": "Standard lease terms apply",
-  "coTenants": ["123e4567-e89b-12d3-a456-426614174003"],
-  "guarantorInfo": {
-    "name": "John Doe",
-    "phone": "1234567890",
-    "relationship": "Parent"
-  },
+  "utilitiesIncluded": false,
+  "moveInDate": "2024-01-01",
+  "signedDate": "2023-12-15",
   "notes": "First-time tenant, excellent references",
   "tags": ["priority", "renewal"]
 }
 ```
 
-**Response** (201 Created):
+**Response:** `201 Created`
+
 ```json
 {
   "success": true,
   "data": {
-    "id": "123e4567-e89b-12d3-a456-426614174004",
+    "id": "123e4567-e89b-12d3-a456-426614174003",
     "tenantId": "123e4567-e89b-12d3-a456-426614174000",
     "tenantName": "John Doe",
-    "tenantEmail": "tenant@example.com",
+    "tenantEmail": "john.doe@example.com",
     "unitId": "123e4567-e89b-12d3-a456-426614174001",
     "unitNumber": "101",
-    "propertyId": "123e4567-e89b-12d3-a456-426614174005",
+    "propertyId": "123e4567-e89b-12d3-a456-426614174004",
     "propertyName": "Sunset Apartments",
-    "companyId": "123e4567-e89b-12d3-a456-426614174006",
-    "status": "DRAFT",
+    "companyId": "123e4567-e89b-12d3-a456-426614174005",
+    "leaseNumber": "LEASE-2024-001",
+    "status": "ACTIVE",
     "leaseType": "LONG_TERM",
-    "monthlyRent": 1500.00,
     "startDate": "2024-01-01",
     "endDate": "2024-12-31",
-    "createdAt": "2024-01-01T00:00:00.000Z",
-    "updatedAt": "2024-01-01T00:00:00.000Z"
+    "monthlyRent": 1500.00,
+    "createdAt": "2023-12-15T10:00:00Z",
+    "updatedAt": "2023-12-15T10:00:00Z"
   },
   "message": "Lease created successfully"
 }
 ```
 
-**Validation Rules**:
-- `tenantId` must be a valid UUID and exist
-- `unitId` must be a valid UUID and exist
+**Key Validations:**
+- Unit must exist and be active
+- Tenant profile must exist for the company
+- Unit must not have an existing active lease
 - `endDate` must be after `startDate`
-- Unit must not have an existing ACTIVE lease
-- Tenant must be a tenant in the unit's company
+- `rentDueDay` must be between 1 and 28
+- Lease number is auto-generated if not provided
+
+**Automatic Activation:**
+- If `startDate <= today`, the lease is automatically activated upon creation
+- Activation includes: status change to `ACTIVE`, unit status change to `OCCUPIED`, tenant status update, and first rent cycle generation
+- If activation fails, the lease creation fails with an error
 
 ---
 
 ### 2. List Leases
 
-**Endpoint**: `GET /api/v1/leases`
+Get a paginated list of leases with filtering options.
 
-**Description**: Retrieves a paginated list of leases with filtering and search capabilities.
+**Endpoint:** `GET /api/v1/leases`
 
-**Query Parameters**:
-- `page` (optional, default: 1): Page number
-- `limit` (optional, default: 10): Items per page (max: 100)
-- `search` (optional): Search by lease number or tenant name/email
-- `status` (optional): Filter by lease status (DRAFT, ACTIVE, EXPIRED, TERMINATED, RENEWED)
-- `leaseType` (optional): Filter by lease type (SHORT_TERM, LONG_TERM, MONTH_TO_MONTH)
-- `tenantId` (optional): Filter by tenant ID
-- `unitId` (optional): Filter by unit ID
-- `propertyId` (optional): Filter by property ID (via unit)
-- `companyId` (optional): Filter by company ID
-- `startDateFrom` (optional): Filter leases starting from this date
-- `startDateTo` (optional): Filter leases starting until this date
-- `endDateFrom` (optional): Filter leases ending from this date
-- `endDateTo` (optional): Filter leases ending until this date
-- `expiringSoon` (optional, boolean): Filter leases expiring in next 30 days (ACTIVE only)
-- `sortBy` (optional, default: createdAt): Sort field (startDate, endDate, createdAt, leaseNumber, monthlyRent)
-- `sortOrder` (optional, default: DESC): Sort order (ASC, DESC)
+**Query Parameters:**
 
-**Example Request**:
-```
-GET /api/v1/leases?page=1&limit=10&status=ACTIVE&expiringSoon=true
-```
+| Parameter | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `page` | Number | Page number (1-indexed) | `1` |
+| `limit` | Number | Items per page (1-100) | `10` |
+| `search` | String | Search by lease number or tenant name | `"LEASE-2024"` |
+| `status` | Enum | Filter by lease status | `ACTIVE` |
+| `leaseType` | Enum | Filter by lease type | `LONG_TERM` |
+| `tenantId` | UUID | Filter by tenant ID | `"..."` |
+| `unitId` | UUID | Filter by unit ID | `"..."` |
+| `propertyId` | UUID | Filter by property ID | `"..."` |
+| `companyId` | UUID | Filter by company ID | `"..."` |
+| `startDateFrom` | Date | Filter leases starting from | `"2024-01-01"` |
+| `startDateTo` | Date | Filter leases starting until | `"2024-12-31"` |
+| `endDateFrom` | Date | Filter leases ending from | `"2024-01-01"` |
+| `endDateTo` | Date | Filter leases ending until | `"2024-12-31"` |
+| `expiringSoon` | Boolean | Filter leases expiring within 30 days | `true` |
+| `sortBy` | String | Sort field (`startDate`, `endDate`, `createdAt`, `leaseNumber`, `monthlyRent`) | `"startDate"` |
+| `sortOrder` | String | Sort order (`ASC`, `DESC`) | `"DESC"` |
 
-**Response** (200 OK):
+**Response:** `200 OK`
+
 ```json
 {
   "success": true,
   "data": [
     {
-      "id": "123e4567-e89b-12d3-a456-426614174004",
-      "tenantId": "123e4567-e89b-12d3-a456-426614174000",
+      "id": "123e4567-e89b-12d3-a456-426614174003",
+      "leaseNumber": "LEASE-2024-001",
+      "status": "ACTIVE",
       "tenantName": "John Doe",
       "unitNumber": "101",
       "propertyName": "Sunset Apartments",
-      "status": "ACTIVE",
       "monthlyRent": 1500.00,
       "startDate": "2024-01-01",
       "endDate": "2024-12-31"
@@ -302,226 +333,281 @@ GET /api/v1/leases?page=1&limit=10&status=ACTIVE&expiringSoon=true
 }
 ```
 
-**Access Control**:
+**Access Control:**
 - Tenants can only see their own leases
-- Company members can see leases in their companies
-- Super admins can see all leases
+- Other users see leases in their companies
+- Super admins see all leases
 
 ---
 
 ### 3. Get Lease by ID
 
-**Endpoint**: `GET /api/v1/leases/:id`
+Get a single lease by its ID.
 
-**Description**: Retrieves detailed information about a specific lease.
+**Endpoint:** `GET /api/v1/leases/:id`
 
-**Path Parameters**:
-- `id` (required): Lease UUID
+**Path Parameters:**
 
-**Response** (200 OK):
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | UUID | Lease ID |
+
+**Response:** `200 OK`
+
 ```json
 {
   "success": true,
   "data": {
-    "id": "123e4567-e89b-12d3-a456-426614174004",
+    "id": "123e4567-e89b-12d3-a456-426614174003",
     "tenantId": "123e4567-e89b-12d3-a456-426614174000",
     "tenantName": "John Doe",
-    "tenantEmail": "tenant@example.com",
+    "tenantEmail": "john.doe@example.com",
     "unitId": "123e4567-e89b-12d3-a456-426614174001",
     "unitNumber": "101",
-    "propertyId": "123e4567-e89b-12d3-a456-426614174005",
+    "propertyId": "123e4567-e89b-12d3-a456-426614174004",
     "propertyName": "Sunset Apartments",
-    "companyId": "123e4567-e89b-12d3-a456-426614174006",
-    "landlordUserId": "123e4567-e89b-12d3-a456-426614174002",
+    "companyId": "123e4567-e89b-12d3-a456-426614174005",
     "leaseNumber": "LEASE-2024-001",
     "status": "ACTIVE",
     "leaseType": "LONG_TERM",
     "startDate": "2024-01-01",
     "endDate": "2024-12-31",
     "moveInDate": "2024-01-01",
-    "signedDate": "2023-12-15",
-    "billingStartDate": "2024-01-01",
     "monthlyRent": 1500.00,
     "securityDeposit": 1500.00,
     "currency": "KES",
-    "createdAt": "2024-01-01T00:00:00.000Z",
-    "updatedAt": "2024-01-01T00:00:00.000Z"
+    "paymentFrequency": "MONTHLY",
+    "rentDueDay": 5,
+    "gracePeriodDays": 5,
+    "lateFeeType": "FIXED",
+    "lateFeeAmount": 50.00,
+    "utilitiesIncluded": false,
+    "createdAt": "2023-12-15T10:00:00Z",
+    "updatedAt": "2024-01-01T08:00:00Z"
   }
 }
 ```
 
-**Access Control**:
+**Access Control:**
 - Tenants can view their own leases
-- Company members can view leases in their companies
+- Users can view leases in their companies
 - Super admins can view all leases
 
 ---
 
 ### 4. Update Lease
 
-**Endpoint**: `PATCH /api/v1/leases/:id`
+Update an existing lease. Update restrictions apply based on lease status.
 
-**Description**: Updates a lease. Updates are limited for ACTIVE leases.
+**Endpoint:** `PATCH /api/v1/leases/:id`
 
-**Required Permissions**: COMPANY_ADMIN, MANAGER, or LANDLORD
+**Required Roles:** `COMPANY_ADMIN`, `MANAGER`, `LANDLORD`
 
-**Path Parameters**:
-- `id` (required): Lease UUID
+**Path Parameters:**
 
-**Request Body** (all fields optional):
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | UUID | Lease ID |
+
+**Request Body:** (All fields optional)
+
 ```json
 {
   "notes": "Updated notes",
-  "tags": ["updated", "tag"],
-  "documents": ["https://example.com/updated-document.pdf"],
-  "moveInDate": "2024-01-05",
-  "moveOutDate": "2024-12-30",
+  "tags": ["updated", "priority"],
+  "moveInDate": "2024-01-02",
   "renewalDate": "2024-11-01",
-  "noticeToVacateDate": "2024-11-01",
-  "landlordUserId": "123e4567-e89b-12d3-a456-426614174007"
+  "landlordUserId": "123e4567-e89b-12d3-a456-426614174002"
 }
 ```
 
-**Update Restrictions for ACTIVE Leases**:
-- Cannot change `tenantId`, `unitId`, `startDate`, or `endDate`
-- Can update: `notes`, `tags`, `documents`, `moveInDate`, `moveOutDate`, `renewalDate`, `noticeToVacateDate`, `landlordUserId`
+**Response:** `200 OK`
 
-**Update Rules for DRAFT Leases**:
-- All fields can be updated
-- Date validations still apply (`endDate` > `startDate`)
-
-**Response** (200 OK):
 ```json
 {
   "success": true,
   "data": {
-    "id": "123e4567-e89b-12d3-a456-426614174004",
+    "id": "123e4567-e89b-12d3-a456-426614174003",
     "notes": "Updated notes",
-    "tags": ["updated", "tag"]
+    "tags": ["updated", "priority"],
+    "updatedAt": "2024-01-15T10:00:00Z"
   },
   "message": "Lease updated successfully"
 }
 ```
 
+**Update Restrictions:**
+
+**For ACTIVE Leases:**
+- ❌ Cannot update: `startDate`, `endDate`, `monthlyRent`, `securityDeposit`, `leaseType`
+- ✅ Can update: `notes`, `tags`, `documents`, `moveInDate`, `moveOutDate`, `renewalDate`, `noticeToVacateDate`, `landlordUserId`
+
+**For DRAFT Leases:**
+- ✅ Can update all fields (with validation)
+
 ---
 
-### 5. Activate Lease
+### 5. Delete Lease
 
-**Endpoint**: `POST /api/v1/leases/:id/activate`
+Delete a lease (soft delete). Only allowed for `DRAFT` leases.
 
-**Description**: Activates a DRAFT lease, making it ACTIVE. This updates the unit and tenant status automatically.
+**Endpoint:** `DELETE /api/v1/leases/:id`
 
-**Required Permissions**: COMPANY_ADMIN or MANAGER only
+**Required Roles:** `COMPANY_ADMIN`, `MANAGER`
 
-**Path Parameters**:
-- `id` (required): Lease UUID
+**Path Parameters:**
 
-**Validation**:
-- Lease status must be DRAFT
-- Unit must not have another ACTIVE lease
-- Unit status must be AVAILABLE
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | UUID | Lease ID |
 
-**Response** (200 OK):
+**Response:** `200 OK`
+
+```json
+{
+  "success": true,
+  "message": "Lease deleted successfully"
+}
+```
+
+**Restrictions:**
+- Only `DRAFT` leases can be deleted
+- Active leases must be terminated first
+
+---
+
+## Lease Actions
+
+### 1. Lease Activation Scheduler
+
+Manually trigger the lease activation check. This endpoint finds all `DRAFT` leases whose start date has been reached and activates them automatically.
+
+**Endpoint:** `POST /api/v1/leases/scheduler/check-activation`
+
+**Required Roles:** `COMPANY_ADMIN`, `MANAGER`
+
+**Response:** `200 OK`
+
+```json
+{
+  "success": true,
+  "message": "Lease activation check completed successfully"
+}
+```
+
+**What This Does:**
+- Finds all `DRAFT` leases where `startDate <= today`
+- For each lease, automatically activates it:
+  1. Lease status changes: `DRAFT` → `ACTIVE`
+  2. Unit status changes: `AVAILABLE` → `OCCUPIED`
+  3. Tenant status updated based on active lease count
+  4. First rent cycle is automatically generated
+  5. `moveInDate` is set if not already set
+
+**Usage:**
+- Typically called by an external cron job daily (e.g., at midnight)
+- Can also be called manually for testing or immediate processing
+- Errors for individual leases are logged but don't stop processing of other leases
+
+**Note:** Leases with start dates that are today or earlier are automatically activated during creation, so this scheduler primarily handles leases that were created with future start dates.
+
+---
+
+### 2. Terminate Lease
+
+Terminate an `ACTIVE` lease, changing status to `TERMINATED`.
+
+**Endpoint:** `POST /api/v1/leases/:id/terminate`
+
+**Required Roles:** `COMPANY_ADMIN`, `MANAGER`
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | UUID | Lease ID |
+
+**Request Body:**
+
+```json
+{
+  "terminationReason": "Lease expired",
+  "terminationNotes": "Tenant chose not to renew",
+  "actualTerminationDate": "2024-12-31"
+}
+```
+
+**Response:** `200 OK`
+
 ```json
 {
   "success": true,
   "data": {
-    "id": "123e4567-e89b-12d3-a456-426614174004",
-    "status": "ACTIVE",
-    "moveInDate": "2024-01-01"
-  },
-  "message": "Lease activated successfully"
-}
-```
-
-**Side Effects**:
-- Lease status: DRAFT → ACTIVE
-- Unit status: AVAILABLE → OCCUPIED
-- Tenant status: PENDING → ACTIVE (if no other active leases)
-
----
-
-### 6. Terminate Lease
-
-**Endpoint**: `POST /api/v1/leases/:id/terminate`
-
-**Description**: Terminates an ACTIVE lease before its end date.
-
-**Required Permissions**: COMPANY_ADMIN or MANAGER only
-
-**Path Parameters**:
-- `id` (required): Lease UUID
-
-**Request Body**:
-```json
-{
-  "terminationReason": "Tenant requested early termination",
-  "terminationNotes": "Mutual agreement to terminate early",
-  "actualTerminationDate": "2024-06-30"
-}
-```
-
-**Validation**:
-- Lease status must be ACTIVE
-
-**Response** (200 OK):
-```json
-{
-  "success": true,
-  "data": {
-    "id": "123e4567-e89b-12d3-a456-426614174004",
+    "id": "123e4567-e89b-12d3-a456-426614174003",
     "status": "TERMINATED",
-    "terminationReason": "Tenant requested early termination",
-    "actualTerminationDate": "2024-06-30",
-    "moveOutDate": "2024-06-30"
+    "terminationReason": "Lease expired",
+    "terminationNotes": "Tenant chose not to renew\n\nOutstanding balance at termination: KES 0.00",
+    "actualTerminationDate": "2024-12-31",
+    "moveOutDate": "2024-12-31"
   },
   "message": "Lease terminated successfully"
 }
 ```
 
-**Side Effects**:
-- Lease status: ACTIVE → TERMINATED
-- Unit status: OCCUPIED → AVAILABLE
-- Tenant status: ACTIVE → FORMER (if no other active leases exist)
+**What Happens on Termination:**
+1. Lease status changes: `ACTIVE` → `TERMINATED`
+2. Unit status changes: `OCCUPIED` → `AVAILABLE`
+3. Tenant status updated based on remaining active leases
+4. Outstanding balance is logged in termination notes
+5. `moveOutDate` is set to termination date
+6. Future rent generation stops (checks for `ACTIVE` status)
+
+**Validations:**
+- Lease must be in `ACTIVE` status
+- Outstanding payments are logged but don't block termination
 
 ---
 
-### 7. Renew Lease
+### 3. Renew Lease
 
-**Endpoint**: `POST /api/v1/leases/:id/renew`
+Create a new lease from an existing `ACTIVE` or `EXPIRED` lease.
 
-**Description**: Creates a new lease from an existing ACTIVE or EXPIRED lease. The old lease is marked as RENEWED.
+**Endpoint:** `POST /api/v1/leases/:id/renew`
 
-**Required Permissions**: COMPANY_ADMIN or MANAGER only
+**Required Roles:** `COMPANY_ADMIN`, `MANAGER`
 
-**Path Parameters**:
-- `id` (required): Lease UUID (the lease to renew)
+**Path Parameters:**
 
-**Request Body**:
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | UUID | Lease ID (old lease) |
+
+**Request Body:**
+
 ```json
 {
   "startDate": "2025-01-01",
   "endDate": "2025-12-31",
   "monthlyRent": 1600.00,
-  "leaseType": "LONG_TERM",
   "securityDeposit": 1600.00,
   "proratedFirstMonth": false,
-  "gracePeriodDays": 5
+  "gracePeriodDays": 5,
+  "leaseType": "LONG_TERM"
 }
 ```
 
-**Validation**:
-- Lease status must be ACTIVE or EXPIRED
-- `endDate` must be after `startDate`
+**Response:** `201 Created`
 
-**Response** (201 Created):
 ```json
 {
   "success": true,
   "data": {
-    "id": "123e4567-e89b-12d3-a456-426614174007",
+    "id": "123e4567-e89b-12d3-a456-426614174006",
+    "leaseNumber": "LEASE-2025-001",
     "status": "DRAFT",
-    "renewedFromLeaseId": "123e4567-e89b-12d3-a456-426614174004",
+    "renewedFromLeaseId": "123e4567-e89b-12d3-a456-426614174003",
+    "tenantId": "123e4567-e89b-12d3-a456-426614174000",
+    "unitId": "123e4567-e89b-12d3-a456-426614174001",
     "startDate": "2025-01-01",
     "endDate": "2025-12-31",
     "monthlyRent": 1600.00
@@ -530,146 +616,198 @@ GET /api/v1/leases?page=1&limit=10&status=ACTIVE&expiringSoon=true
 }
 ```
 
-**Side Effects**:
-- Old lease status: ACTIVE/EXPIRED → RENEWED
-- Old lease `renewedToLeaseId` is set to the new lease ID
-- New lease is created as DRAFT (must be activated separately)
+**What Happens on Renewal:**
+1. New lease is created in `DRAFT` status
+2. Old lease status changes: `ACTIVE`/`EXPIRED` → `RENEWED`
+3. Old lease `renewedToLeaseId` is set to new lease ID
+4. New lease `renewedFromLeaseId` is set to old lease ID
+5. Most fields are copied from old lease (can be overridden)
+6. New lease number is auto-generated
+
+**Validations:**
+- Old lease must be `ACTIVE` or `EXPIRED`
+- `endDate` must be after `startDate`
+- New lease inherits tenant, unit, and company from old lease
 
 ---
 
-### 8. Transfer Lease
+### 4. Transfer Lease
 
-**Endpoint**: `POST /api/v1/leases/:id/transfer`
+Transfer a lease to a new tenant or unit (terminates old lease and creates new one).
 
-**Description**: Transfers a lease to a new tenant or unit. This terminates the old lease and creates a new one.
+**Endpoint:** `POST /api/v1/leases/:id/transfer`
 
-**Required Permissions**: COMPANY_ADMIN or MANAGER only
+**Required Roles:** `COMPANY_ADMIN`, `MANAGER`
 
-**Path Parameters**:
-- `id` (required): Lease UUID (the lease to transfer)
+**Path Parameters:**
 
-**Request Body**:
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | UUID | Lease ID (old lease) |
+
+**Request Body:**
+
 ```json
 {
-  "newTenantId": "123e4567-e89b-12d3-a456-426614174008"
-}
-```
-OR
-```json
-{
-  "newUnitId": "123e4567-e89b-12d3-a456-426614174009"
-}
-```
-OR both:
-```json
-{
-  "newTenantId": "123e4567-e89b-12d3-a456-426614174008",
-  "newUnitId": "123e4567-e89b-12d3-a456-426614174009"
+  "newTenantId": "123e4567-e89b-12d3-a456-426614174007",
+  "newUnitId": "123e4567-e89b-12d3-a456-426614174008"
 }
 ```
 
-**Validation**:
-- At least one of `newTenantId` or `newUnitId` must be provided
-- New unit must not have an existing ACTIVE lease
+**Note:** At least one of `newTenantId` or `newUnitId` must be provided.
 
-**Response** (201 Created):
+**Response:** `201 Created`
+
 ```json
 {
   "success": true,
   "data": {
-    "id": "123e4567-e89b-12d3-a456-426614174010",
+    "id": "123e4567-e89b-12d3-a456-426614174009",
+    "leaseNumber": "LEASE-2024-002",
     "status": "DRAFT",
-    "tenantId": "123e4567-e89b-12d3-a456-426614174008",
+    "tenantId": "123e4567-e89b-12d3-a456-426614174007",
+    "unitId": "123e4567-e89b-12d3-a456-426614174008",
     "notes": "Transferred from lease LEASE-2024-001"
   },
   "message": "Lease transferred successfully"
 }
 ```
 
-**Side Effects**:
-- Old lease is terminated (status: TERMINATED)
-- New lease is created as DRAFT (must be activated separately)
-- Unit status updates accordingly
+**What Happens on Transfer:**
+1. Old lease is terminated (status → `TERMINATED`)
+2. New lease is created in `DRAFT` status
+3. Financial terms are copied from old lease
+4. New lease notes include transfer reference
+5. New unit is validated (must be available, no active lease)
+
+**Validations:**
+- At least one of `newTenantId` or `newUnitId` must be provided
+- If `newUnitId` is provided, unit must exist and be available
+- If `newUnitId` is provided, unit must not have an active lease
 
 ---
 
-### 9. Delete Lease
+## Query & Filtering
 
-**Endpoint**: `DELETE /api/v1/leases/:id`
+### Filtering Options
 
-**Description**: Soft-deletes a lease. Only DRAFT leases can be deleted.
+The list leases endpoint supports comprehensive filtering:
 
-**Required Permissions**: COMPANY_ADMIN or MANAGER only
-
-**Path Parameters**:
-- `id` (required): Lease UUID
-
-**Validation**:
-- Lease status must be DRAFT
-
-**Response** (200 OK):
-```json
-{
-  "success": true,
-  "message": "Lease deleted successfully"
-}
+**By Status:**
+```
+GET /api/v1/leases?status=ACTIVE
 ```
 
-**Note**: ACTIVE, EXPIRED, TERMINATED, or RENEWED leases cannot be deleted. They must be terminated first (for ACTIVE) or are permanently kept in the system for historical records.
+**By Type:**
+```
+GET /api/v1/leases?leaseType=LONG_TERM
+```
+
+**By Tenant:**
+```
+GET /api/v1/leases?tenantId=123e4567-e89b-12d3-a456-426614174000
+```
+
+**By Unit:**
+```
+GET /api/v1/leases?unitId=123e4567-e89b-12d3-a456-426614174001
+```
+
+**By Property:**
+```
+GET /api/v1/leases?propertyId=123e4567-e89b-12d3-a456-426614174004
+```
+
+**By Date Range:**
+```
+GET /api/v1/leases?startDateFrom=2024-01-01&startDateTo=2024-12-31
+```
+
+**Expiring Soon (within 30 days):**
+```
+GET /api/v1/leases?expiringSoon=true
+```
+
+**Search:**
+```
+GET /api/v1/leases?search=LEASE-2024
+```
+
+**Combined Filters:**
+```
+GET /api/v1/leases?status=ACTIVE&leaseType=LONG_TERM&expiringSoon=true&sortBy=endDate&sortOrder=ASC
+```
 
 ---
 
-### 10. Get Lease History by Unit
+## Lease History
 
-**Endpoint**: `GET /api/v1/leases/unit/:unitId`
+### Get Lease History by Unit
 
-**Description**: Retrieves all lease history for a specific unit, ordered by start date (newest first).
+Get all leases (active and historical) for a specific unit.
 
-**Path Parameters**:
-- `unitId` (required): Unit UUID
+**Endpoint:** `GET /api/v1/leases/unit/:unitId`
 
-**Response** (200 OK):
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `unitId` | UUID | Unit ID |
+
+**Response:** `200 OK`
+
 ```json
 {
   "success": true,
   "data": [
     {
-      "id": "123e4567-e89b-12d3-a456-426614174004",
-      "status": "ACTIVE",
+      "id": "123e4567-e89b-12d3-a456-426614174003",
+      "leaseNumber": "LEASE-2024-001",
+      "status": "TERMINATED",
       "tenantName": "John Doe",
       "startDate": "2024-01-01",
       "endDate": "2024-12-31"
     },
     {
-      "id": "123e4567-e89b-12d3-a456-426614174011",
-      "status": "TERMINATED",
+      "id": "123e4567-e89b-12d3-a456-426614174006",
+      "leaseNumber": "LEASE-2025-001",
+      "status": "ACTIVE",
       "tenantName": "Jane Smith",
-      "startDate": "2023-01-01",
-      "endDate": "2023-12-31"
+      "startDate": "2025-01-01",
+      "endDate": "2025-12-31"
     }
   ]
 }
 ```
 
+**Access Control:**
+- Users must have access to the unit's company
+- Super admins can access any unit
+
 ---
 
-### 11. Get Lease History by Tenant
+### Get Lease History by Tenant
 
-**Endpoint**: `GET /api/v1/leases/tenant/:tenantId`
+Get all leases (active and historical) for a specific tenant.
 
-**Description**: Retrieves all lease history for a specific tenant, ordered by start date (newest first).
+**Endpoint:** `GET /api/v1/leases/tenant/:tenantId`
 
-**Path Parameters**:
-- `tenantId` (required): Tenant UUID
+**Path Parameters:**
 
-**Response** (200 OK):
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `tenantId` | UUID | Tenant user ID |
+
+**Response:** `200 OK`
+
 ```json
 {
   "success": true,
   "data": [
     {
-      "id": "123e4567-e89b-12d3-a456-426614174004",
-      "status": "ACTIVE",
+      "id": "123e4567-e89b-12d3-a456-426614174003",
+      "leaseNumber": "LEASE-2024-001",
+      "status": "TERMINATED",
       "unitNumber": "101",
       "propertyName": "Sunset Apartments",
       "startDate": "2024-01-01",
@@ -679,439 +817,240 @@ OR both:
 }
 ```
 
-**Access Control**:
-- Tenants can view their own lease history
-- Company admins/managers can view tenant lease history in their companies
-- Super admins can view all lease history
+**Access Control:**
+- Tenants can only view their own history
+- Company admins/managers can view tenant history in their companies
+- Super admins can view any tenant's history
 
 ---
 
-## DTOs & Enums
+## Business Rules & Validations
 
-### LeaseStatus Enum
+### Lease Creation Rules
 
-```typescript
-enum LeaseStatus {
-  DRAFT = 'DRAFT',
-  ACTIVE = 'ACTIVE',
-  EXPIRED = 'EXPIRED',
-  TERMINATED = 'TERMINATED',
-  RENEWED = 'RENEWED'
-}
-```
+1. **One Active Lease Per Unit**: A unit can only have one active lease at a time
+2. **Date Validation**: `endDate` must be after `startDate`
+3. **Rent Due Day**: Must be between 1 and 28 (represents day of month)
+4. **Tenant Validation**: Tenant profile must exist for the company
+5. **Unit Validation**: Unit must exist and be active
+6. **Auto-Generated Lease Number**: Format: `LEASE-YYYY-###` (e.g., `LEASE-2024-001`)
 
-### LeaseType Enum
-
-```typescript
-enum LeaseType {
-  SHORT_TERM = 'SHORT_TERM',
-  LONG_TERM = 'LONG_TERM',
-  MONTH_TO_MONTH = 'MONTH_TO_MONTH'
-}
-```
-
-### CreateLeaseDto
-
-**Required Fields**:
-- `tenantId`: UUID
-- `unitId`: UUID
-- `leaseType`: LeaseType enum
-- `startDate`: Date string (ISO format)
-- `endDate`: Date string (ISO format)
-- `monthlyRent`: Number
-
-**Optional Fields**:
-- `landlordUserId`: UUID
-- `leaseNumber`: String
-- `moveInDate`: Date string
-- `moveOutDate`: Date string
-- `signedDate`: Date string
-- `renewalDate`: Date string
-- `noticeToVacateDate`: Date string
-- `billingStartDate`: Date string
-- `proratedFirstMonth`: Boolean
-- `gracePeriodDays`: Number
-- `securityDeposit`: Number
-- `petDeposit`: Number
-- `petRent`: Number
-- `lateFeeAmount`: Number
-- `utilitiesIncluded`: Boolean
-- `utilityCosts`: Number
-- `currency`: String (default: "KES")
-- `leaseTerm`: Number
-- `renewalOptions`: String
-- `noticePeriod`: Number
-- `petPolicy`: String
-- `smokingPolicy`: String
-- `terms`: String
-- `coTenants`: Array of UUIDs
-- `guarantorInfo`: Object
-- `documents`: Array of URLs
-- `notes`: String
-- `tags`: Array of strings
-
----
-
-## Use Cases & Flow Diagrams
-
-### Use Case 1: Creating and Activating a New Lease
+### Lease Status Transitions
 
 ```
-1. Admin creates lease (DRAFT)
-   POST /api/v1/leases
-   ↓
-2. Lease created as DRAFT
-   Unit: AVAILABLE (unchanged)
-   Tenant: PENDING (unchanged)
-   ↓
-3. Admin activates lease
-   POST /api/v1/leases/:id/activate
-   ↓
-4. Lease becomes ACTIVE
-   Unit: AVAILABLE → OCCUPIED
-   Tenant: PENDING → ACTIVE
+DRAFT → ACTIVE (automatic when startDate is reached)
+ACTIVE → TERMINATED (via terminate endpoint)
+ACTIVE → EXPIRED (automatic when endDate passes)
+ACTIVE → RENEWED (via renew endpoint)
+EXPIRED → RENEWED (via renew endpoint)
 ```
 
-### Use Case 2: Lease Renewal Flow
+**Automatic Activation:**
+- On creation: If `startDate <= today`, lease activates immediately
+- Scheduled: Daily job checks for `DRAFT` leases with `startDate <= today` and activates them
+- No manual activation endpoint - activation is automatic based on start date
 
-```
-1. Active lease approaching end date
-   Lease: ACTIVE
-   ↓
-2. Admin renews lease
-   POST /api/v1/leases/:id/renew
-   ↓
-3. Old lease: ACTIVE → RENEWED
-   New lease: Created as DRAFT
-   ↓
-4. Admin activates new lease
-   POST /api/v1/leases/:newId/activate
-   ↓
-5. New lease: DRAFT → ACTIVE
-   Old lease: RENEWED (read-only)
-```
+### Update Restrictions
 
-### Use Case 3: Early Lease Termination
+**DRAFT Leases:**
+- ✅ All fields can be updated
+- ✅ Date validations apply
 
-```
-1. Active lease
-   Lease: ACTIVE
-   Unit: OCCUPIED
-   Tenant: ACTIVE
-   ↓
-2. Admin terminates lease
-   POST /api/v1/leases/:id/terminate
-   ↓
-3. Lease: ACTIVE → TERMINATED
-   Unit: OCCUPIED → AVAILABLE
-   Tenant: ACTIVE → FORMER (if no other active leases)
-```
+**ACTIVE Leases:**
+- ❌ Cannot update: `startDate`, `endDate`, `monthlyRent`, `securityDeposit`, `leaseType`
+- ✅ Can update: `notes`, `tags`, `documents`, `moveInDate`, `moveOutDate`, `renewalDate`, `noticeToVacateDate`, `landlordUserId`
 
----
+### Activation Requirements
 
-## Permissions & Access Control
+**Automatic Activation (on creation or scheduled check):**
+1. Lease must be in `DRAFT` status
+2. `startDate` must be today or earlier
+3. Unit must be `AVAILABLE`
+4. Unit must not have another active lease
+5. First rent cycle generation must succeed
 
-### Role-Based Permissions
+**Note:** Activation happens automatically - there is no manual activation endpoint. Leases activate when their start date is reached.
 
-| Action | SUPER_ADMIN | COMPANY_ADMIN | MANAGER | LANDLORD | STAFF | TENANT |
-|--------|-------------|---------------|---------|----------|-------|--------|
-| Create lease | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| List leases | ✅ (all) | ✅ (company) | ✅ (company) | ✅ (company) | ✅ (company) | ✅ (own only) |
-| Get lease | ✅ (all) | ✅ (company) | ✅ (company) | ✅ (company) | ✅ (company) | ✅ (own only) |
-| Update lease | ✅ (all) | ✅ (company) | ✅ (company) | ✅ (company) | ❌ | ❌ |
-| Activate lease | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Terminate lease | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Renew lease | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Transfer lease | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Delete lease | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| View lease history | ✅ (all) | ✅ (company) | ✅ (company) | ✅ (company) | ✅ (company) | ✅ (own only) |
+### Termination Effects
 
-### Company Scoping
+1. Lease status → `TERMINATED`
+2. Unit status → `AVAILABLE`
+3. Tenant status updated (if no other active leases)
+4. Outstanding balance logged
+5. Future rent generation stops
 
-- All lease operations are scoped to companies
-- Users can only access leases from companies they belong to
-- Super admins can access all leases across all companies
-- Tenants can only view their own leases (regardless of company membership)
+### Renewal Process
 
-### Tenant Access Rules
+1. Old lease must be `ACTIVE` or `EXPIRED`
+2. New lease created in `DRAFT` status
+3. Old lease linked to new lease via `renewedToLeaseId`
+4. Most fields copied from old lease
+5. New lease number auto-generated
 
-- Tenants can only view their own leases
-- Tenants cannot create, update, activate, terminate, renew, transfer, or delete leases
-- Tenant lease history includes only leases where they are the tenant
+### Transfer Process
+
+1. Old lease is terminated
+2. New lease created in `DRAFT` status
+3. At least one of `newTenantId` or `newUnitId` required
+4. New unit validated (available, no active lease)
+5. Financial terms copied from old lease
 
 ---
 
 ## Error Handling
 
-### Error Response Format
+### Common Error Responses
 
+**400 Bad Request**
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "Human-readable error message",
-    "details": {
-      "field": "Additional error details"
-    }
-  },
-  "timestamp": "2024-01-01T00:00:00.000Z",
-  "path": "/api/v1/leases"
+  "statusCode": 400,
+  "message": "End date must be after start date",
+  "error": "Bad Request"
 }
 ```
 
-### Common Error Codes
-
-| Error Code | HTTP Status | Description |
-|------------|-------------|-------------|
-| `LEASE_NOT_FOUND` | 404 | The lease does not exist or you don't have access to it |
-| `UNIT_ALREADY_LEASED` | 400 | The unit already has an active lease |
-| `CANNOT_DELETE_ACTIVE_LEASE` | 400 | Active leases cannot be deleted (must terminate first) |
-| `CANNOT_UPDATE_ACTIVE_LEASE_FIELD` | 400 | This field cannot be updated for an active lease |
-| `INVALID_LEASE_DATES` | 400 | The lease end date must be after the start date |
-| `LEASE_ALREADY_ACTIVE` | 400 | This lease is already active |
-| `LEASE_NOT_ACTIVE` | 400 | This operation can only be performed on active leases |
-| `CANNOT_ACTIVATE_UNAVAILABLE_UNIT` | 400 | Cannot activate lease for an unavailable unit |
-| `INSUFFICIENT_PERMISSIONS` | 403 | You don't have permission to perform this action |
-| `VALIDATION_ERROR` | 400 | Request validation failed |
-| `UNIT_NOT_FOUND` | 404 | The unit does not exist |
-| `TENANT_NOT_FOUND` | 404 | The tenant does not exist or is not in this company |
-
-### Example Error Responses
-
-**Lease Not Found**:
+**403 Forbidden**
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "LEASE_NOT_FOUND",
-    "message": "The lease you're looking for doesn't exist or you don't have access to it.",
-    "details": {
-      "leaseId": "123e4567-e89b-12d3-a456-426614174000"
-    }
-  },
-  "timestamp": "2024-01-01T00:00:00.000Z",
-  "path": "/api/v1/leases/123e4567-e89b-12d3-a456-426614174000"
+  "statusCode": 403,
+  "message": "Only company administrators, managers, and landlords can create leases.",
+  "error": "Forbidden"
 }
 ```
 
-**Unit Already Leased**:
+**404 Not Found**
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "UNIT_ALREADY_LEASED",
-    "message": "This unit already has an active lease. Please terminate the existing lease first.",
-    "details": {
-      "unitId": "123e4567-e89b-12d3-a456-426614174001",
-      "existingLeaseId": "123e4567-e89b-12d3-a456-426614174002"
-    }
-  },
-  "timestamp": "2024-01-01T00:00:00.000Z",
-  "path": "/api/v1/leases"
+  "statusCode": 404,
+  "message": "Lease not found",
+  "error": "Not Found"
 }
 ```
 
----
+### Error Codes
 
-## Code Examples
-
-### Example 1: Create and Activate a Lease
-
-```javascript
-// Step 1: Create lease
-const createLeaseResponse = await fetch('http://localhost:8000/api/v1/leases', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`
-  },
-  body: JSON.stringify({
-    tenantId: '123e4567-e89b-12d3-a456-426614174000',
-    unitId: '123e4567-e89b-12d3-a456-426614174001',
-    leaseType: 'LONG_TERM',
-    startDate: '2024-01-01',
-    endDate: '2024-12-31',
-    monthlyRent: 1500.00,
-    securityDeposit: 1500.00,
-    currency: 'KES'
-  })
-});
-
-const { data: lease } = await createLeaseResponse.json();
-
-// Step 2: Activate lease
-const activateResponse = await fetch(
-  `http://localhost:8000/api/v1/leases/${lease.id}/activate`,
-  {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`
-    }
-  }
-);
-
-const { data: activeLease } = await activateResponse.json();
-console.log('Lease activated:', activeLease.status); // ACTIVE
-```
-
-### Example 2: List Active Leases Expiring Soon
-
-```javascript
-const response = await fetch(
-  'http://localhost:8000/api/v1/leases?status=ACTIVE&expiringSoon=true&page=1&limit=10',
-  {
-    headers: {
-      'Authorization': `Bearer ${token}`
-    }
-  }
-);
-
-const { data: leases, pagination } = await response.json();
-console.log(`Found ${pagination.total} leases expiring soon`);
-```
-
-### Example 3: Renew a Lease
-
-```javascript
-const renewResponse = await fetch(
-  `http://localhost:8000/api/v1/leases/${leaseId}/renew`,
-  {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    },
-    body: JSON.stringify({
-      startDate: '2025-01-01',
-      endDate: '2025-12-31',
-      monthlyRent: 1600.00,
-      securityDeposit: 1600.00
-    })
-  }
-);
-
-const { data: newLease } = await renewResponse.json();
-console.log('New lease created:', newLease.id);
-console.log('Old lease renewed:', newLease.renewedFromLeaseId);
-```
-
-### Example 4: Get Lease History for a Unit
-
-```javascript
-const response = await fetch(
-  `http://localhost:8000/api/v1/leases/unit/${unitId}`,
-  {
-    headers: {
-      'Authorization': `Bearer ${token}`
-    }
-  }
-);
-
-const { data: history } = await response.json();
-console.log(`Unit has ${history.length} lease records`);
-```
+| Error Code | Description |
+|------------|-------------|
+| `UNIT_NOT_FOUND` | Unit does not exist |
+| `TENANT_NOT_FOUND` | Tenant profile does not exist |
+| `LEASE_NOT_FOUND` | Lease does not exist |
+| `UNIT_ALREADY_LEASED` | Unit already has an active lease |
+| `INVALID_LEASE_DATES` | End date is before or equal to start date |
+| `LEASE_NOT_ACTIVE` | Lease is not in ACTIVE status |
+| `LEASE_ALREADY_ACTIVE` | Lease is already active |
+| `CANNOT_UPDATE_ACTIVE_LEASE_FIELD` | Cannot update restricted field on active lease |
+| `CANNOT_DELETE_ACTIVE_LEASE` | Cannot delete non-DRAFT lease |
+| `CANNOT_ACTIVATE_UNAVAILABLE_UNIT` | Unit is not available for activation (used during automatic activation) |
+| `INSUFFICIENT_PERMISSIONS` | User lacks required permissions |
+| `VALIDATION_ERROR` | Request validation failed |
 
 ---
 
-## Best Practices
+## Examples
 
-### 1. Lease Creation
+### Complete Lease Creation Flow
 
-- Always create leases as DRAFT first
-- Validate that the unit is available before creating
-- Ensure the tenant exists and is part of the company
-- Use auto-generated lease numbers for consistency (unless specific numbering is required)
+**Step 1: Create Lease (Auto-Activates if startDate <= today)**
+```bash
+POST /api/v1/leases
+{
+  "tenantId": "123e4567-e89b-12d3-a456-426614174000",
+  "unitId": "123e4567-e89b-12d3-a456-426614174001",
+  "leaseType": "LONG_TERM",
+  "startDate": "2024-01-01",
+  "endDate": "2024-12-31",
+  "monthlyRent": 1500.00,
+  "securityDeposit": 1500.00,
+  "billingStartDate": "2024-01-01",
+  "rentDueDay": 5,
+  "gracePeriodDays": 5,
+  "lateFeeType": "FIXED",
+  "lateFeeAmount": 50.00
+}
+```
+*Note: If startDate is today or earlier, lease is automatically activated*
 
-### 2. Lease Activation
+**Step 2: View Active Lease**
+```bash
+GET /api/v1/leases/{leaseId}
+```
 
-- Activate leases only when the tenant is ready to move in
-- Verify unit availability before activation
-- Consider setting `moveInDate` when activating
+**For Future Start Dates:**
+If `startDate` is in the future, the lease remains `DRAFT` until the start date is reached. A scheduled job (or manual trigger) will activate it:
+```bash
+POST /api/v1/leases/scheduler/check-activation
+```
 
-### 3. Lease Updates
+### Renewal Flow
 
-- Remember that ACTIVE leases have limited update capabilities
-- Use notes and tags for tracking important information
-- Keep documents updated in the `documents` array
+**Step 1: Renew Lease**
+```bash
+POST /api/v1/leases/{oldLeaseId}/renew
+{
+  "startDate": "2025-01-01",
+  "endDate": "2025-12-31",
+  "monthlyRent": 1600.00,
+  "securityDeposit": 1600.00
+}
+```
+*Note: New lease is created in DRAFT status. It will automatically activate when startDate is reached.*
 
-### 4. Lease Termination
+### Transfer Flow
 
-- Always provide a termination reason for record-keeping
-- Set `actualTerminationDate` if different from today
-- Consider tenant's other active leases before termination (affects tenant status)
+**Transfer to New Tenant**
+```bash
+POST /api/v1/leases/{leaseId}/transfer
+{
+  "newTenantId": "123e4567-e89b-12d3-a456-426614174007"
+}
+```
 
-### 5. Lease Renewal
+**Transfer to New Unit**
+```bash
+POST /api/v1/leases/{leaseId}/transfer
+{
+  "newUnitId": "123e4567-e89b-12d3-a456-426614174008"
+}
+```
 
-- Renew leases before they expire to maintain continuity
-- Update rent amounts appropriately during renewal
-- The new lease must be activated separately after renewal
+### Query Examples
 
-### 6. Data Access
+**Find Active Leases Expiring Soon**
+```bash
+GET /api/v1/leases?status=ACTIVE&expiringSoon=true&sortBy=endDate&sortOrder=ASC
+```
 
-- Always filter leases by company context (unless super admin)
-- Tenants should only see their own leases
-- Use pagination for large lease lists
+**Find Leases for Specific Tenant**
+```bash
+GET /api/v1/leases?tenantId=123e4567-e89b-12d3-a456-426614174000
+```
 
-### 7. Status Management
-
-- Let the system automatically update unit and tenant statuses
-- Don't manually change unit/tenant status when working with leases
-- Monitor lease expirations regularly
-
-### 8. Error Handling
-
-- Check for `UNIT_ALREADY_LEASED` before creating new leases
-- Handle `CANNOT_UPDATE_ACTIVE_LEASE_FIELD` errors gracefully
-- Provide clear error messages to users about lease state restrictions
-
-### 9. Performance
-
-- Use filtering and pagination to limit result sets
-- Index frequently queried fields (status, dates, tenantId, unitId)
-- Consider caching for frequently accessed lease data
-
-### 10. Security
-
-- Always validate user permissions before lease operations
-- Ensure company scoping is enforced at the service level
-- Protect sensitive lease financial information (rent, deposits)
-
----
-
-## Quick Reference
-
-### Lease Status Transitions
-
-| From | To | Method | Notes |
-|------|-----|--------|-------|
-| DRAFT | ACTIVE | `POST /leases/:id/activate` | Requires unit to be available |
-| ACTIVE | TERMINATED | `POST /leases/:id/terminate` | Can specify termination reason |
-| ACTIVE | EXPIRED | Automatic | When `endDate` passes |
-| ACTIVE/EXPIRED | RENEWED | `POST /leases/:id/renew` | Creates new DRAFT lease |
-| DRAFT | (deleted) | `DELETE /leases/:id` | Soft delete only |
-
-### Important Endpoints Summary
-
-| Endpoint | Method | Purpose | Permissions |
-|----------|--------|---------|-------------|
-| `/leases` | POST | Create lease | ADMIN, MANAGER, LANDLORD |
-| `/leases` | GET | List leases | All (filtered) |
-| `/leases/:id` | GET | Get lease | All (filtered) |
-| `/leases/:id` | PATCH | Update lease | ADMIN, MANAGER, LANDLORD |
-| `/leases/:id/activate` | POST | Activate lease | ADMIN, MANAGER |
-| `/leases/:id/terminate` | POST | Terminate lease | ADMIN, MANAGER |
-| `/leases/:id/renew` | POST | Renew lease | ADMIN, MANAGER |
-| `/leases/:id/transfer` | POST | Transfer lease | ADMIN, MANAGER |
-| `/leases/:id` | DELETE | Delete lease | ADMIN, MANAGER |
-| `/leases/unit/:unitId` | GET | Unit lease history | All (filtered) |
-| `/leases/tenant/:tenantId` | GET | Tenant lease history | All (filtered) |
+**Find Leases in Date Range**
+```bash
+GET /api/v1/leases?startDateFrom=2024-01-01&endDateTo=2024-12-31
+```
 
 ---
 
-**Last Updated**: 2024-12-22
+## Notes
 
+- All dates should be in ISO 8601 format (YYYY-MM-DD)
+- All monetary values are decimal numbers with up to 2 decimal places
+- Lease numbers are auto-generated but can be manually set
+- Soft delete is used (leases are marked `isActive: false` rather than deleted)
+- **Automatic activation**: Leases activate automatically when `startDate` is reached
+  - On creation: If `startDate <= today`, lease activates immediately
+  - Scheduled: Daily job activates leases with `startDate <= today`
+- Automatic expiration: Leases with `endDate` in the past are automatically marked as `EXPIRED` (via scheduled job)
+- Rent cycles are automatically generated when a lease is activated
+- Outstanding balances are logged but don't block termination
 
+---
 
+## Related Documentation
 
-
+- [Payment API Documentation](./PAYMENT_API_DOCUMENTATION.md)
+- [Rent Cycle Frontend Guide](./RENT_CYCLE_FRONTEND_GUIDE.md)
+- [Unit API Documentation](./UNIT_API_DOCUMENTATION.md)
+- [Tenant API Documentation](./TENANT_TESTING_GUIDE.md)

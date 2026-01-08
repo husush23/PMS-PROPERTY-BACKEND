@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LeaseController } from './lease.controller';
 import { LeaseService } from './lease.service';
+import { LeaseSchedulerService } from './lease-scheduler.service';
 import { Lease } from './entities/lease.entity';
 import { Unit } from '../unit/entities/unit.entity';
 import { Property } from '../property/entities/property.entity';
@@ -31,7 +32,7 @@ import { RentCycleModule } from '../rent-cycle/rent-cycle.module';
     forwardRef(() => RentCycleModule),
   ],
   controllers: [LeaseController],
-  providers: [LeaseService],
-  exports: [LeaseService],
+  providers: [LeaseService, LeaseSchedulerService],
+  exports: [LeaseService, LeaseSchedulerService],
 })
 export class LeaseModule {}

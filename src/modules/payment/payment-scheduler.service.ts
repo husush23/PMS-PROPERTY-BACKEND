@@ -1,4 +1,5 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { RentGenerationService } from './rent-generation.service';
 import { OverdueHandlerService } from './overdue-handler.service';
 import { PaymentService } from './payment.service';
@@ -18,8 +19,9 @@ export class PaymentSchedulerService {
 
   /**
    * Generate rent cycles for all active leases (supports all payment frequencies)
-   * Should be called daily (e.g., at 2 AM)
+   * Runs daily at 2 AM to generate new invoices when period starts
    */
+  @Cron('0 2 * * *') // Daily at 2:00 AM
   async generateMonthlyPayments(): Promise<void> {
     this.logger.log('Starting rent cycle generation job...');
     try {
@@ -36,8 +38,9 @@ export class PaymentSchedulerService {
 
   /**
    * Check and mark payments as DUE when due date arrives
-   * Should be called daily (e.g., at 1 AM) before overdue check
+   * Runs daily at 1 AM before overdue check
    */
+  @Cron('0 1 * * *') // Daily at 1:00 AM
   async checkAndMarkDue(): Promise<void> {
     this.logger.log('Starting due payment check job...');
     try {
@@ -54,8 +57,10 @@ export class PaymentSchedulerService {
 
   /**
    * Check and mark overdue payments, apply late fees
-   * Should be called daily (e.g., at 3 AM) after due check
+   * Updates invoice statuses (DUE → OVERDUE) when past grace period
+   * Runs daily at 3 AM after due check
    */
+  @Cron('0 3 * * *') // Daily at 3:00 AM
   async checkAndMarkOverdue(): Promise<void> {
     this.logger.log('Starting overdue payment check job...');
     try {

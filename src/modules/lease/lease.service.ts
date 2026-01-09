@@ -27,6 +27,7 @@ import { TenantStatus } from '../../shared/enums/tenant-status.enum';
 import { TenantService } from '../tenant/tenant.service';
 import { RentGenerationService } from '../payment/rent-generation.service';
 import { RentCycleGenerationService } from '../rent-cycle/rent-cycle-generation.service';
+import { RentCycleService } from '../rent-cycle/rent-cycle.service';
 import { Payment } from '../payment/entities/payment.entity';
 import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 import { PaymentFrequency } from '../../shared/enums/payment-frequency.enum';
@@ -57,6 +58,8 @@ export class LeaseService {
     private rentGenerationService: RentGenerationService,
     @Inject(forwardRef(() => RentCycleGenerationService))
     private rentCycleGenerationService: RentCycleGenerationService,
+    @Inject(forwardRef(() => RentCycleService))
+    private rentCycleService: RentCycleService,
   ) {}
 
   async create(
@@ -300,6 +303,22 @@ export class LeaseService {
     });
 
     const savedLease = await this.leaseRepository.save(lease);
+
+    // Create deposit invoices (separate from rent invoices)
+    // Deposits are one-time charges that don't affect rent cycle generation
+    try {
+      await this.rentCycleService.createDepositInvoices(
+        savedLease.id,
+        createDto.securityDeposit,
+        createDto.petDeposit,
+      );
+    } catch (error) {
+      // Log error but don't fail lease creation if deposit creation fails
+      console.error(
+        `Failed to create deposit invoices for lease ${savedLease.id}:`,
+        error.message,
+      );
+    }
 
     // Check if lease should be activated immediately (start date is today or earlier)
     const today = new Date();
@@ -752,6 +771,11 @@ export class LeaseService {
   /**
    * Internal method to activate a lease
    * Called automatically when start date is reached or during creation if start date is today/earlier
+   * 
+   * IMPORTANT: Lease activation is based on obligation existence, NOT payment.
+   * - Lease becomes ACTIVE when the first rent obligation exists (startDate <= today)
+   * - Invoice generation drives activation, not payment receipt
+   * - Tenant can pay after activation, but activation happens when obligation exists
    */
   private async activateLeaseInternal(leaseId: string): Promise<void> {
     const lease = await this.leaseRepository.findOne({
@@ -831,6 +855,9 @@ export class LeaseService {
     });
 
     // Update tenant status: PENDING → ACTIVE (call TenantService method)
+    // Note: This only updates ACTIVE/FORMER status based on lease existence
+    // Payment status (due/overdue) is derived from invoice statuses, not stored here
+    // See TENANT TRUTH SOURCE RULE: Invoice status is single source of truth
     const activeLeasesCount = await this.leaseRepository.count({
       where: {
         tenantId: lease.tenantId,
@@ -846,6 +873,8 @@ export class LeaseService {
     );
 
     // Generate first rent cycle (invoice)
+    // This creates the first rent obligation, which is what activates the lease
+    // Payment is not required for activation - obligation existence is sufficient
     try {
       await this.rentCycleGenerationService.generateFirstCycle(leaseId);
     } catch (error) {

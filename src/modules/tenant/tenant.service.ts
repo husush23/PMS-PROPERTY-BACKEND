@@ -1174,12 +1174,25 @@ export class TenantService {
     }
   }
 
+  /**
+   * Update tenant status based on active lease count
+   * 
+   * TENANT TRUTH SOURCE RULE:
+   * - Invoice status is the SINGLE SOURCE OF TRUTH for tenant payment status
+   * - Tenant/lease status is DERIVED from invoice statuses (not stored)
+   * - No caching of payment status on tenant/lease entities
+   * - To determine if tenant is due/overdue, query invoice statuses
+   * - This method only updates tenant ACTIVE/FORMER status based on lease existence
+   * - Payment status (due/overdue) must be derived from invoice statuses, not tenant status
+   */
   async updateTenantStatusBasedOnActiveLeaseCount(
     tenantId: string,
     companyId: string,
     activeLeaseCount: number,
   ): Promise<void> {
     // This method is called from LeaseService to update tenant status based on active lease count
+    // Note: This only updates ACTIVE/FORMER status, NOT payment status
+    // Payment status (due/overdue) is derived from invoice statuses
     const tenantProfile = await this.tenantProfileRepository.findOne({
       where: { userId: tenantId, companyId },
     });

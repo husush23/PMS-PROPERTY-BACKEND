@@ -45,8 +45,23 @@ export class RentCycle {
   @Column({ type: 'date' })
   dueDate: Date;
 
+  @Column({ type: 'date', nullable: true })
+  periodStartDate: Date; // Explicit period start - when invoice period begins
+
+  @Column({ type: 'date', nullable: true })
+  periodEndDate: Date; // Explicit period end - when invoice period ends
+
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   totalAmountDue: number; // Calculated from line items
+
+  @Column({ default: false })
+  isDeposit: boolean; // True if this is a deposit invoice (separate from rent invoices)
+
+  @Column({ default: false })
+  isVoid: boolean; // True if invoice is voided (cancelled/admin action)
+
+  @Column({ type: 'text', nullable: true })
+  voidReason: string; // Reason for voiding the invoice
 
   @CreateDateColumn()
   createdAt: Date;

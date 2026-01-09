@@ -5,5 +5,6 @@ export enum RentCycleStatus {
   PARTIAL = 'PARTIAL',
   PAID = 'PAID',
   CANCELLED = 'CANCELLED',
+  VOID = 'VOID',
 }
 

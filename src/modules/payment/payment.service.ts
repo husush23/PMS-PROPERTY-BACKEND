@@ -156,25 +156,88 @@ export class PaymentService {
       }
     }
 
-    // Validate amountPaid cannot exceed amountDue
-    if (createDto.amount > amountDue) {
-      throw new BusinessException(
-        ErrorCode.VALIDATION_ERROR,
-        ERROR_MESSAGES.PAYMENT_AMOUNT_EXCEEDS_DUE,
-        HttpStatus.BAD_REQUEST,
-        {
-          amount: createDto.amount,
-          amountDue,
-          message: `The payment amount (${createDto.amount}) exceeds the amount due (${amountDue}). Please adjust the payment amount.`,
-        },
-      );
+    /**
+     * CREDIT LIFECYCLE RULE (MVP-Safe):
+     * - Credit (negative balance) is stored but NEVER auto-applied
+     * - Credit requires explicit implementation in future
+     * - Credit can be manually applied to future invoices (future feature)
+     * - TODO: Implement credit application logic when needed
+     * 
+     * Current behavior:
+     * - Overpayments create negative balance (credit)
+     * - Credit is stored in payment/invoice balance
+     * - Credit is NOT automatically applied to next invoice
+     * - Credit requires manual intervention or future implementation
+     */
+    // Allow overpayments - excess amount will be tracked as credit
+    // Overpayments can be applied to future invoices or refunded later
+    // TODO: Accounting Hook - When payment is recorded, create accounting entry (future module)
+    const isOverpayment = createDto.amount > amountDue;
+    if (isOverpayment) {
+      // Log overpayment but allow it - excess will be tracked as negative balance
+      // This supports advance payments and overpayments
+      // Credit is stored but never auto-applied (see CREDIT LIFECYCLE RULE above)
     }
 
     // Find or create RentCycle if rentCycleId not provided
+    // Support advance payments: payments can link to future invoices via rentCycleId
     let rentCycleId = createDto.rentCycleId;
     let rentCycle: RentCycle | null = null;
 
-    if (!rentCycleId && createDto.period) {
+    if (rentCycleId) {
+      // If rentCycleId is provided, validate it exists (supports advance payments to future invoices)
+      rentCycle = await this.rentCycleRepository.findOne({
+        where: {
+          id: rentCycleId,
+          leaseId: createDto.leaseId, // Ensure it belongs to the same lease
+        },
+      });
+
+      if (rentCycle) {
+        /**
+         * DEPOSIT SAFEGUARD RULE:
+         * - Deposit invoices CANNOT accept rent payments
+         * - Deposit payments CANNOT be applied to rent invoices
+         * - Deposit refunds do NOT create rent credit
+         * 
+         * Validation: If payment type is RENT and invoice is deposit, reject
+         * Validation: If payment type is DEPOSIT and invoice is NOT deposit, reject
+         */
+        if (rentCycle.isDeposit) {
+          // Deposit invoice - only accept deposit payments
+          if (createDto.paymentType !== PaymentType.DEPOSIT) {
+            throw new BusinessException(
+              ErrorCode.VALIDATION_ERROR,
+              'Cannot apply non-deposit payment to deposit invoice. Deposit invoices only accept deposit payments.',
+              HttpStatus.BAD_REQUEST,
+              { rentCycleId, paymentType: createDto.paymentType, isDeposit: true },
+            );
+          }
+        } else {
+          // Rent invoice - do not accept deposit payments
+          if (createDto.paymentType === PaymentType.DEPOSIT) {
+            throw new BusinessException(
+              ErrorCode.VALIDATION_ERROR,
+              'Cannot apply deposit payment to rent invoice. Deposit payments must be applied to deposit invoices only.',
+              HttpStatus.BAD_REQUEST,
+              { rentCycleId, paymentType: createDto.paymentType, isDeposit: false },
+            );
+          }
+        }
+
+        // Use RentCycle's amountDue if not provided
+        if (!amountDue) {
+          amountDue = Number(rentCycle.totalAmountDue);
+        }
+      } else {
+        throw new BusinessException(
+          ErrorCode.VALIDATION_ERROR,
+          'Rent cycle not found or does not belong to this lease',
+          HttpStatus.BAD_REQUEST,
+          { rentCycleId, leaseId: createDto.leaseId },
+        );
+      }
+    } else if (createDto.period) {
       // Try to find existing RentCycle for this lease + period
       rentCycle = await this.rentCycleRepository.findOne({
         where: {
@@ -208,7 +271,9 @@ export class PaymentService {
     // For new payments, amountPaid starts at the payment amount
     // If this is a payment against an existing invoice, we should use recordPayment instead
     const amountPaid = createDto.amount;
-    const balance = Math.max(0, amountDue - amountPaid); // Ensure balance is never negative
+    // Allow negative balance for overpayments (credit)
+    // Negative balance means tenant has paid more than due (advance payment/credit)
+    const balance = amountDue - amountPaid;
 
     // Determine status based on balance and due date
     let status = PaymentStatus.PENDING;
@@ -255,6 +320,11 @@ export class PaymentService {
     });
 
     const savedPayment = await this.paymentRepository.save(payment);
+    
+    // TODO: Accounting Hook - When payment is recorded
+    // → create accounting entry (future module)
+    // This hook should consume payment data but never control invoice logic
+    
     return this.toResponseDto(savedPayment, requesterUserId);
   }
 

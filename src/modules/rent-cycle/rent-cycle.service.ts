@@ -20,6 +20,18 @@ import { Payment } from '../payment/entities/payment.entity';
 import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 import { UserRole } from '../../shared/enums/user-role.enum';
 
+/**
+ * TENANT TRUTH SOURCE RULE:
+ * 
+ * Invoice status is the SINGLE SOURCE OF TRUTH for tenant payment status.
+ * 
+ * Rules:
+ * - Tenant/lease payment status is DERIVED from invoice statuses (not stored)
+ * - No caching of payment status on tenant/lease entities
+ * - To determine if tenant is due/overdue, query invoice statuses using this service
+ * - Invoice status calculation (calculateStatus) is the authoritative source
+ * - Tenant status (ACTIVE/FORMER) is separate from payment status (DUE/OVERDUE)
+ */
 @Injectable()
 export class RentCycleService {
   constructor(
@@ -463,7 +475,33 @@ export class RentCycleService {
     );
   }
 
+  /**
+   * Calculate invoice status based on explicit rules using period boundaries
+   * 
+   * EXPLICIT STATUS TRANSITION RULES:
+   * - VOID: isVoid === true (takes precedence over all other statuses)
+   * - PAID: balance <= 0 (fully paid, regardless of date)
+   * - PARTIAL: amountPaid > 0 && balance > 0 (partially paid)
+   * - PENDING: today < periodStartDate (period not started yet)
+   * - DUE: periodStartDate ≤ today ≤ dueDate (period started, payment due)
+   * - OVERDUE: today > dueDate + gracePeriodDays (past grace period, unpaid)
+   * 
+   * GRACE PERIOD RULE (Authoritative):
+   * - Grace period ONLY affects OVERDUE transition (not DUE)
+   * - Grace period NEVER affects invoice generation
+   * - Grace period NEVER affects period boundaries
+   * - DUE status occurs when: periodStartDate ≤ today ≤ dueDate
+   * - OVERDUE status occurs when: today > dueDate + gracePeriodDays
+   * - If today is between dueDate and (dueDate + gracePeriodDays), status is still DUE
+   * 
+   * Note: If periodStartDate is null (backward compatibility), falls back to dueDate-based logic
+   */
   calculateStatus(rentCycle: RentCycle & { payments?: Payment[] }): RentCycleStatus {
+    // VOID status takes precedence - if invoice is voided, return VOID immediately
+    if (rentCycle.isVoid) {
+      return RentCycleStatus.VOID;
+    }
+
     if (!rentCycle.lease) {
       return RentCycleStatus.PENDING;
     }
@@ -485,34 +523,66 @@ export class RentCycleService {
     const dueDate = new Date(rentCycle.dueDate);
     dueDate.setHours(0, 0, 0, 0);
 
+    // Use explicit period boundaries if available, otherwise fall back to dueDate
+    const periodStartDate = rentCycle.periodStartDate
+      ? new Date(rentCycle.periodStartDate)
+      : null;
+    if (periodStartDate) {
+      periodStartDate.setHours(0, 0, 0, 0);
+    }
+
+    // Calculate grace period end (grace period ONLY affects OVERDUE transition)
     const gracePeriodEnd = new Date(dueDate);
     gracePeriodEnd.setDate(
       gracePeriodEnd.getDate() + (rentCycle.lease.gracePeriodDays || 0),
     );
 
+    // Rule 1: PAID - balance fully paid (takes precedence over date-based statuses)
     if (balance <= 0) {
+      // TODO: Accounting Hook - When invoice status changes to PAID
+      // → create accounting entry (future module)
+      // This hook should be called when invoice becomes fully paid
       return RentCycleStatus.PAID;
     }
 
+    // Rule 2: PARTIAL - partially paid
     if (amountPaid > 0) {
       return RentCycleStatus.PARTIAL;
     }
 
-    if (today < dueDate) {
+    // Rule 3: PENDING - period not started yet (if periodStartDate exists)
+    if (periodStartDate && today < periodStartDate) {
       return RentCycleStatus.PENDING;
     }
 
-    if (today.getTime() === dueDate.getTime()) {
+    // Rule 4: DUE - period started and payment is due
+    // DUE occurs when: periodStartDate ≤ today ≤ dueDate
+    // If periodStartDate is null, use dueDate as fallback
+    const periodStart = periodStartDate || dueDate;
+    if (today >= periodStart && today <= dueDate) {
       return RentCycleStatus.DUE;
     }
 
+    // Rule 5: OVERDUE - past grace period, unpaid
+    // OVERDUE occurs when: today > dueDate + gracePeriodDays
     if (today > gracePeriodEnd) {
       return RentCycleStatus.OVERDUE;
     }
 
-    return RentCycleStatus.DUE; // Within grace period
+    // Rule 6: DUE - within grace period (after dueDate but before gracePeriodEnd)
+    // This handles the case where today > dueDate but today <= gracePeriodEnd
+    return RentCycleStatus.DUE;
   }
 
+  /**
+   * Calculate invoice amounts (total, paid, balance)
+   * 
+   * CREDIT LIFECYCLE RULE (MVP-Safe):
+   * - Credit (negative balance) is stored but NEVER auto-applied
+   * - Credit requires explicit implementation in future
+   * - TODO: Implement credit application logic when needed
+   * - Negative balance means tenant has overpaid (credit/advance payment)
+   */
   calculateAmounts(
     rentCycle: RentCycle & { payments?: Payment[] },
   ): {
@@ -531,7 +601,9 @@ export class RentCycleService {
       .reduce((sum, p) => sum + Number(p.amount), 0);
 
     const totalAmountDue = Number(rentCycle.totalAmountDue);
-    const balance = Math.max(0, totalAmountDue - amountPaid);
+    // Allow negative balance for credit (overpayments)
+    // Credit is stored but never auto-applied (see CREDIT LIFECYCLE RULE above)
+    const balance = totalAmountDue - amountPaid;
 
     return {
       totalAmountDue,
@@ -623,6 +695,217 @@ export class RentCycleService {
     });
 
     return this.toResponseDto({ ...updatedCycle!, payments }, requesterUserId);
+  }
+
+  /**
+   * Void an invoice (mark as cancelled/voided)
+   * Used for lease cancellation, admin actions, or correcting errors
+   */
+  async voidInvoice(
+    rentCycleId: string,
+    reason: string,
+    requesterUserId: string,
+  ): Promise<RentCycleResponseDto> {
+    const cycle = await this.rentCycleRepository.findOne({
+      where: { id: rentCycleId },
+      relations: ['lease', 'lineItems'],
+    });
+
+    if (!cycle) {
+      throw new BusinessException(
+        ErrorCode.PAYMENT_NOT_FOUND,
+        'Rent cycle not found',
+        HttpStatus.NOT_FOUND,
+        { rentCycleId },
+      );
+    }
+
+    // Check access
+    await this.validateCompanyAccess(cycle.companyId, requesterUserId);
+
+    // Check if already voided
+    if (cycle.isVoid) {
+      throw new BusinessException(
+        ErrorCode.BAD_REQUEST,
+        'Invoice is already voided',
+        HttpStatus.BAD_REQUEST,
+        { rentCycleId },
+      );
+    }
+
+    // Load payments to check if any payments exist
+    const payments = await this.loadPaymentsForCycle(cycle);
+    const hasPayments = payments.length > 0;
+
+    if (hasPayments) {
+      // Check if any payments are not refunded
+      const activePayments = payments.filter(
+        (p) => p.isActive && p.status !== PaymentStatus.REFUNDED,
+      );
+      if (activePayments.length > 0) {
+        throw new BusinessException(
+          ErrorCode.BAD_REQUEST,
+          'Cannot void invoice with active payments. Refund payments first.',
+          HttpStatus.BAD_REQUEST,
+          { rentCycleId, activePaymentsCount: activePayments.length },
+        );
+      }
+    }
+
+    // Void the invoice
+    await this.rentCycleRepository.update(rentCycleId, {
+      isVoid: true,
+      voidReason: reason,
+    });
+
+    // Reload with relations
+    const voidedCycle = await this.rentCycleRepository.findOne({
+      where: { id: rentCycleId },
+      relations: ['lease', 'lineItems'],
+    });
+
+    return this.toResponseDto({ ...voidedCycle!, payments }, requesterUserId);
+  }
+
+  /**
+   * Create deposit invoice(s) for a lease
+   * 
+   * DEPOSIT SAFEGUARD RULES:
+   * - Deposit invoices CANNOT affect rent status
+   * - Deposit payments CANNOT be applied to rent invoices
+   * - Deposit refunds do NOT create rent credit
+   * - Deposits are separate from rent invoices and don't affect rent cycle generation
+   * - Deposits are excluded from rent calculations and status checks
+   */
+  async createDepositInvoices(
+    leaseId: string,
+    securityDeposit?: number,
+    petDeposit?: number,
+  ): Promise<void> {
+    const lease = await this.leaseRepository.findOne({
+      where: { id: leaseId, isActive: true },
+    });
+
+    if (!lease) {
+      throw new BusinessException(
+        ErrorCode.LEASE_NOT_FOUND_FOR_PAYMENT,
+        ERROR_MESSAGES.LEASE_NOT_FOUND_FOR_PAYMENT,
+        HttpStatus.NOT_FOUND,
+        { leaseId },
+      );
+    }
+
+    const today = new Date();
+    const period = `DEPOSIT-${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+    // Create security deposit invoice if amount exists
+    if (securityDeposit && securityDeposit > 0) {
+      await this.createDepositInvoice(
+        lease,
+        securityDeposit,
+        'Security deposit',
+        period,
+      );
+    }
+
+    // Create pet deposit invoice if amount exists
+    if (petDeposit && petDeposit > 0) {
+      await this.createDepositInvoice(
+        lease,
+        petDeposit,
+        'Pet deposit',
+        period,
+      );
+    }
+  }
+
+  /**
+   * Create a single deposit invoice
+   */
+  private async createDepositInvoice(
+    lease: Lease,
+    amount: number,
+    description: string,
+    period: string,
+  ): Promise<RentCycle> {
+    // Check if deposit invoice already exists for this lease and type
+    const existing = await this.rentCycleRepository.findOne({
+      where: {
+        leaseId: lease.id,
+        period: period,
+        isDeposit: true,
+      },
+      relations: ['lineItems'],
+    });
+
+    // Check if this specific deposit type already exists
+    if (existing) {
+      const hasDepositType = existing.lineItems.some(
+        (item) => item.type === RentCycleLineItemType.DEPOSIT && item.description === description,
+      );
+      if (hasDepositType) {
+        // Deposit already exists, skip creation
+        return existing;
+      }
+    }
+
+    // Generate invoice number for deposit
+    const year = new Date().getFullYear();
+    const month = String(new Date().getMonth() + 1).padStart(2, '0');
+    const prefix = `DEP-${year}-${month}-`;
+
+    const existingInvoices = await this.rentCycleRepository
+      .createQueryBuilder('cycle')
+      .where('cycle.invoiceNumber LIKE :prefix', {
+        prefix: `${prefix}%`,
+      })
+      .orderBy('cycle.invoiceNumber', 'DESC')
+      .getOne();
+
+    let sequence = 1;
+    if (existingInvoices) {
+      const lastSequence = parseInt(
+        existingInvoices.invoiceNumber.split('-').pop() || '0',
+        10,
+      );
+      sequence = lastSequence + 1;
+    }
+
+    const invoiceNumber = `${prefix}${sequence.toString().padStart(3, '0')}`;
+
+    // For deposits, period boundaries are the lease start date (one-time charge)
+    const depositDueDate = new Date(lease.startDate);
+    const periodStartDate = new Date(lease.startDate);
+    const periodEndDate = new Date(lease.startDate); // Same day for one-time charge
+
+    // Create deposit rent cycle
+    const depositCycle = this.rentCycleRepository.create({
+      leaseId: lease.id,
+      companyId: lease.companyId,
+      tenantId: lease.tenantId,
+      invoiceNumber,
+      period: period,
+      dueDate: depositDueDate,
+      periodStartDate: periodStartDate,
+      periodEndDate: periodEndDate,
+      totalAmountDue: amount,
+      isDeposit: true, // Mark as deposit invoice
+    });
+
+    const savedCycle = await this.rentCycleRepository.save(depositCycle);
+
+    // Create deposit line item
+    const depositLineItem = this.lineItemRepository.create({
+      rentCycleId: savedCycle.id,
+      type: RentCycleLineItemType.DEPOSIT,
+      amount: amount,
+      description: description,
+      isLateFee: false,
+    });
+
+    await this.lineItemRepository.save(depositLineItem);
+
+    return savedCycle;
   }
 
   async toResponseDto(

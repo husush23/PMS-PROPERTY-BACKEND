@@ -65,6 +65,21 @@ export class RentCycleGenerationService {
     // Calculate line items (first period, check for proration)
     const lineItems = this.calculateLineItems(lease, true, paymentFrequency);
 
+    // Calculate explicit period boundaries
+    // INVOICE GENERATION CUTOFF RULE: No invoice generated if periodStartDate > leaseEndDate
+    const periodStartDate = billingStart; // Period starts at billing start date
+    const leaseEndDate = new Date(lease.endDate);
+    leaseEndDate.setHours(0, 0, 0, 0);
+    
+    // Explicit cutoff validation: periodStartDate must be <= leaseEndDate
+    if (periodStartDate > leaseEndDate) {
+      throw new Error(
+        `Cannot generate first invoice: period start date ${periodStartDate.toISOString()} is after lease end date ${leaseEndDate.toISOString()}`,
+      );
+    }
+    
+    const periodEndDate = this.calculatePeriodEnd(periodStartDate, paymentFrequency);
+
     // Create rent cycle
     const rentCycle = this.rentCycleRepository.create({
       leaseId: lease.id,
@@ -73,6 +88,8 @@ export class RentCycleGenerationService {
       invoiceNumber: await this.generateInvoiceNumber(lease.companyId, period),
       period: period,
       dueDate: dueDate,
+      periodStartDate: periodStartDate,
+      periodEndDate: periodEndDate,
       totalAmountDue: lineItems.reduce((sum, item) => sum + item.amount, 0),
     });
 
@@ -105,6 +122,83 @@ export class RentCycleGenerationService {
     this.logger.log(
       `Generated first rent cycle for lease ${lease.id}: ${savedCycle.invoiceNumber} (period: ${period})`,
     );
+
+    // Fix for backdated lease: If first invoice due date is <= today,
+    // generate next invoice immediately to allow advance payments
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const firstInvoiceDueDate = new Date(dueDate);
+    firstInvoiceDueDate.setHours(0, 0, 0, 0);
+
+    if (firstInvoiceDueDate <= today) {
+      // First invoice is already due, generate next invoice immediately
+      const nextPeriod = this.getPeriodForDate(nextDueDate, paymentFrequency);
+      const leaseEndDate = new Date(lease.endDate);
+      leaseEndDate.setHours(0, 0, 0, 0);
+
+      // Check if next due date is before lease end date
+      if (nextDueDate <= leaseEndDate) {
+        // Check if next invoice already exists
+        const existingNext = await this.rentCycleRepository.findOne({
+          where: {
+            leaseId: lease.id,
+            period: nextPeriod,
+          },
+        });
+
+        if (!existingNext) {
+          // Check if this period extends beyond lease end date (partial period)
+          const periodEnd = this.calculatePeriodEnd(
+            nextDueDate,
+            paymentFrequency,
+          );
+          const isPartialPeriod = periodEnd > leaseEndDate;
+
+          if (isPartialPeriod) {
+            // Generate partial invoice for next period
+            await this.generatePartialCycleForPeriod(
+              lease,
+              nextDueDate,
+              leaseEndDate,
+              nextPeriod,
+              paymentFrequency,
+            );
+          } else {
+            // Generate full cycle for next period
+            await this.generateCycleForPeriod(
+              lease,
+              nextDueDate,
+              nextPeriod,
+              paymentFrequency,
+            );
+          }
+
+          // Update nextRentDueDate to the period after next
+          const periodsSinceStart = this.getPeriodsSinceStart(
+            billingStart,
+            nextDueDate,
+            paymentFrequency,
+          );
+          const newNextDueDate = this.calculateNextDueDate(
+            billingStart,
+            rentDueDay,
+            paymentFrequency,
+            periodsSinceStart + 1,
+          );
+
+          // Only update if new due date is before or equal to lease end date
+          if (newNextDueDate <= leaseEndDate) {
+            await this.leaseRepository.update(lease.id, {
+              nextRentDueDate: newNextDueDate,
+            });
+          }
+
+          this.logger.log(
+            `Generated next rent cycle immediately for backdated lease ${lease.id}: period ${nextPeriod}`,
+          );
+        }
+      }
+    }
 
     return savedCycle;
   }
@@ -181,6 +275,26 @@ export class RentCycleGenerationService {
             );
           }
           continue;
+        }
+
+        // INVOICE GENERATION CUTOFF RULE (Explicit):
+        // No invoice should be generated if periodStartDate > leaseEndDate
+        // This check must happen before any invoice creation
+        // 
+        // Rule: Calculate period start date and validate it's before lease end
+        const calculatedPeriodStart = nextDueDate; // For monthly, adjust to first of month
+        let periodStartDate = new Date(calculatedPeriodStart);
+        if (paymentFrequency === PaymentFrequency.MONTHLY) {
+          periodStartDate.setDate(1); // First day of month
+        }
+        
+        // Explicit cutoff validation: periodStartDate must be <= leaseEndDate
+        if (periodStartDate > leaseEndDate) {
+          summary.skipped++;
+          this.logger.debug(
+            `Skipped lease ${lease.id}: period start date ${periodStartDate.toISOString()} is after lease end date ${leaseEndDate.toISOString()}`,
+          );
+          continue; // Skip this lease - no more invoices should be generated
         }
 
         // Check if we need to generate cycle (due date is today or in the past)
@@ -299,6 +413,16 @@ export class RentCycleGenerationService {
     // Calculate line items (not first period, no proration)
     const lineItems = this.calculateLineItems(lease, false, paymentFrequency);
 
+    // Calculate explicit period boundaries
+    // Period starts at the due date (or calculated period start based on frequency)
+    const periodStartDate = new Date(dueDate);
+    // For monthly, period start is typically the first day of the month containing dueDate
+    // Adjust based on payment frequency
+    if (paymentFrequency === PaymentFrequency.MONTHLY) {
+      periodStartDate.setDate(1); // First day of month
+    }
+    const periodEndDate = this.calculatePeriodEnd(periodStartDate, paymentFrequency);
+
     // Create rent cycle
     const rentCycle = this.rentCycleRepository.create({
       leaseId: lease.id,
@@ -307,6 +431,8 @@ export class RentCycleGenerationService {
       invoiceNumber: await this.generateInvoiceNumber(lease.companyId, period),
       period: period,
       dueDate: dueDate,
+      periodStartDate: periodStartDate,
+      periodEndDate: periodEndDate,
       totalAmountDue: lineItems.reduce((sum, item) => sum + item.amount, 0),
     });
 
@@ -347,6 +473,10 @@ export class RentCycleGenerationService {
       periodEnd,
     );
 
+    // For partial periods, period boundaries are explicitly provided
+    const periodStartDate = new Date(periodStart);
+    const periodEndDate = new Date(periodEnd);
+
     // Create rent cycle
     const rentCycle = this.rentCycleRepository.create({
       leaseId: lease.id,
@@ -355,6 +485,8 @@ export class RentCycleGenerationService {
       invoiceNumber: await this.generateInvoiceNumber(lease.companyId, period),
       period: period,
       dueDate: periodStart,
+      periodStartDate: periodStartDate,
+      periodEndDate: periodEndDate,
       totalAmountDue: lineItems.reduce((sum, item) => sum + item.amount, 0),
     });
 

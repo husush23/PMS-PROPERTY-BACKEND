@@ -12,6 +12,22 @@ import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { RentCycleStatus } from '../../shared/enums/rent-cycle-status.enum';
 import { RentCycleService } from '../rent-cycle/rent-cycle.service';
 
+/**
+ * GRACE PERIOD RULE (Authoritative - Single Source of Truth):
+ * 
+ * - Grace period ONLY affects OVERDUE transition (not DUE)
+ * - Grace period NEVER affects invoice generation
+ * - Grace period NEVER affects period boundaries
+ * 
+ * Status Transition Rules:
+ * - DUE status occurs when: periodStartDate ≤ today ≤ dueDate
+ * - OVERDUE status occurs when: today > dueDate + gracePeriodDays
+ * 
+ * Important:
+ * - If today is between dueDate and (dueDate + gracePeriodDays), status is still DUE
+ * - Grace period delays the transition from DUE to OVERDUE, it does not change when DUE occurs
+ * - Invoice generation happens at period start, regardless of grace period
+ */
 @Injectable()
 export class OverdueHandlerService {
   constructor(

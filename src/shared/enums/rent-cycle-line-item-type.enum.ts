@@ -4,5 +4,6 @@ export enum RentCycleLineItemType {
   PET_RENT = 'PET_RENT',
   MAINTENANCE = 'MAINTENANCE',
   LATE_FEE = 'LATE_FEE',
+  DEPOSIT = 'DEPOSIT',
 }
 

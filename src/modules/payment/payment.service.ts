@@ -16,6 +16,7 @@ import { PaymentResponseDto } from './dto/payment-response.dto';
 import { ListPaymentsQueryDto } from './dto/list-payments-query.dto';
 import { ReversePaymentDto } from './dto/reverse-payment.dto';
 import { PaymentStatus } from '../../shared/enums/payment-status.enum';
+import { PaymentType } from '../../shared/enums/payment-type.enum';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { RentCycle } from '../rent-cycle/entities/rent-cycle.entity';

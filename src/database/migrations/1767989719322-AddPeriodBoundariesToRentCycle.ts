@@ -6,11 +6,29 @@ export class AddPeriodBoundariesToRentCycle1767989719322
   name = 'AddPeriodBoundariesToRentCycle1767989719322';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Add periodStartDate and periodEndDate columns to rent_cycles table
+    // Add periodStartDate column
     await queryRunner.query(
-      `ALTER TABLE "rent_cycles" 
-       ADD COLUMN "periodStartDate" date NULL,
-       ADD COLUMN "periodEndDate" date NULL`,
+      `ALTER TABLE "rent_cycles" ADD COLUMN IF NOT EXISTS "periodStartDate" date NULL`,
+    );
+
+    // Add periodEndDate column
+    await queryRunner.query(
+      `ALTER TABLE "rent_cycles" ADD COLUMN IF NOT EXISTS "periodEndDate" date NULL`,
+    );
+
+    // Add isDeposit column
+    await queryRunner.query(
+      `ALTER TABLE "rent_cycles" ADD COLUMN IF NOT EXISTS "isDeposit" boolean NOT NULL DEFAULT false`,
+    );
+
+    // Add isVoid column
+    await queryRunner.query(
+      `ALTER TABLE "rent_cycles" ADD COLUMN IF NOT EXISTS "isVoid" boolean NOT NULL DEFAULT false`,
+    );
+
+    // Add voidReason column
+    await queryRunner.query(
+      `ALTER TABLE "rent_cycles" ADD COLUMN IF NOT EXISTS "voidReason" text NULL`,
     );
 
     // Backfill existing records: Calculate period boundaries from dueDate and period
@@ -40,14 +58,19 @@ export class AddPeriodBoundariesToRentCycle1767989719322
     );
 
     // Note: We keep columns nullable for backward compatibility, but new records should always have these set
+    // isDeposit and isVoid default to false for existing records
+    // voidReason is nullable and remains NULL for existing records
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    // Remove period boundary columns
+    // Remove all added columns
     await queryRunner.query(
       `ALTER TABLE "rent_cycles" 
-       DROP COLUMN IF EXISTS "periodStartDate",
-       DROP COLUMN IF EXISTS "periodEndDate"`,
+       DROP COLUMN IF EXISTS "voidReason",
+       DROP COLUMN IF EXISTS "isVoid",
+       DROP COLUMN IF EXISTS "isDeposit",
+       DROP COLUMN IF EXISTS "periodEndDate",
+       DROP COLUMN IF EXISTS "periodStartDate"`,
     );
   }
 }

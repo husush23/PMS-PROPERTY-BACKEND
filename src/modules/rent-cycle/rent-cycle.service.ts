@@ -334,6 +334,27 @@ export class RentCycleService {
       });
     }
 
+    // Filter by invoice type (rent, deposit, or all)
+    const invoiceType = queryDto.invoiceType || 'all';
+    if (invoiceType === 'rent') {
+      queryBuilder.andWhere('rentCycle.isDeposit = :isDeposit', {
+        isDeposit: false,
+      });
+    } else if (invoiceType === 'deposit') {
+      queryBuilder.andWhere('rentCycle.isDeposit = :isDeposit', {
+        isDeposit: true,
+      });
+    }
+    // If 'all', no filter applied
+
+    // Filter out voided invoices (default: true)
+    const excludeVoided = queryDto.excludeVoided !== false; // Default to true if not specified
+    if (excludeVoided) {
+      queryBuilder.andWhere('rentCycle.isVoid = :isVoid', {
+        isVoid: false,
+      });
+    }
+
     // Sorting
     const sortBy = queryDto.sortBy || 'dueDate';
     const sortOrder = queryDto.sortOrder || 'ASC';
@@ -369,15 +390,20 @@ export class RentCycleService {
       filteredCycles.map((cycle) => this.toResponseDto(cycle, requesterUserId)),
     );
 
+    // Update total count for filtered results
+    // Note: We need to recalculate total if status filter or other in-memory filters were applied
+    const effectiveTotal =
+      queryDto.statuses || queryDto.excludeVoided === false
+        ? filteredCycles.length
+        : total;
+
     return {
       data,
       pagination: {
-        total: queryDto.statuses ? filteredCycles.length : total,
+        total: effectiveTotal,
         page,
         limit,
-        totalPages: Math.ceil(
-          (queryDto.statuses ? filteredCycles.length : total) / limit,
-        ),
+        totalPages: Math.ceil(effectiveTotal / limit),
       },
     };
   }
@@ -925,6 +951,8 @@ export class RentCycleService {
       invoiceNumber: rentCycle.invoiceNumber,
       period: rentCycle.period,
       dueDate: rentCycle.dueDate,
+      periodStartDate: rentCycle.periodStartDate || null,
+      periodEndDate: rentCycle.periodEndDate || null,
       totalAmountDue: amounts.totalAmountDue,
       amountPaid: amounts.amountPaid,
       balance: amounts.balance,
@@ -937,6 +965,9 @@ export class RentCycleService {
         isLateFee: item.isLateFee,
       })),
       paymentsCount: rentCycle.payments?.length || 0,
+      isDeposit: rentCycle.isDeposit || false,
+      isVoid: rentCycle.isVoid || false,
+      voidReason: rentCycle.voidReason || null,
       createdAt: rentCycle.createdAt,
       updatedAt: rentCycle.updatedAt,
     };

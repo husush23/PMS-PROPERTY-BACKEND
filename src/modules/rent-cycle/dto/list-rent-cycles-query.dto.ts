@@ -6,6 +6,8 @@ import {
   Min,
   IsString,
   IsEnum,
+  IsBoolean,
+  IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
@@ -109,5 +111,28 @@ export class ListRentCyclesQueryDto {
   @IsOptional()
   @IsString()
   sortOrder?: 'ASC' | 'DESC' = 'ASC';
+
+  @ApiPropertyOptional({
+    description: 'Exclude voided invoices from results',
+    default: true,
+    example: true,
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean({ message: 'excludeVoided must be a boolean' })
+  excludeVoided?: boolean = true;
+
+  @ApiPropertyOptional({
+    description: 'Filter by invoice type',
+    enum: ['all', 'rent', 'deposit'],
+    default: 'all',
+    example: 'all',
+  })
+  @IsOptional()
+  @IsString()
+  @IsIn(['all', 'rent', 'deposit'], {
+    message: 'invoiceType must be one of: all, rent, deposit',
+  })
+  invoiceType?: 'all' | 'rent' | 'deposit' = 'all';
 }
 

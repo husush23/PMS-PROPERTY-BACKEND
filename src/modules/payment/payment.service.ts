@@ -20,6 +20,8 @@ import { PaymentType } from '../../shared/enums/payment-type.enum';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { RentCycle } from '../rent-cycle/entities/rent-cycle.entity';
+import { RentCycleStatus } from '../../shared/enums/rent-cycle-status.enum';
+import { RentCycleService } from '../rent-cycle/rent-cycle.service';
 
 @Injectable()
 export class PaymentService {
@@ -34,6 +36,8 @@ export class PaymentService {
     private userCompanyRepository: Repository<UserCompany>,
     @InjectRepository(RentCycle)
     private rentCycleRepository: Repository<RentCycle>,
+    @Inject(forwardRef(() => RentCycleService))
+    private rentCycleService: RentCycleService,
   ) {}
 
   async create(
@@ -1386,23 +1390,53 @@ export class PaymentService {
     return totalPaid - totalRefunded;
   }
 
+  /**
+   * Calculate lease outstanding balance from rent cycles/invoices
+   * Excludes PENDING invoices (not yet obligations - period hasn't started)
+   * Includes DUE, OVERDUE, and PARTIAL invoices (actual obligations)
+   */
   private async calculateLeaseBalance(leaseId: string): Promise<number> {
-    const payments = await this.paymentRepository.find({
-      where: {
-        leaseId,
-        isActive: true,
-      },
+    // Get all rent cycles for this lease
+    const rentCycles = await this.rentCycleRepository.find({
+      where: { leaseId },
+      relations: ['lease', 'lineItems'],
     });
 
-    const totalPaid = payments
-      .filter((p) => p.status === PaymentStatus.PAID && p.amount > 0)
-      .reduce((sum, p) => sum + Number(p.amount), 0);
+    let totalOutstanding = 0;
 
-    const totalRefunded = payments
-      .filter((p) => p.status === PaymentStatus.REFUNDED || p.amount < 0)
-      .reduce((sum, p) => sum + Math.abs(Number(p.amount)), 0);
+    for (const rentCycle of rentCycles) {
+      // Load payments for this cycle
+      const payments = await this.paymentRepository.find({
+        where: {
+          rentCycleId: rentCycle.id,
+          isActive: true,
+        },
+      });
 
-    return totalPaid - totalRefunded;
+      // Calculate status (will determine if we include this invoice)
+      const status = this.rentCycleService.calculateStatus({
+        ...rentCycle,
+        payments,
+      });
+
+      // Calculate amounts
+      const amounts = this.rentCycleService.calculateAmounts({
+        ...rentCycle,
+        payments,
+      });
+
+      // Only include invoices that are NOT PENDING (exclude PENDING, also exclude PAID, VOID, CANCELLED)
+      if (
+        status === RentCycleStatus.DUE ||
+        status === RentCycleStatus.OVERDUE ||
+        status === RentCycleStatus.PARTIAL
+      ) {
+        // Add the balance (amount owed) to total outstanding
+        totalOutstanding += amounts.balance > 0 ? amounts.balance : 0;
+      }
+    }
+
+    return totalOutstanding;
   }
 
   private async getLastPaymentDate(

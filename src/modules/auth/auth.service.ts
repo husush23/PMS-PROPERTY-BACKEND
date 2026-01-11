@@ -81,9 +81,6 @@ export class AuthService {
       updatedAt: user.updatedAt,
     };
 
-    // Generate refresh token
-    const refresh_token = this.generateRefreshToken(user.id, user.email);
-
     // Super admin bypasses company selection - always return token without companyId
     if (user.isSuperAdmin) {
       const access_token = this.jwtService.sign({
@@ -93,6 +90,9 @@ export class AuthService {
 
       // Get companies for display purposes (super admin can see all companies anyway)
       const companies = await this.companyService.getUserCompanies(user.id);
+
+      // Generate refresh token without companyId for super admin
+      const refresh_token = this.generateRefreshToken(user.id, user.email);
 
       return {
         access_token,
@@ -112,6 +112,9 @@ export class AuthService {
         sub: user.id,
         email: user.email,
       });
+
+      // Generate refresh token without companyId
+      const refresh_token = this.generateRefreshToken(user.id, user.email);
 
       return {
         access_token,
@@ -135,6 +138,13 @@ export class AuthService {
         role!,
       );
 
+      // Generate refresh token with companyId since we're auto-selecting
+      const refresh_token = this.generateRefreshToken(
+        user.id,
+        user.email,
+        companyId,
+      );
+
       return {
         access_token,
         refresh_token,
@@ -149,6 +159,9 @@ export class AuthService {
       sub: user.id,
       email: user.email,
     });
+
+    // Generate refresh token without companyId (user needs to select)
+    const refresh_token = this.generateRefreshToken(user.id, user.email);
 
     return {
       access_token,
@@ -171,9 +184,6 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    // Generate refresh token
-    const refresh_token = this.generateRefreshToken(user.id, user.email);
-
     // Super admin can select any company (optional company context for specific views)
     if (userEntity.isSuperAdmin) {
       const role = await this.companyService.getUserRoleInCompany(
@@ -189,6 +199,13 @@ export class AuthService {
             email: user.email,
             companyId, // Include companyId for context but no role requirement
           });
+
+      // Generate refresh token with companyId
+      const refresh_token = this.generateRefreshToken(
+        user.id,
+        user.email,
+        companyId,
+      );
 
       return {
         access_token,
@@ -214,6 +231,13 @@ export class AuthService {
 
     // Generate company-scoped token
     const access_token = this.generateCompanyScopedToken(user, companyId, role);
+
+    // Generate refresh token with companyId
+    const refresh_token = this.generateRefreshToken(
+      user.id,
+      user.email,
+      companyId,
+    );
 
     return {
       access_token,
@@ -320,7 +344,11 @@ export class AuthService {
   /**
    * Generate refresh token using refresh secret
    */
-  generateRefreshToken(userId: string, email: string): string {
+  generateRefreshToken(
+    userId: string,
+    email: string,
+    companyId?: string,
+  ): string {
     const refreshSecret =
       this.configService.get<string>('jwt.refreshSecret') ||
       process.env.JWT_REFRESH_SECRET;
@@ -366,11 +394,16 @@ export class AuthService {
       );
     }
 
-    const payload = {
+    const payload: any = {
       sub: userId,
       email: email,
       type: 'refresh',
     };
+
+    // Include companyId if provided
+    if (companyId) {
+      payload.companyId = companyId;
+    }
 
     // Use jsonwebtoken directly since we need a different secret than the JWT module default
     const options: jwt.SignOptions = {
@@ -386,6 +419,7 @@ export class AuthService {
    */
   async refreshToken(
     refreshToken: string,
+    companyId?: string,
   ): Promise<{ access_token: string; refresh_token: string }> {
     const refreshSecret =
       this.configService.get<string>('jwt.refreshSecret') ||
@@ -436,19 +470,40 @@ export class AuthService {
         );
       }
 
+      // Determine companyId from refresh token payload or parameter
+      let finalCompanyId = companyId || payload.companyId;
+
       // Generate new access token
       const accessTokenPayload: any = {
         sub: user.id,
         email: user.email,
       };
 
-      // If user has company context from previous token, preserve it
-      // (Note: refresh token doesn't include companyId, so we'll generate without it)
-      // User will need to select company again if needed
+      // If companyId is provided, verify user still belongs to that company
+      if (finalCompanyId) {
+        const role = await this.companyService.getUserRoleInCompany(
+          user.id,
+          finalCompanyId,
+        );
+
+        if (role) {
+          // User still belongs to company - include companyId and role
+          accessTokenPayload.companyId = finalCompanyId;
+          accessTokenPayload.role = role;
+        } else {
+          // User no longer belongs to company - don't include companyId
+          finalCompanyId = undefined;
+        }
+      }
+
       const access_token = this.jwtService.sign(accessTokenPayload);
 
-      // Generate new refresh token (rotate refresh token)
-      const refresh_token = this.generateRefreshToken(user.id, user.email);
+      // Generate new refresh token (rotate refresh token) with companyId if available
+      const refresh_token = this.generateRefreshToken(
+        user.id,
+        user.email,
+        finalCompanyId,
+      );
 
       return {
         access_token,

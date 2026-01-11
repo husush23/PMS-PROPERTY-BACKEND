@@ -18,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import type { Response, Request } from 'express';
 import { ConfigService } from '@nestjs/config';
+import * as jwt from 'jsonwebtoken';
 import { AuthService } from './auth.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { AuthUser } from '../../common/decorators/auth-user.decorator';
@@ -342,7 +343,30 @@ export class AuthController {
       });
     }
 
-    const tokens = await this.authService.refreshToken(refreshToken as string);
+    // Try to extract companyId from expired access token cookie
+    const cookieName =
+      this.configService.get<string>('jwt.cookieName') || 'access_token';
+    const expiredAccessToken = req.cookies?.[cookieName] as string | undefined;
+    let companyId: string | undefined;
+
+    if (expiredAccessToken) {
+      try {
+        // Decode expired token (without verification) to extract companyId
+        const decoded = jwt.decode(expiredAccessToken) as {
+          companyId?: string;
+        } | null;
+        if (decoded?.companyId) {
+          companyId = decoded.companyId;
+        }
+      } catch (error) {
+        // Ignore errors - token may be invalid/expired, but we can still decode it
+      }
+    }
+
+    const tokens = await this.authService.refreshToken(
+      refreshToken as string,
+      companyId,
+    );
 
     // Set new cookies
     const expiresIn = this.configService.get<string>('jwt.expiresIn') || '15m';

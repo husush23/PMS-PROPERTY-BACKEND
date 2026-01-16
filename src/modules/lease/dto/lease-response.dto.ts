@@ -186,6 +186,12 @@ export class LeaseResponseDto {
   monthlyRent: number;
 
   @ApiPropertyOptional({
+    description: 'Credit balance from advance payments',
+    example: 250.0,
+  })
+  creditBalance?: number;
+
+  @ApiPropertyOptional({
     description: 'Security deposit amount',
     example: 1500.0,
   })

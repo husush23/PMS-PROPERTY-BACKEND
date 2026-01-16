@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Not } from 'typeorm';
 import { RentCycle } from './entities/rent-cycle.entity';
 import { RentCycleLineItem } from './entities/rent-cycle-line-item.entity';
 import { Lease } from '../lease/entities/lease.entity';
@@ -8,6 +8,10 @@ import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { PaymentFrequency } from '../../shared/enums/payment-frequency.enum';
 import { RentCycleLineItemType } from '../../shared/enums/rent-cycle-line-item-type.enum';
 import { InvoiceGenerationLog } from './interfaces/invoice-generation-log.interface';
+import { Payment } from '../payment/entities/payment.entity';
+import { PaymentMethod } from '../../shared/enums/payment-method.enum';
+import { PaymentStatus } from '../../shared/enums/payment-status.enum';
+import { PaymentType } from '../../shared/enums/payment-type.enum';
 
 @Injectable()
 export class RentCycleGenerationService {
@@ -20,6 +24,8 @@ export class RentCycleGenerationService {
     private lineItemRepository: Repository<RentCycleLineItem>,
     @InjectRepository(Lease)
     private leaseRepository: Repository<Lease>,
+    @InjectRepository(Payment)
+    private paymentRepository: Repository<Payment>,
   ) {}
 
   /**
@@ -108,6 +114,8 @@ export class RentCycleGenerationService {
 
     await this.lineItemRepository.save(savedLineItems);
 
+    await this.applyCreditToInvoice(savedCycle, lease);
+
     // Update lease nextRentDueDate based on payment frequency
     const nextDueDate = this.calculateNextDueDate(
       billingStart,
@@ -123,82 +131,10 @@ export class RentCycleGenerationService {
       `Generated first rent cycle for lease ${lease.id}: ${savedCycle.invoiceNumber} (period: ${period})`,
     );
 
-    // Fix for backdated lease: If first invoice due date is <= today,
-    // generate next invoice immediately to allow advance payments
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const firstInvoiceDueDate = new Date(dueDate);
-    firstInvoiceDueDate.setHours(0, 0, 0, 0);
-
-    if (firstInvoiceDueDate <= today) {
-      // First invoice is already due, generate next invoice immediately
-      const nextPeriod = this.getPeriodForDate(nextDueDate, paymentFrequency);
-      const leaseEndDate = new Date(lease.endDate);
-      leaseEndDate.setHours(0, 0, 0, 0);
-
-      // Check if next due date is before lease end date
-      if (nextDueDate <= leaseEndDate) {
-        // Check if next invoice already exists
-        const existingNext = await this.rentCycleRepository.findOne({
-          where: {
-            leaseId: lease.id,
-            period: nextPeriod,
-          },
-        });
-
-        if (!existingNext) {
-          // Check if this period extends beyond lease end date (partial period)
-          const periodEnd = this.calculatePeriodEnd(
-            nextDueDate,
-            paymentFrequency,
-          );
-          const isPartialPeriod = periodEnd > leaseEndDate;
-
-          if (isPartialPeriod) {
-            // Generate partial invoice for next period
-            await this.generatePartialCycleForPeriod(
-              lease,
-              nextDueDate,
-              leaseEndDate,
-              nextPeriod,
-              paymentFrequency,
-            );
-          } else {
-            // Generate full cycle for next period
-            await this.generateCycleForPeriod(
-              lease,
-              nextDueDate,
-              nextPeriod,
-              paymentFrequency,
-            );
-          }
-
-          // Update nextRentDueDate to the period after next
-          const periodsSinceStart = this.getPeriodsSinceStart(
-            billingStart,
-            nextDueDate,
-            paymentFrequency,
-          );
-          const newNextDueDate = this.calculateNextDueDate(
-            billingStart,
-            rentDueDay,
-            paymentFrequency,
-            periodsSinceStart + 1,
-          );
-
-          // Only update if new due date is before or equal to lease end date
-          if (newNextDueDate <= leaseEndDate) {
-            await this.leaseRepository.update(lease.id, {
-              nextRentDueDate: newNextDueDate,
-            });
-          }
-
-          this.logger.log(
-            `Generated next rent cycle immediately for backdated lease ${lease.id}: period ${nextPeriod}`,
-          );
-        }
-      }
-    }
+    // IMPORTANT:
+    // Invoices represent real rent obligations only.
+    // Advance payments must be stored as creditBalance.
+    // Never generate invoices solely for advance payment.
 
     return savedCycle;
   }
@@ -277,16 +213,20 @@ export class RentCycleGenerationService {
           continue;
         }
 
+        // IMPORTANT:
+        // Invoices represent real rent obligations only.
+        // Advance payments must be stored as creditBalance.
+        // Never generate invoices solely for advance payment.
+        //
         // INVOICE GENERATION CUTOFF RULE (Explicit):
         // No invoice should be generated if periodStartDate > leaseEndDate
         // This check must happen before any invoice creation
         // 
         // Rule: Calculate period start date and validate it's before lease end
-        const calculatedPeriodStart = nextDueDate; // For monthly, adjust to first of month
-        let periodStartDate = new Date(calculatedPeriodStart);
-        if (paymentFrequency === PaymentFrequency.MONTHLY) {
-          periodStartDate.setDate(1); // First day of month
-        }
+        const periodStartDate = this.calculatePeriodStartDate(
+          nextDueDate,
+          paymentFrequency,
+        );
         
         // Explicit cutoff validation: periodStartDate must be <= leaseEndDate
         if (periodStartDate > leaseEndDate) {
@@ -297,8 +237,8 @@ export class RentCycleGenerationService {
           continue; // Skip this lease - no more invoices should be generated
         }
 
-        // Check if we need to generate cycle (due date is today or in the past)
-        if (nextDueDate <= today) {
+        // Generate invoices only when the period has started
+        if (periodStartDate <= today) {
           const period = this.getPeriodForDate(nextDueDate, paymentFrequency);
 
           // Check if cycle for this period already exists
@@ -368,6 +308,7 @@ export class RentCycleGenerationService {
               );
             }
           } else {
+            await this.applyCreditToInvoice(existing, lease);
             summary.skipped++;
             this.logger.debug(
               `Skipped lease ${lease.id}: invoice already exists for period ${period}`,
@@ -376,7 +317,7 @@ export class RentCycleGenerationService {
         } else {
           summary.skipped++;
           this.logger.debug(
-            `Skipped lease ${lease.id}: next due date ${nextDueDate.toISOString()} is in the future`,
+            `Skipped lease ${lease.id}: period not started yet (periodStartDate: ${periodStartDate.toISOString()})`,
           );
         }
       } catch (error) {
@@ -415,12 +356,10 @@ export class RentCycleGenerationService {
 
     // Calculate explicit period boundaries
     // Period starts at the due date (or calculated period start based on frequency)
-    const periodStartDate = new Date(dueDate);
-    // For monthly, period start is typically the first day of the month containing dueDate
-    // Adjust based on payment frequency
-    if (paymentFrequency === PaymentFrequency.MONTHLY) {
-      periodStartDate.setDate(1); // First day of month
-    }
+    const periodStartDate = this.calculatePeriodStartDate(
+      dueDate,
+      paymentFrequency,
+    );
     const periodEndDate = this.calculatePeriodEnd(periodStartDate, paymentFrequency);
 
     // Create rent cycle
@@ -450,6 +389,8 @@ export class RentCycleGenerationService {
     );
 
     await this.lineItemRepository.save(savedLineItems);
+
+    await this.applyCreditToInvoice(savedCycle, lease);
 
     return savedCycle;
   }
@@ -505,7 +446,106 @@ export class RentCycleGenerationService {
 
     await this.lineItemRepository.save(savedLineItems);
 
+    await this.applyCreditToInvoice(savedCycle, lease);
+
     return savedCycle;
+  }
+
+  private calculatePeriodStartDate(
+    dueDate: Date,
+    paymentFrequency: PaymentFrequency,
+  ): Date {
+    const periodStartDate = new Date(dueDate);
+    if (paymentFrequency === PaymentFrequency.MONTHLY) {
+      periodStartDate.setDate(1); // First day of month
+    }
+    return periodStartDate;
+  }
+
+  private async applyCreditToInvoice(
+    rentCycle: RentCycle,
+    lease: Lease,
+  ): Promise<void> {
+    if (rentCycle.isVoid || rentCycle.isDeposit) {
+      return;
+    }
+
+    const creditBalance = Number(lease.creditBalance || 0);
+    if (creditBalance <= 0) {
+      return;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const periodStartDate = rentCycle.periodStartDate
+      ? new Date(rentCycle.periodStartDate)
+      : null;
+    const dueDate = new Date(rentCycle.dueDate);
+    dueDate.setHours(0, 0, 0, 0);
+
+    if (periodStartDate) {
+      periodStartDate.setHours(0, 0, 0, 0);
+      if (periodStartDate > today) {
+        return;
+      }
+    } else if (dueDate > today) {
+      return;
+    }
+
+    const payments = await this.paymentRepository.find({
+      where: {
+        rentCycleId: rentCycle.id,
+        isActive: true,
+        status: Not(PaymentStatus.REFUNDED),
+      },
+    });
+
+    const amountPaid = payments
+      .filter((payment) => payment.amount > 0)
+      .reduce((sum, payment) => sum + Number(payment.amount), 0);
+    const totalAmountDue = Number(rentCycle.totalAmountDue);
+    const balance = totalAmountDue - amountPaid;
+
+    if (balance <= 0) {
+      return;
+    }
+
+    const creditToApply = Math.min(creditBalance, balance);
+    const newBalance = balance - creditToApply;
+
+    const creditPayment = this.paymentRepository.create({
+      companyId: lease.companyId,
+      tenantId: lease.tenantId,
+      leaseId: lease.id,
+      rentCycleId: rentCycle.id,
+      amount: creditToApply,
+      amountDue: balance,
+      amountPaid: creditToApply,
+      balance: newBalance,
+      currency: lease.currency,
+      paymentDate: today,
+      dueDate: rentCycle.dueDate,
+      paymentMethod: PaymentMethod.CREDIT,
+      paymentType: PaymentType.RENT,
+      status: newBalance <= 0 ? PaymentStatus.PAID : PaymentStatus.PARTIAL,
+      period: rentCycle.period,
+      recordedBy: lease.createdBy || lease.tenantId,
+      notes: 'Auto-applied from credit balance',
+      isPartial: newBalance > 0,
+      balanceAfter: newBalance,
+      isActive: true,
+      isLegacy: false,
+    });
+
+    await this.paymentRepository.save(creditPayment);
+
+    await this.leaseRepository.update(lease.id, {
+      creditBalance: creditBalance - creditToApply,
+    });
+
+    this.logger.log(
+      `Applied credit to invoice ${rentCycle.invoiceNumber}: ${creditToApply}`,
+    );
   }
 
   /**

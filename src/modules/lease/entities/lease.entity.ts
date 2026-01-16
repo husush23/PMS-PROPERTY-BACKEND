@@ -117,6 +117,9 @@ export class Lease {
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   monthlyRent: number;
 
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  creditBalance: number; // Advance payments / credit balance (never negative)
+
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   securityDeposit: number;
 

@@ -162,17 +162,10 @@ export class PaymentService {
     }
 
     /**
-     * CREDIT LIFECYCLE RULE (MVP-Safe):
-     * - Credit (negative balance) is stored but NEVER auto-applied
-     * - Credit requires explicit implementation in future
-     * - Credit can be manually applied to future invoices (future feature)
-     * - TODO: Implement credit application logic when needed
-     * 
-     * Current behavior:
-     * - Overpayments create negative balance (credit)
-     * - Credit is stored in payment/invoice balance
-     * - Credit is NOT automatically applied to next invoice
-     * - Credit requires manual intervention or future implementation
+     * IMPORTANT:
+     * Invoices represent real rent obligations only.
+     * Advance payments must be stored as creditBalance.
+     * Never generate invoices solely for advance payment.
      */
     // Allow overpayments - excess amount will be tracked as credit
     // Overpayments can be applied to future invoices or refunded later
@@ -184,8 +177,7 @@ export class PaymentService {
       // Credit is stored but never auto-applied (see CREDIT LIFECYCLE RULE above)
     }
 
-    // Find or create RentCycle if rentCycleId not provided
-    // Support advance payments: payments can link to future invoices via rentCycleId
+    // Find RentCycle if provided; never auto-generate invoices for advance payments
     let rentCycleId = createDto.rentCycleId;
     let rentCycle: RentCycle | null = null;
 
@@ -199,6 +191,15 @@ export class PaymentService {
       });
 
       if (rentCycle) {
+        if (rentCycle.isVoid) {
+          throw new BusinessException(
+            ErrorCode.VALIDATION_ERROR,
+            'Cannot make payment on voided invoice',
+            HttpStatus.BAD_REQUEST,
+            { rentCycleId, isVoid: true },
+          );
+        }
+
         /**
          * DEPOSIT SAFEGUARD RULE:
          * - Deposit invoices CANNOT accept rent payments
@@ -252,12 +253,95 @@ export class PaymentService {
       });
 
       if (rentCycle) {
+        if (rentCycle.isVoid) {
+          throw new BusinessException(
+            ErrorCode.VALIDATION_ERROR,
+            'Cannot make payment on voided invoice',
+            HttpStatus.BAD_REQUEST,
+            { rentCycleId: rentCycle.id, isVoid: true },
+          );
+        }
+
         rentCycleId = rentCycle.id;
         // Use RentCycle's amountDue if not provided
         if (!amountDue) {
           amountDue = Number(rentCycle.totalAmountDue);
         }
+      } else {
+        // Advance payment without invoice: store as credit balance
+        const creditBalance = Number(lease.creditBalance || 0);
+        const newCreditBalance = creditBalance + Number(createDto.amount);
+
+        await this.leaseRepository.update(lease.id, {
+          creditBalance: newCreditBalance,
+        });
+
+        const creditPayment = this.paymentRepository.create({
+          companyId: lease.companyId,
+          tenantId: lease.tenantId,
+          leaseId: createDto.leaseId,
+          rentCycleId: null,
+          amount: createDto.amount,
+          amountDue: amountDue,
+          amountPaid: createDto.amount,
+          balance: 0,
+          currency: createDto.currency || lease.currency || 'KES',
+          paymentDate: paymentDate,
+          dueDate: createDto.dueDate ? new Date(createDto.dueDate) : paymentDate,
+          paymentMethod: createDto.paymentMethod,
+          paymentType: createDto.paymentType,
+          status: PaymentStatus.PAID,
+          reference: createDto.reference,
+          recordedBy: requesterUserId,
+          period: createDto.period,
+          notes: `Advance payment - credit balance. ${createDto.notes || ''}`.trim(),
+          isPartial: false,
+          balanceAfter: 0,
+          attachmentUrl: createDto.attachmentUrl,
+          paidAt: new Date(),
+          isLegacy: false,
+        });
+
+        const savedPayment = await this.paymentRepository.save(creditPayment);
+        return this.toResponseDto(savedPayment, requesterUserId);
       }
+    } else if (!rentCycleId) {
+      // Advance payment without period or invoice
+      const creditBalance = Number(lease.creditBalance || 0);
+      const newCreditBalance = creditBalance + Number(createDto.amount);
+
+      await this.leaseRepository.update(lease.id, {
+        creditBalance: newCreditBalance,
+      });
+
+      const creditPayment = this.paymentRepository.create({
+        companyId: lease.companyId,
+        tenantId: lease.tenantId,
+        leaseId: createDto.leaseId,
+        rentCycleId: null,
+        amount: createDto.amount,
+        amountDue: amountDue,
+        amountPaid: createDto.amount,
+        balance: 0,
+        currency: createDto.currency || lease.currency || 'KES',
+        paymentDate: paymentDate,
+        dueDate: createDto.dueDate ? new Date(createDto.dueDate) : paymentDate,
+        paymentMethod: createDto.paymentMethod,
+        paymentType: createDto.paymentType,
+        status: PaymentStatus.PAID,
+        reference: createDto.reference,
+        recordedBy: requesterUserId,
+        period: createDto.period,
+        notes: `Advance payment - credit balance. ${createDto.notes || ''}`.trim(),
+        isPartial: false,
+        balanceAfter: 0,
+        attachmentUrl: createDto.attachmentUrl,
+        paidAt: new Date(),
+        isLegacy: false,
+      });
+
+      const savedPayment = await this.paymentRepository.save(creditPayment);
+      return this.toResponseDto(savedPayment, requesterUserId);
     }
 
     // Calculate dueDate from RentCycle, lease nextRentDueDate, or use payment date
@@ -1425,13 +1509,18 @@ export class PaymentService {
         payments,
       });
 
-      // Only include invoices that are NOT PENDING (exclude PENDING, also exclude PAID, VOID, CANCELLED)
+      // IMPORTANT:
+      // Invoices represent real rent obligations only.
+      // Advance payments must be stored as creditBalance.
+      // Never generate invoices solely for advance payment.
+      //
+      // Only include invoices that are DUE/OVERDUE/PARTIAL and not VOID
       if (
-        status === RentCycleStatus.DUE ||
-        status === RentCycleStatus.OVERDUE ||
-        status === RentCycleStatus.PARTIAL
+        !rentCycle.isVoid &&
+        (status === RentCycleStatus.DUE ||
+          status === RentCycleStatus.OVERDUE ||
+          status === RentCycleStatus.PARTIAL)
       ) {
-        // Add the balance (amount owed) to total outstanding
         totalOutstanding += amounts.balance > 0 ? amounts.balance : 0;
       }
     }

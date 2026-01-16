@@ -4,5 +4,6 @@ export enum PaymentMethod {
   MPESA = 'MPESA',
   CARD = 'CARD',
   CHECK = 'CHECK',
+  CREDIT = 'CREDIT',
   OTHER = 'OTHER',
 }

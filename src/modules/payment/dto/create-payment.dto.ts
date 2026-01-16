@@ -23,7 +23,8 @@ export class CreatePaymentDto {
   leaseId: string;
 
   @ApiPropertyOptional({
-    description: 'Rent Cycle ID (Invoice ID) - if not provided, system will find or create one',
+    description:
+      'Rent Cycle ID (Invoice ID) - if not provided, system will try to find an existing invoice',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
   @IsOptional()

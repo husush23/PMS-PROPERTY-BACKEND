@@ -974,6 +974,9 @@ export class LeaseService {
       );
     }
 
+    const creditBalance = Number(lease.creditBalance || 0);
+    const terminationBalanceNote = `Outstanding balance at termination: ${lease.currency} ${totalOutstanding.toFixed(2)}. Credit balance: ${lease.currency} ${creditBalance.toFixed(2)} (refundable).`;
+
     // Set termination metadata and status to TERMINATED
     // This will stop future rent generation (rent generation checks for ACTIVE status)
     await this.leaseRepository.update(leaseId, {
@@ -981,8 +984,8 @@ export class LeaseService {
       terminationReason: terminationDto.terminationReason,
       terminatedBy: requesterUserId,
       terminationNotes: terminationDto.terminationNotes
-        ? `${terminationDto.terminationNotes}\n\nOutstanding balance at termination: ${lease.currency} ${totalOutstanding.toFixed(2)}`
-        : `Outstanding balance at termination: ${lease.currency} ${totalOutstanding.toFixed(2)}`,
+        ? `${terminationDto.terminationNotes}\n\n${terminationBalanceNote}`
+        : terminationBalanceNote,
       actualTerminationDate,
       moveOutDate: actualTerminationDate,
     });
@@ -1551,6 +1554,10 @@ export class LeaseService {
         typeof lease.monthlyRent === 'string'
           ? Number(lease.monthlyRent)
           : lease.monthlyRent,
+      creditBalance:
+        typeof lease.creditBalance === 'string'
+          ? Number(lease.creditBalance)
+          : lease.creditBalance,
       securityDeposit: lease.securityDeposit
         ? typeof lease.securityDeposit === 'string'
           ? Number(lease.securityDeposit)

@@ -23,6 +23,7 @@ import { RentCycleLineItem } from './rent-cycle-line-item.entity';
 @Index(['companyId', 'tenantId'])
 @Index(['leaseId', 'dueDate'])
 @Unique(['leaseId', 'period'])
+@Unique(['companyId', 'invoiceNumber'])
 export class RentCycle {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -36,7 +37,7 @@ export class RentCycle {
   @Column('uuid')
   tenantId: string;
 
-  @Column({ unique: true })
+  @Column()
   invoiceNumber: string; // Auto-generated: "INV-YYYY-MM-{sequence}"
 
   @Column()

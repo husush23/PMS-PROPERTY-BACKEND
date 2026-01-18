@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository, Not, QueryFailedError } from 'typeorm';
 import { RentCycle } from './entities/rent-cycle.entity';
 import { RentCycleLineItem } from './entities/rent-cycle-line-item.entity';
 import { Lease } from '../lease/entities/lease.entity';
@@ -12,6 +12,10 @@ import { Payment } from '../payment/entities/payment.entity';
 import { PaymentMethod } from '../../shared/enums/payment-method.enum';
 import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 import { PaymentType } from '../../shared/enums/payment-type.enum';
+import { AccountingEntry } from '../accounting/entities/accounting-entry.entity';
+import { AccountingAccount } from '../accounting/enums/accounting-account.enum';
+import { AccountingEntryDirection } from '../accounting/enums/accounting-entry-direction.enum';
+import { AccountingReferenceType } from '../accounting/enums/accounting-reference-type.enum';
 
 @Injectable()
 export class RentCycleGenerationService {
@@ -26,6 +30,8 @@ export class RentCycleGenerationService {
     private leaseRepository: Repository<Lease>,
     @InjectRepository(Payment)
     private paymentRepository: Repository<Payment>,
+    @InjectDataSource()
+    private dataSource: DataSource,
   ) {}
 
   /**
@@ -73,9 +79,12 @@ export class RentCycleGenerationService {
 
     // Calculate explicit period boundaries
     // INVOICE GENERATION CUTOFF RULE: No invoice generated if periodStartDate > leaseEndDate
-    const periodStartDate = billingStart; // Period starts at billing start date
+    const periodStartDate = new Date(billingStart); // Period starts at billing start date
+    periodStartDate.setHours(0, 0, 0, 0);
     const leaseEndDate = new Date(lease.endDate);
     leaseEndDate.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     
     // Explicit cutoff validation: periodStartDate must be <= leaseEndDate
     if (periodStartDate > leaseEndDate) {
@@ -83,15 +92,19 @@ export class RentCycleGenerationService {
         `Cannot generate first invoice: period start date ${periodStartDate.toISOString()} is after lease end date ${leaseEndDate.toISOString()}`,
       );
     }
+    // Invoice generation only when period has started
+    if (periodStartDate > today) {
+      throw new Error(
+        `Cannot generate first invoice before period start date ${periodStartDate.toISOString()}`,
+      );
+    }
     
     const periodEndDate = this.calculatePeriodEnd(periodStartDate, paymentFrequency);
 
-    // Create rent cycle
-    const rentCycle = this.rentCycleRepository.create({
+    const { cycle: savedCycle, created } = await this.createRentCycleWithRetry({
       leaseId: lease.id,
       companyId: lease.companyId,
       tenantId: lease.tenantId,
-      invoiceNumber: await this.generateInvoiceNumber(lease.companyId, period),
       period: period,
       dueDate: dueDate,
       periodStartDate: periodStartDate,
@@ -99,22 +112,23 @@ export class RentCycleGenerationService {
       totalAmountDue: lineItems.reduce((sum, item) => sum + item.amount, 0),
     });
 
-    const savedCycle = await this.rentCycleRepository.save(rentCycle);
+    if (created) {
+      const savedLineItems = lineItems.map((item) =>
+        this.lineItemRepository.create({
+          rentCycleId: savedCycle.id,
+          type: item.type,
+          amount: item.amount,
+          description: item.description,
+          isLateFee: false,
+        }),
+      );
 
-    // Create line items
-    const savedLineItems = lineItems.map((item) =>
-      this.lineItemRepository.create({
-        rentCycleId: savedCycle.id,
-        type: item.type,
-        amount: item.amount,
-        description: item.description,
-        isLateFee: false,
-      }),
-    );
+      await this.lineItemRepository.save(savedLineItems);
+    }
 
-    await this.lineItemRepository.save(savedLineItems);
-
-    await this.applyCreditToInvoice(savedCycle, lease);
+    if (created) {
+      await this.applyCreditToInvoice(savedCycle, lease);
+    }
 
     // Update lease nextRentDueDate based on payment frequency
     const nextDueDate = this.calculateNextDueDate(
@@ -308,7 +322,6 @@ export class RentCycleGenerationService {
               );
             }
           } else {
-            await this.applyCreditToInvoice(existing, lease);
             summary.skipped++;
             this.logger.debug(
               `Skipped lease ${lease.id}: invoice already exists for period ${period}`,
@@ -362,12 +375,10 @@ export class RentCycleGenerationService {
     );
     const periodEndDate = this.calculatePeriodEnd(periodStartDate, paymentFrequency);
 
-    // Create rent cycle
-    const rentCycle = this.rentCycleRepository.create({
+    const { cycle: savedCycle, created } = await this.createRentCycleWithRetry({
       leaseId: lease.id,
       companyId: lease.companyId,
       tenantId: lease.tenantId,
-      invoiceNumber: await this.generateInvoiceNumber(lease.companyId, period),
       period: period,
       dueDate: dueDate,
       periodStartDate: periodStartDate,
@@ -375,22 +386,20 @@ export class RentCycleGenerationService {
       totalAmountDue: lineItems.reduce((sum, item) => sum + item.amount, 0),
     });
 
-    const savedCycle = await this.rentCycleRepository.save(rentCycle);
+    if (created) {
+      const savedLineItems = lineItems.map((item) =>
+        this.lineItemRepository.create({
+          rentCycleId: savedCycle.id,
+          type: item.type,
+          amount: item.amount,
+          description: item.description,
+          isLateFee: false,
+        }),
+      );
 
-    // Create line items
-    const savedLineItems = lineItems.map((item) =>
-      this.lineItemRepository.create({
-        rentCycleId: savedCycle.id,
-        type: item.type,
-        amount: item.amount,
-        description: item.description,
-        isLateFee: false,
-      }),
-    );
-
-    await this.lineItemRepository.save(savedLineItems);
-
-    await this.applyCreditToInvoice(savedCycle, lease);
+      await this.lineItemRepository.save(savedLineItems);
+      await this.applyCreditToInvoice(savedCycle, lease);
+    }
 
     return savedCycle;
   }
@@ -418,12 +427,10 @@ export class RentCycleGenerationService {
     const periodStartDate = new Date(periodStart);
     const periodEndDate = new Date(periodEnd);
 
-    // Create rent cycle
-    const rentCycle = this.rentCycleRepository.create({
+    const { cycle: savedCycle, created } = await this.createRentCycleWithRetry({
       leaseId: lease.id,
       companyId: lease.companyId,
       tenantId: lease.tenantId,
-      invoiceNumber: await this.generateInvoiceNumber(lease.companyId, period),
       period: period,
       dueDate: periodStart,
       periodStartDate: periodStartDate,
@@ -431,24 +438,88 @@ export class RentCycleGenerationService {
       totalAmountDue: lineItems.reduce((sum, item) => sum + item.amount, 0),
     });
 
-    const savedCycle = await this.rentCycleRepository.save(rentCycle);
+    if (created) {
+      const savedLineItems = lineItems.map((item) =>
+        this.lineItemRepository.create({
+          rentCycleId: savedCycle.id,
+          type: item.type,
+          amount: item.amount,
+          description: item.description,
+          isLateFee: false,
+        }),
+      );
 
-    // Create line items
-    const savedLineItems = lineItems.map((item) =>
-      this.lineItemRepository.create({
-        rentCycleId: savedCycle.id,
-        type: item.type,
-        amount: item.amount,
-        description: item.description,
-        isLateFee: false,
-      }),
-    );
-
-    await this.lineItemRepository.save(savedLineItems);
-
-    await this.applyCreditToInvoice(savedCycle, lease);
+      await this.lineItemRepository.save(savedLineItems);
+      await this.applyCreditToInvoice(savedCycle, lease);
+    }
 
     return savedCycle;
+  }
+
+  private async createRentCycleWithRetry(data: {
+    leaseId: string;
+    companyId: string;
+    tenantId: string;
+    period: string;
+    dueDate: Date;
+    periodStartDate: Date;
+    periodEndDate: Date;
+    totalAmountDue: number;
+  }): Promise<{ cycle: RentCycle; created: boolean }> {
+    const maxAttempts = 5;
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const invoiceNumber = await this.generateInvoiceNumber(
+          data.companyId,
+          data.period,
+        );
+        const rentCycle = this.rentCycleRepository.create({
+          ...data,
+          invoiceNumber,
+        });
+        const savedCycle = await this.rentCycleRepository.save(rentCycle);
+        await this.createRentIncomeEntry(savedCycle);
+        return { cycle: savedCycle, created: true };
+      } catch (error) {
+        lastError = error;
+
+        if (error instanceof QueryFailedError) {
+          const driverError = error.driverError as {
+            code?: string;
+            constraint?: string;
+            detail?: string;
+          };
+          if (driverError?.code === '23505') {
+            const constraint = driverError.constraint;
+            if (constraint === 'UQ_rent_cycles_lease_period') {
+              const existing = await this.rentCycleRepository.findOne({
+                where: { leaseId: data.leaseId, period: data.period },
+              });
+              if (existing) {
+                return { cycle: existing, created: false };
+              }
+            }
+
+            if (
+              constraint === 'UQ_rent_cycles_company_invoice_number' ||
+              constraint === 'UQ_rent_cycles_invoice_number' ||
+              driverError.detail?.includes('invoiceNumber') ||
+              error.message.includes('invoiceNumber')
+            ) {
+              continue;
+            }
+          }
+        }
+
+        throw error;
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('Failed to create rent cycle after retries');
   }
 
   private calculatePeriodStartDate(
@@ -460,6 +531,25 @@ export class RentCycleGenerationService {
       periodStartDate.setDate(1); // First day of month
     }
     return periodStartDate;
+  }
+
+  // Income is recognized at invoice creation, regardless of payment status.
+  private async createRentIncomeEntry(rentCycle: RentCycle): Promise<void> {
+    const accountingRepository = this.dataSource.getRepository(AccountingEntry);
+    const entry = accountingRepository.create({
+      companyId: rentCycle.companyId,
+      leaseId: rentCycle.leaseId,
+      tenantId: rentCycle.tenantId,
+      account: AccountingAccount.RENT_INCOME,
+      amount: Number(rentCycle.totalAmountDue),
+      direction: AccountingEntryDirection.CREDIT,
+      referenceType: AccountingReferenceType.INVOICE,
+      referenceId: rentCycle.id,
+      entryDate: rentCycle.dueDate,
+      notes: null,
+    });
+
+    await accountingRepository.save(entry);
   }
 
   private async applyCreditToInvoice(
@@ -537,7 +627,8 @@ export class RentCycleGenerationService {
       isLegacy: false,
     });
 
-    await this.paymentRepository.save(creditPayment);
+    const savedCreditPayment = await this.paymentRepository.save(creditPayment);
+    await this.createCreditApplicationEntry(savedCreditPayment);
 
     await this.leaseRepository.update(lease.id, {
       creditBalance: creditBalance - creditToApply,
@@ -546,6 +637,24 @@ export class RentCycleGenerationService {
     this.logger.log(
       `Applied credit to invoice ${rentCycle.invoiceNumber}: ${creditToApply}`,
     );
+  }
+
+  private async createCreditApplicationEntry(payment: Payment): Promise<void> {
+    const accountingRepository = this.dataSource.getRepository(AccountingEntry);
+    const entry = accountingRepository.create({
+      companyId: payment.companyId,
+      leaseId: payment.leaseId,
+      tenantId: payment.tenantId,
+      account: AccountingAccount.TENANT_CREDIT_LIABILITY,
+      amount: Number(payment.amount),
+      direction: AccountingEntryDirection.DEBIT,
+      referenceType: AccountingReferenceType.PAYMENT,
+      referenceId: payment.id,
+      entryDate: payment.paymentDate,
+      notes: payment.notes || null,
+    });
+
+    await accountingRepository.save(entry);
   }
 
   /**

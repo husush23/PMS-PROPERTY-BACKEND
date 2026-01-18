@@ -1,6 +1,6 @@
 import { Injectable, HttpStatus, forwardRef, Inject } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import {
   BusinessException,
   ErrorCode,
@@ -22,6 +22,10 @@ import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { RentCycle } from '../rent-cycle/entities/rent-cycle.entity';
 import { RentCycleStatus } from '../../shared/enums/rent-cycle-status.enum';
 import { RentCycleService } from '../rent-cycle/rent-cycle.service';
+import { AccountingEntry } from '../accounting/entities/accounting-entry.entity';
+import { AccountingAccount } from '../accounting/enums/accounting-account.enum';
+import { AccountingEntryDirection } from '../accounting/enums/accounting-entry-direction.enum';
+import { AccountingReferenceType } from '../accounting/enums/accounting-reference-type.enum';
 
 @Injectable()
 export class PaymentService {
@@ -38,6 +42,8 @@ export class PaymentService {
     private rentCycleRepository: Repository<RentCycle>,
     @Inject(forwardRef(() => RentCycleService))
     private rentCycleService: RentCycleService,
+    @InjectDataSource()
+    private dataSource: DataSource,
   ) {}
 
   async create(
@@ -164,12 +170,13 @@ export class PaymentService {
     /**
      * IMPORTANT:
      * Invoices represent real rent obligations only.
-     * Advance payments must be stored as creditBalance.
+     * Advance payments must be stored as creditBalance (liability, not income).
+     * Payments are cash movements and do not create income by themselves.
      * Never generate invoices solely for advance payment.
      */
     // Allow overpayments - excess amount will be tracked as credit
     // Overpayments can be applied to future invoices or refunded later
-    // TODO: Accounting Hook - When payment is recorded, create accounting entry (future module)
+    // Accounting entries are recorded via recordCashEntry and liability helpers.
     const isOverpayment = createDto.amount > amountDue;
     if (isOverpayment) {
       // Log overpayment but allow it - excess will be tracked as negative balance
@@ -269,12 +276,14 @@ export class PaymentService {
         }
       } else {
         // Advance payment without invoice: store as credit balance
-        const creditBalance = Number(lease.creditBalance || 0);
-        const newCreditBalance = creditBalance + Number(createDto.amount);
+        if (createDto.paymentType !== PaymentType.DEPOSIT) {
+          const creditBalance = Number(lease.creditBalance || 0);
+          const newCreditBalance = creditBalance + Number(createDto.amount);
 
-        await this.leaseRepository.update(lease.id, {
-          creditBalance: newCreditBalance,
-        });
+          await this.leaseRepository.update(lease.id, {
+            creditBalance: newCreditBalance,
+          });
+        }
 
         const creditPayment = this.paymentRepository.create({
           companyId: lease.companyId,
@@ -303,16 +312,27 @@ export class PaymentService {
         });
 
         const savedPayment = await this.paymentRepository.save(creditPayment);
+        await this.recordCashEntry(savedPayment, Number(savedPayment.amount));
+        if (createDto.paymentType === PaymentType.DEPOSIT) {
+          await this.createSecurityDepositEntry(
+            savedPayment,
+            Number(savedPayment.amount),
+          );
+        } else {
+          await this.createAdvancePaymentCreditEntry(savedPayment);
+        }
         return this.toResponseDto(savedPayment, requesterUserId);
       }
     } else if (!rentCycleId) {
       // Advance payment without period or invoice
-      const creditBalance = Number(lease.creditBalance || 0);
-      const newCreditBalance = creditBalance + Number(createDto.amount);
+      if (createDto.paymentType !== PaymentType.DEPOSIT) {
+        const creditBalance = Number(lease.creditBalance || 0);
+        const newCreditBalance = creditBalance + Number(createDto.amount);
 
-      await this.leaseRepository.update(lease.id, {
-        creditBalance: newCreditBalance,
-      });
+        await this.leaseRepository.update(lease.id, {
+          creditBalance: newCreditBalance,
+        });
+      }
 
       const creditPayment = this.paymentRepository.create({
         companyId: lease.companyId,
@@ -341,6 +361,15 @@ export class PaymentService {
       });
 
       const savedPayment = await this.paymentRepository.save(creditPayment);
+      await this.recordCashEntry(savedPayment, Number(savedPayment.amount));
+      if (createDto.paymentType === PaymentType.DEPOSIT) {
+        await this.createSecurityDepositEntry(
+          savedPayment,
+          Number(savedPayment.amount),
+        );
+      } else {
+        await this.createAdvancePaymentCreditEntry(savedPayment);
+      }
       return this.toResponseDto(savedPayment, requesterUserId);
     }
 
@@ -409,10 +438,18 @@ export class PaymentService {
     });
 
     const savedPayment = await this.paymentRepository.save(payment);
+    await this.recordCashEntry(savedPayment, Number(savedPayment.amount));
+    if (savedPayment.paymentType === PaymentType.DEPOSIT) {
+      await this.createSecurityDepositEntry(
+        savedPayment,
+        Number(savedPayment.amount),
+      );
+    }
     
-    // TODO: Accounting Hook - When payment is recorded
-    // → create accounting entry (future module)
-    // This hook should consume payment data but never control invoice logic
+    // Accounting entries for payments:
+    // - CASH is recorded here.
+    // - Liability entries are recorded for advance payments and deposits.
+    // - Income is recorded at invoice creation, not at payment time.
     
     return this.toResponseDto(savedPayment, requesterUserId);
   }
@@ -907,6 +944,9 @@ export class PaymentService {
     });
 
     const savedReversal = await this.paymentRepository.save(reversalPayment);
+    if (payment.paymentType === PaymentType.DEPOSIT) {
+      await this.createSecurityDepositRefundEntry(savedReversal);
+    }
 
     // Update original payment status to REFUNDED
     payment.status = PaymentStatus.REFUNDED;
@@ -1543,6 +1583,88 @@ export class PaymentService {
     });
 
     return payment?.paymentDate;
+  }
+
+  // Advance payments increase tenant credit liability, not income.
+  private async createAdvancePaymentCreditEntry(
+    payment: Payment,
+  ): Promise<void> {
+    const accountingRepository = this.dataSource.getRepository(AccountingEntry);
+
+    const entry = accountingRepository.create({
+      companyId: payment.companyId,
+      leaseId: payment.leaseId,
+      tenantId: payment.tenantId,
+      account: AccountingAccount.TENANT_CREDIT_LIABILITY,
+      amount: Number(payment.amount),
+      direction: AccountingEntryDirection.CREDIT,
+      referenceType: AccountingReferenceType.PAYMENT,
+      referenceId: payment.id,
+      entryDate: payment.paymentDate,
+      notes: payment.notes || null,
+    });
+
+    await accountingRepository.save(entry);
+  }
+
+  // Payments create CASH debits but do not imply income recognition.
+  private async recordCashEntry(payment: Payment, amount: number): Promise<void> {
+    const accountingRepository = this.dataSource.getRepository(AccountingEntry);
+    const entry = accountingRepository.create({
+      companyId: payment.companyId,
+      leaseId: payment.leaseId,
+      tenantId: payment.tenantId,
+      account: AccountingAccount.CASH,
+      amount: Number(amount),
+      direction: AccountingEntryDirection.DEBIT,
+      referenceType: AccountingReferenceType.PAYMENT,
+      referenceId: payment.id,
+      entryDate: payment.paymentDate,
+      notes: payment.notes || null,
+    });
+
+    await accountingRepository.save(entry);
+  }
+
+  private async createSecurityDepositEntry(
+    payment: Payment,
+    amount: number,
+  ): Promise<void> {
+    const accountingRepository = this.dataSource.getRepository(AccountingEntry);
+    const entry = accountingRepository.create({
+      companyId: payment.companyId,
+      leaseId: payment.leaseId,
+      tenantId: payment.tenantId,
+      account: AccountingAccount.SECURITY_DEPOSIT_LIABILITY,
+      amount: Number(amount),
+      direction: AccountingEntryDirection.CREDIT,
+      referenceType: AccountingReferenceType.PAYMENT,
+      referenceId: payment.id,
+      entryDate: payment.paymentDate,
+      notes: payment.notes || null,
+    });
+
+    await accountingRepository.save(entry);
+  }
+
+  private async createSecurityDepositRefundEntry(
+    payment: Payment,
+  ): Promise<void> {
+    const accountingRepository = this.dataSource.getRepository(AccountingEntry);
+    const entry = accountingRepository.create({
+      companyId: payment.companyId,
+      leaseId: payment.leaseId,
+      tenantId: payment.tenantId,
+      account: AccountingAccount.SECURITY_DEPOSIT_LIABILITY,
+      amount: Math.abs(Number(payment.amount)),
+      direction: AccountingEntryDirection.DEBIT,
+      referenceType: AccountingReferenceType.PAYMENT,
+      referenceId: payment.id,
+      entryDate: payment.paymentDate,
+      notes: payment.notes || null,
+    });
+
+    await accountingRepository.save(entry);
   }
 
   private calculateIsOverdue(payment: Payment): boolean {

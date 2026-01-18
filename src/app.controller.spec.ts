@@ -15,8 +15,10 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('should return app greeting', () => {
+      expect(appController.getHello()).toBe(
+        'PM Rental, A property management system for rental properties',
+      );
     });
   });
 });

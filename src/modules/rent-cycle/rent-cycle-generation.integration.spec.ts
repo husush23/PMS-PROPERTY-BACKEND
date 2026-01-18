@@ -1,10 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { RentCycleGenerationService } from './rent-cycle-generation.service';
 import { RentCycle } from './entities/rent-cycle.entity';
 import { RentCycleLineItem } from './entities/rent-cycle-line-item.entity';
 import { Lease } from '../lease/entities/lease.entity';
+import { Payment } from '../payment/entities/payment.entity';
 import { PaymentFrequency } from '../../shared/enums/payment-frequency.enum';
 import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 
@@ -40,6 +41,11 @@ describe('RentCycleGenerationService Integration', () => {
     update: jest.fn(),
   };
 
+  const mockPaymentRepository = {
+    find: jest.fn(),
+    save: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -55,6 +61,10 @@ describe('RentCycleGenerationService Integration', () => {
         {
           provide: getRepositoryToken(Lease),
           useValue: mockLeaseRepository,
+        },
+        {
+          provide: getRepositoryToken(Payment),
+          useValue: mockPaymentRepository,
         },
       ],
     }).compile();
@@ -220,6 +230,81 @@ describe('RentCycleGenerationService Integration', () => {
       expect(rentItem.amount).toBeLessThan(3000); // Should be less than full amount
 
       jest.useRealTimers();
+    });
+  });
+
+  describe('Concurrent rent cycle generation', () => {
+    it('should retry and create unique invoice numbers under concurrency', async () => {
+      const leaseBase = {
+        companyId: 'company-1',
+        tenantId: 'tenant-1',
+        monthlyRent: 3000,
+        startDate: new Date('2024-01-01'),
+        billingStartDate: new Date('2024-01-01'),
+        endDate: new Date('2024-12-31'),
+        rentDueDay: 5,
+        paymentFrequency: PaymentFrequency.MONTHLY,
+        status: LeaseStatus.ACTIVE,
+        isActive: true,
+        proratedFirstMonth: false,
+        utilitiesIncluded: false,
+      } as Lease;
+
+      const lease1 = { ...leaseBase, id: 'lease-1' } as Lease;
+      const lease2 = { ...leaseBase, id: 'lease-2' } as Lease;
+
+      mockLeaseRepository.findOne.mockImplementation(
+        async ({ where }: { where: { id: string } }) =>
+          where.id === 'lease-1' ? lease1 : lease2,
+      );
+
+      mockRentCycleRepository.findOne.mockResolvedValue(null);
+
+      let lastInvoiceNumber: string | null = null;
+      mockRentCycleRepository.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockImplementation(async () =>
+          lastInvoiceNumber ? { invoiceNumber: lastInvoiceNumber } : null,
+        ),
+      });
+
+      let saveAttempts = 0;
+      mockRentCycleRepository.create.mockImplementation((data) => ({
+        id: `cycle-${saveAttempts + 1}`,
+        ...data,
+      }));
+      mockRentCycleRepository.save.mockImplementation(async (cycle) => {
+        saveAttempts += 1;
+        if (
+          cycle.invoiceNumber === 'INV-2024-01-001' &&
+          lastInvoiceNumber === 'INV-2024-01-001'
+        ) {
+          throw new QueryFailedError('', [], {
+            code: '23505',
+            constraint: 'UQ_rent_cycles_company_invoice_number',
+          });
+        }
+        lastInvoiceNumber = cycle.invoiceNumber;
+        return cycle;
+      });
+
+      mockLineItemRepository.create.mockImplementation((item) => item);
+      mockLineItemRepository.save.mockResolvedValue([{ id: 'item-1' }]);
+      mockLeaseRepository.update.mockResolvedValue(undefined);
+
+      const [cycle1, cycle2] = await Promise.all([
+        service.generateFirstCycle('lease-1'),
+        service.generateFirstCycle('lease-2'),
+      ]);
+
+      expect(cycle1.invoiceNumber).toBeDefined();
+      expect(cycle2.invoiceNumber).toBeDefined();
+      expect(cycle1.invoiceNumber).not.toEqual(cycle2.invoiceNumber);
+      expect(cycle1.invoiceNumber).toBe('INV-2024-01-001');
+      expect(cycle2.invoiceNumber).toBe('INV-2024-01-002');
+      expect(mockLineItemRepository.save).toHaveBeenCalledTimes(2);
     });
   });
 });

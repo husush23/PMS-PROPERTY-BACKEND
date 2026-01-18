@@ -602,12 +602,11 @@ export class RentCycleService {
 
   /**
    * Calculate invoice amounts (total, paid, balance)
-   * 
-   * CREDIT LIFECYCLE RULE (MVP-Safe):
-   * - Credit (negative balance) is stored but NEVER auto-applied
-   * - Credit requires explicit implementation in future
-   * - TODO: Implement credit application logic when needed
-   * - Negative balance means tenant has overpaid (credit/advance payment)
+   *
+   * CREDIT LIFECYCLE RULE:
+   * - Credit is auto-applied only during invoice generation.
+   * - This calculation does not apply credit; it only reflects recorded payments.
+   * - Negative balance means tenant has overpaid (credit/advance payment).
    */
   calculateAmounts(
     rentCycle: RentCycle & { payments?: Payment[] },
@@ -628,7 +627,7 @@ export class RentCycleService {
 
     const totalAmountDue = Number(rentCycle.totalAmountDue);
     // Allow negative balance for credit (overpayments)
-    // Credit is stored but never auto-applied (see CREDIT LIFECYCLE RULE above)
+    // Balance reflects recorded payments only; credit application happens elsewhere.
     const balance = totalAmountDue - amountPaid;
 
     return {

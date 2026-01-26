@@ -16,6 +16,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { Company } from './entities/company.entity';
+import { CompanySettingsService } from './company-settings.service';
 import { UserCompany } from './entities/user-company.entity';
 import {
   CompanyInvitation,
@@ -37,6 +38,7 @@ export class CompanyService {
   constructor(
     @InjectRepository(Company)
     private companyRepository: Repository<Company>,
+    private companySettingsService: CompanySettingsService,
     @InjectRepository(UserCompany)
     private userCompanyRepository: Repository<UserCompany>,
     @InjectRepository(User)
@@ -88,6 +90,7 @@ export class CompanyService {
     });
 
     const savedCompany = await this.companyRepository.save(company);
+    await this.companySettingsService.getOrCreate(savedCompany.id);
 
     // Assign creator as COMPANY_ADMIN
     await this.assignUserToCompany(
@@ -672,7 +675,9 @@ export class CompanyService {
       isActive: true,
     });
 
-    return this.companyRepository.save(company);
+    const savedCompany = await this.companyRepository.save(company);
+    await this.companySettingsService.getOrCreate(savedCompany.id);
+    return savedCompany;
   }
 
   private generateSlug(name: string): string {

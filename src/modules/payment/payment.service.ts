@@ -17,6 +17,7 @@ import { ListPaymentsQueryDto } from './dto/list-payments-query.dto';
 import { ReversePaymentDto } from './dto/reverse-payment.dto';
 import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 import { PaymentType } from '../../shared/enums/payment-type.enum';
+import { PaymentMethod } from '../../shared/enums/payment-method.enum';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { RentCycle } from '../rent-cycle/entities/rent-cycle.entity';
@@ -26,6 +27,7 @@ import { AccountingEntry } from '../accounting/entities/accounting-entry.entity'
 import { AccountingAccount } from '../accounting/enums/accounting-account.enum';
 import { AccountingEntryDirection } from '../accounting/enums/accounting-entry-direction.enum';
 import { AccountingReferenceType } from '../accounting/enums/accounting-reference-type.enum';
+import { PaymentMethodEntity } from '../payment-method/entities/payment-method.entity';
 
 @Injectable()
 export class PaymentService {
@@ -40,6 +42,8 @@ export class PaymentService {
     private userCompanyRepository: Repository<UserCompany>,
     @InjectRepository(RentCycle)
     private rentCycleRepository: Repository<RentCycle>,
+    @InjectRepository(PaymentMethodEntity)
+    private paymentMethodRepository: Repository<PaymentMethodEntity>,
     @Inject(forwardRef(() => RentCycleService))
     private rentCycleService: RentCycleService,
     @InjectDataSource()
@@ -84,6 +88,25 @@ export class PaymentService {
         },
       );
     }
+
+    const paymentMethodEntity = await this.resolvePaymentMethod(
+      lease.companyId,
+      createDto.paymentMethodId,
+      createDto.paymentMethod,
+    );
+
+    if (paymentMethodEntity.requiresReference && !createDto.reference) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_ERROR,
+        'Payment method requires a reference code.',
+        HttpStatus.BAD_REQUEST,
+        { paymentMethodId: paymentMethodEntity.id },
+      );
+    }
+
+    const resolvedPaymentMethod = this.mapPaymentMethodCode(
+      paymentMethodEntity.code,
+    );
 
     // Check company access
     if (!isSuperAdmin) {
@@ -297,7 +320,8 @@ export class PaymentService {
           currency: createDto.currency || lease.currency || 'KES',
           paymentDate: paymentDate,
           dueDate: createDto.dueDate ? new Date(createDto.dueDate) : paymentDate,
-          paymentMethod: createDto.paymentMethod,
+          paymentMethod: resolvedPaymentMethod,
+          paymentMethodId: paymentMethodEntity.id,
           paymentType: createDto.paymentType,
           status: PaymentStatus.PAID,
           reference: createDto.reference,
@@ -346,7 +370,8 @@ export class PaymentService {
         currency: createDto.currency || lease.currency || 'KES',
         paymentDate: paymentDate,
         dueDate: createDto.dueDate ? new Date(createDto.dueDate) : paymentDate,
-        paymentMethod: createDto.paymentMethod,
+        paymentMethod: resolvedPaymentMethod,
+        paymentMethodId: paymentMethodEntity.id,
         paymentType: createDto.paymentType,
         status: PaymentStatus.PAID,
         reference: createDto.reference,
@@ -423,7 +448,8 @@ export class PaymentService {
       currency: createDto.currency || lease.currency || 'KES',
       paymentDate: paymentDate,
       dueDate: dueDate,
-      paymentMethod: createDto.paymentMethod,
+      paymentMethod: resolvedPaymentMethod,
+      paymentMethodId: paymentMethodEntity.id,
       paymentType: createDto.paymentType,
       status: status,
       reference: createDto.reference,
@@ -488,6 +514,7 @@ export class PaymentService {
       .leftJoinAndSelect('payment.tenant', 'tenant')
       .leftJoinAndSelect('payment.company', 'company')
       .leftJoinAndSelect('payment.recordedByUser', 'recordedByUser')
+      .leftJoinAndSelect('payment.paymentMethodEntity', 'paymentMethodEntity')
       .where('payment.isActive = :isActive', { isActive: true });
 
     // Company scoping and tenant filtering
@@ -566,6 +593,12 @@ export class PaymentService {
       });
     }
 
+    if (queryDto.paymentMethodId) {
+      queryBuilder.andWhere('payment.paymentMethodId = :paymentMethodId', {
+        paymentMethodId: queryDto.paymentMethodId,
+      });
+    }
+
     if (queryDto.startDate) {
       queryBuilder.andWhere('payment.paymentDate >= :startDate', {
         startDate: queryDto.startDate,
@@ -612,7 +645,13 @@ export class PaymentService {
   ): Promise<PaymentResponseDto> {
     const payment = await this.paymentRepository.findOne({
       where: { id, isActive: true },
-      relations: ['lease', 'tenant', 'company', 'recordedByUser'],
+      relations: [
+        'lease',
+        'tenant',
+        'company',
+        'recordedByUser',
+        'paymentMethodEntity',
+      ],
     });
 
     if (!payment) {
@@ -932,6 +971,7 @@ export class PaymentService {
       currency: payment.currency,
       paymentDate: new Date(),
       paymentMethod: payment.paymentMethod,
+      paymentMethodId: payment.paymentMethodId || null,
       paymentType: payment.paymentType,
       status: PaymentStatus.REFUNDED,
       reference: payment.reference
@@ -1404,6 +1444,63 @@ export class PaymentService {
     }
   }
 
+  private async resolvePaymentMethod(
+    companyId: string,
+    paymentMethodId?: string,
+    paymentMethodEnum?: PaymentMethod,
+  ): Promise<PaymentMethodEntity> {
+    if (paymentMethodId) {
+      const method = await this.paymentMethodRepository.findOne({
+        where: { id: paymentMethodId },
+      });
+
+      if (!method) {
+        throw new BusinessException(
+          ErrorCode.VALIDATION_ERROR,
+          'Payment method not found.',
+          HttpStatus.BAD_REQUEST,
+          { paymentMethodId },
+        );
+      }
+
+      if (!method.isGlobal && method.companyId !== companyId) {
+        throw new BusinessException(
+          ErrorCode.INSUFFICIENT_PERMISSIONS,
+          'Payment method does not belong to this company.',
+          HttpStatus.FORBIDDEN,
+          { paymentMethodId },
+        );
+      }
+
+      return method;
+    }
+
+    if (paymentMethodEnum) {
+      const method = await this.paymentMethodRepository.findOne({
+        where: { isGlobal: true, code: paymentMethodEnum },
+      });
+
+      if (method) {
+        return method;
+      }
+    }
+
+    throw new BusinessException(
+      ErrorCode.VALIDATION_ERROR,
+      'Payment method is required.',
+      HttpStatus.BAD_REQUEST,
+    );
+  }
+
+  private mapPaymentMethodCode(code?: string | null): PaymentMethod {
+    if (!code) {
+      return PaymentMethod.OTHER;
+    }
+
+    const normalized = code.toUpperCase();
+    return (PaymentMethod as Record<string, PaymentMethod>)[normalized] ?? PaymentMethod.OTHER;
+  }
+
   private async toResponseDto(
     payment: Payment,
     requesterUserId?: string,
@@ -1413,7 +1510,13 @@ export class PaymentService {
       payment =
         (await this.paymentRepository.findOne({
           where: { id: payment.id },
-          relations: ['lease', 'tenant', 'company', 'recordedByUser'],
+          relations: [
+            'lease',
+            'tenant',
+            'company',
+            'recordedByUser',
+            'paymentMethodEntity',
+          ],
         })) || payment;
     }
 
@@ -1461,6 +1564,8 @@ export class PaymentService {
       currency: payment.currency,
       paymentDate: payment.paymentDate,
       paymentMethod: payment.paymentMethod,
+      paymentMethodId: payment.paymentMethodId,
+      paymentMethodName: payment.paymentMethodEntity?.name,
       paymentType: payment.paymentType,
       status: payment.status,
       reference: payment.reference,
@@ -1630,6 +1735,7 @@ export class PaymentService {
     payment: Payment,
     amount: number,
   ): Promise<void> {
+    // NOTE: Deposits are liabilities, not income.
     const accountingRepository = this.dataSource.getRepository(AccountingEntry);
     const entry = accountingRepository.create({
       companyId: payment.companyId,

@@ -14,6 +14,7 @@ import { Company } from '../../company/entities/company.entity';
 import { PaymentStatus } from '../../../shared/enums/payment-status.enum';
 import { PaymentMethod } from '../../../shared/enums/payment-method.enum';
 import { PaymentType } from '../../../shared/enums/payment-type.enum';
+import { PaymentMethodEntity } from '../../payment-method/entities/payment-method.entity';
 
 @Entity('payments')
 @Index(['companyId'])
@@ -26,6 +27,7 @@ import { PaymentType } from '../../../shared/enums/payment-type.enum';
 @Index(['dueDate'])
 @Index(['status', 'dueDate'])
 @Index(['rentCycleId'])
+@Index(['paymentMethodId'])
 export class Payment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -71,6 +73,9 @@ export class Payment {
     enum: PaymentMethod,
   })
   paymentMethod: PaymentMethod;
+
+  @Column('uuid', { nullable: true })
+  paymentMethodId: string | null;
 
   @Column({
     type: 'enum',
@@ -133,6 +138,10 @@ export class Payment {
   @ManyToOne(() => Company, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'companyId' })
   company: Company;
+
+  @ManyToOne(() => PaymentMethodEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'paymentMethodId' })
+  paymentMethodEntity?: PaymentMethodEntity;
 
   @ManyToOne(() => User, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'recordedBy' })

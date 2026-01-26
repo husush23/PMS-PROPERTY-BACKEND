@@ -7,6 +7,7 @@ This document summarizes recent changes to the Property Management System backen
 - [Tenant Invitation Flow](#tenant-invitation-flow)
 - [Super Admin User Management](#super-admin-user-management)
 - [Tenant Deletion Fix](#tenant-deletion-fix)
+- [Company Settings](#company-settings)
 
 ---
 
@@ -169,6 +170,44 @@ DELETE /api/v1/admin/users/:id?hard=true
 
 **Files Modified**:
 - `src/modules/tenant/tenant.service.ts`
+
+---
+
+## Company Settings
+
+### Company-Level Defaults and Toggles
+
+**Problem**: There was no centralized place to manage default lease/payment behaviors and system toggles per company.
+
+**Solution**: Added a new company settings model with endpoints to fetch and update settings.
+
+**New Endpoints**:
+
+#### Get Settings
+```
+GET /api/v1/companies/settings
+```
+
+#### Update Settings
+```
+PATCH /api/v1/companies/settings
+```
+
+**Highlights**:
+- Company timezone and default currency
+- Lease defaults (payment frequency, rent due day, grace period, late fees)
+- Payment defaults (allowed methods, approvals, partial payments)
+- Notification defaults
+- System toggles (rent cycle generation, credit auto-apply, late fee auto-apply)
+
+**Files Added/Modified**:
+- `src/modules/company/entities/company-settings.entity.ts`
+- `src/modules/company/company-settings.service.ts`
+- `src/modules/company/company-settings.controller.ts`
+- `src/modules/company/dto/company-settings-response.dto.ts`
+- `src/modules/company/dto/update-company-settings.dto.ts`
+- `src/database/migrations/1769512000000-CreateCompanySettings.ts`
+- `SETTINGS_API_DOCUMENTATION.md`
 
 ---
 

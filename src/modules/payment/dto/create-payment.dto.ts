@@ -85,14 +85,23 @@ export class CreatePaymentDto {
   dueDate?: string;
 
   @ApiProperty({
-    description: 'Payment method',
+    description: 'Payment method ID',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @IsUUID('4', { message: 'Payment method ID must be a valid UUID' })
+  paymentMethodId: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Legacy payment method enum (optional for backward compatibility)',
     enum: PaymentMethod,
     example: PaymentMethod.CASH,
   })
+  @IsOptional()
   @IsEnum(PaymentMethod, {
     message: 'Payment method must be a valid PaymentMethod enum value',
   })
-  paymentMethod: PaymentMethod;
+  paymentMethod?: PaymentMethod;
 
   @ApiProperty({
     description: 'Payment type',

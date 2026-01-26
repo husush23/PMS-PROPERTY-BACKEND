@@ -96,6 +96,18 @@ export class PaymentResponseDto {
   })
   paymentMethod: PaymentMethod;
 
+  @ApiPropertyOptional({
+    description: 'Payment method ID',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  paymentMethodId?: string | null;
+
+  @ApiPropertyOptional({
+    description: 'Payment method display name',
+    example: 'M-Pesa',
+  })
+  paymentMethodName?: string;
+
   @ApiProperty({
     description: 'Payment type',
     enum: PaymentType,

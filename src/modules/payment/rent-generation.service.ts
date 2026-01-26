@@ -13,6 +13,7 @@ import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 import { PaymentType } from '../../shared/enums/payment-type.enum';
 import { PaymentMethod } from '../../shared/enums/payment-method.enum';
 import { PaymentFrequency } from '../../shared/enums/payment-frequency.enum';
+import { PaymentMethodEntity } from '../payment-method/entities/payment-method.entity';
 
 @Injectable()
 export class RentGenerationService {
@@ -21,6 +22,8 @@ export class RentGenerationService {
     private paymentRepository: Repository<Payment>,
     @InjectRepository(Lease)
     private leaseRepository: Repository<Lease>,
+    @InjectRepository(PaymentMethodEntity)
+    private paymentMethodRepository: Repository<PaymentMethodEntity>,
   ) {}
 
   /**
@@ -88,6 +91,7 @@ export class RentGenerationService {
 
     const period = this.getFirstPeriod(lease);
 
+    const systemMethodId = await this.getSystemPaymentMethodId();
     const payment = this.paymentRepository.create({
       companyId: lease.companyId,
       tenantId: lease.tenantId,
@@ -100,6 +104,7 @@ export class RentGenerationService {
       paymentDate: new Date(),
       dueDate: dueDate,
       paymentMethod: PaymentMethod.OTHER, // System-generated
+      paymentMethodId: systemMethodId,
       paymentType: PaymentType.RENT,
       status: PaymentStatus.PENDING,
       period: period,
@@ -218,6 +223,7 @@ export class RentGenerationService {
       amountDue += Number(lease.utilityCosts);
     }
 
+    const systemMethodId = await this.getSystemPaymentMethodId();
     const payment = this.paymentRepository.create({
       companyId: lease.companyId,
       tenantId: lease.tenantId,
@@ -230,6 +236,7 @@ export class RentGenerationService {
       paymentDate: new Date(),
       dueDate: dueDate,
       paymentMethod: PaymentMethod.OTHER, // System-generated
+      paymentMethodId: systemMethodId,
       paymentType: PaymentType.RENT,
       status: PaymentStatus.PENDING,
       period: period,
@@ -320,6 +327,13 @@ export class RentGenerationService {
     const years = date2.getFullYear() - date1.getFullYear();
     const months = date2.getMonth() - date1.getMonth();
     return years * 12 + months;
+  }
+
+  private async getSystemPaymentMethodId(): Promise<string | null> {
+    const method = await this.paymentMethodRepository.findOne({
+      where: { isGlobal: true, code: PaymentMethod.OTHER },
+    });
+    return method?.id || null;
   }
 }
 

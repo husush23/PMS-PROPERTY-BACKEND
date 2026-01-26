@@ -12,10 +12,19 @@ import { Company } from '../company/entities/company.entity';
 import { UserCompany } from '../company/entities/user-company.entity';
 import { RentCycleModule } from '../rent-cycle/rent-cycle.module';
 import { RentCycle } from '../rent-cycle/entities/rent-cycle.entity';
+import { PaymentMethodEntity } from '../payment-method/entities/payment-method.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Payment, Lease, User, Company, UserCompany, RentCycle]),
+    TypeOrmModule.forFeature([
+      Payment,
+      Lease,
+      User,
+      Company,
+      UserCompany,
+      RentCycle,
+      PaymentMethodEntity,
+    ]),
     forwardRef(() => RentCycleModule),
   ],
   controllers: [PaymentController],

@@ -13,6 +13,7 @@ import { UnitModule } from './modules/unit/unit.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 import { LeaseModule } from './modules/lease/lease.module';
 import { PaymentModule } from './modules/payment/payment.module';
+import { PaymentMethodsModule } from './modules/payment-method/payment-methods.module';
 import { ExpenseModule } from './modules/expense/expense.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
 import appConfig from './config/app.config';
@@ -37,6 +38,7 @@ import cacheConfig from './config/cache.config';
     TenantModule,
     LeaseModule,
     PaymentModule,
+    PaymentMethodsModule,
     ExpenseModule,
     AccountingModule,
     SampleModule,

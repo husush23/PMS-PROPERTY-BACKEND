@@ -103,6 +103,14 @@ export class ListPaymentsQueryDto {
   paymentMethod?: PaymentMethod;
 
   @ApiPropertyOptional({
+    description: 'Filter by payment method ID',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @IsOptional()
+  @IsUUID('4', { message: 'Payment method ID must be a valid UUID' })
+  paymentMethodId?: string;
+
+  @ApiPropertyOptional({
     description: 'Filter payments from this date (inclusive)',
     example: '2024-01-01',
   })

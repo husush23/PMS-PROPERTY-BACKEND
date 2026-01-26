@@ -106,6 +106,30 @@ export class UserService {
     return this.userRepository.findOne({ where: { email } });
   }
 
+  async findByEmailForCompany(
+    email: string,
+    companyId: string,
+  ): Promise<{ user: UserResponseDto; isInCompany: boolean }> {
+    const user = await this.userRepository.findOne({ where: { email } });
+    if (!user) {
+      throw new BusinessException(
+        ErrorCode.USER_NOT_FOUND,
+        ERROR_MESSAGES.USER_NOT_FOUND,
+        HttpStatus.NOT_FOUND,
+        { field: 'email', value: email },
+      );
+    }
+
+    const membership = await this.userCompanyRepository.findOne({
+      where: { userId: user.id, companyId, isActive: true },
+    });
+
+    return {
+      user: this.toResponseDto(user),
+      isInCompany: !!membership,
+    };
+  }
+
   async isSuperAdmin(userId: string): Promise<boolean> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     return user?.isSuperAdmin || false;
@@ -258,7 +282,7 @@ export class UserService {
     return true;
   }
 
-  private toResponseDto(user: User): UserResponseDto {
+  toResponseDto(user: User): UserResponseDto {
     const { password, userCompanies, ...userResponse } = user;
     return userResponse as UserResponseDto;
   }

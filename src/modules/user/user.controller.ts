@@ -88,6 +88,39 @@ export class UserController {
     }
   }
 
+  @Get('lookup')
+  @ApiBearerAuth('JWT-auth')
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'Lookup user by email (company scoped)' })
+  @ApiQuery({
+    name: 'email',
+    required: true,
+    type: String,
+    description: 'User email address',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User lookup result',
+  })
+  async lookupByEmail(
+    @Query('email') email: string,
+    @CompanyContext() companyId: string,
+  ) {
+    const result = await this.userService.findByEmailForCompany(
+      email,
+      companyId,
+    );
+
+    return {
+      success: true,
+      data: {
+        ...result.user,
+        isInCompany: result.isInCompany,
+      },
+    };
+  }
+
   @Get(':id')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { RentCycleGenerationService } from './rent-cycle-generation.service';
 import { RentCycle } from './entities/rent-cycle.entity';
 import { RentCycleLineItem } from './entities/rent-cycle-line-item.entity';
@@ -8,6 +8,8 @@ import { Lease } from '../lease/entities/lease.entity';
 import { Payment } from '../payment/entities/payment.entity';
 import { PaymentFrequency } from '../../shared/enums/payment-frequency.enum';
 import { LeaseStatus } from '../../shared/enums/lease-status.enum';
+import { CompanySettingsResolver } from '../company/company-settings-resolver.service';
+import { calculateNextDueDate } from '../../common/utils/rent-due-date.util';
 
 describe('RentCycleGenerationService', () => {
   let service: RentCycleGenerationService;
@@ -41,6 +43,25 @@ describe('RentCycleGenerationService', () => {
     save: jest.fn(),
   };
 
+  const mockDataSource = {
+    getRepository: jest.fn(() => ({
+      create: jest.fn((data) => data),
+      save: jest.fn(),
+    })),
+  };
+
+  const mockCompanySettingsResolver = {
+    getSettings: jest.fn().mockResolvedValue({
+      autoGenerateRentCycles: true,
+      autoApplyCredit: true,
+      autoApplyLateFees: true,
+      lateFeeEnabled: true,
+      defaultCurrency: 'KES',
+    }),
+    shouldAutoGenerateRentCycles: jest.fn().mockReturnValue(true),
+    shouldAutoApplyCredit: jest.fn().mockReturnValue(true),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -61,6 +82,11 @@ describe('RentCycleGenerationService', () => {
           provide: getRepositoryToken(Payment),
           useValue: mockPaymentRepository,
         },
+        { provide: DataSource, useValue: mockDataSource },
+        {
+          provide: CompanySettingsResolver,
+          useValue: mockCompanySettingsResolver,
+        },
       ],
     }).compile();
 
@@ -80,69 +106,72 @@ describe('RentCycleGenerationService', () => {
 
   describe('Frequency Calculations', () => {
     it('should calculate monthly due date correctly', () => {
-      const billingStart = new Date('2024-01-15');
-      const rentDueDay = 5;
-      const periodOffset = 1;
+      const billingStartDate = new Date('2024-01-15');
+      const result = calculateNextDueDate({
+        billingStartDate,
+        billingAnchorDay: 5,
+        paymentFrequency: PaymentFrequency.MONTHLY,
+        cyclesAhead: 1,
+      });
 
-      // Access private method via type casting
-      const result = (service as any).calculateMonthlyDueDate(
-        billingStart,
-        rentDueDay,
-        periodOffset,
-      );
-
-      expect(result.getFullYear()).toBe(2024);
-      expect(result.getMonth()).toBe(1); // February (0-indexed)
-      expect(result.getDate()).toBe(5);
+      expect(result.getUTCFullYear()).toBe(2024);
+      expect(result.getUTCMonth()).toBe(1); // February (0-indexed)
+      expect(result.getUTCDate()).toBe(5);
     });
 
     it('should calculate weekly due date correctly', () => {
-      const billingStart = new Date('2024-01-15'); // Monday
-      const rentDueDay = 1; // Monday
-      const periodOffset = 1;
+      const billingStartDate = new Date('2024-01-15'); // Monday
+      const result = calculateNextDueDate({
+        billingStartDate,
+        billingAnchorDay: 15,
+        paymentFrequency: PaymentFrequency.WEEKLY,
+        cyclesAhead: 1,
+      });
 
-      const result = (service as any).calculateWeeklyDueDate(
-        billingStart,
-        rentDueDay,
-        periodOffset,
-      );
-
-      // Should be 7 days later
-      const expectedDate = new Date(billingStart);
-      expectedDate.setDate(expectedDate.getDate() + 7);
-      expect(result.getTime()).toBeCloseTo(expectedDate.getTime(), -3); // Within 1 day tolerance
+      const expectedDate = new Date(Date.UTC(2024, 0, 22));
+      expect(result.getTime()).toBe(expectedDate.getTime());
     });
 
     it('should calculate quarterly due date correctly', () => {
-      const billingStart = new Date('2024-01-15');
-      const rentDueDay = 5;
-      const periodOffset = 1;
+      const billingStartDate = new Date('2024-01-15');
+      const result = calculateNextDueDate({
+        billingStartDate,
+        billingAnchorDay: 5,
+        paymentFrequency: PaymentFrequency.QUARTERLY,
+        cyclesAhead: 1,
+      });
 
-      const result = (service as any).calculateQuarterlyDueDate(
-        billingStart,
-        rentDueDay,
-        periodOffset,
-      );
-
-      expect(result.getFullYear()).toBe(2024);
-      expect(result.getMonth()).toBe(3); // April (0-indexed, 3 months later)
-      expect(result.getDate()).toBe(5);
+      expect(result.getUTCFullYear()).toBe(2024);
+      expect(result.getUTCMonth()).toBe(3); // April (0-indexed)
+      expect(result.getUTCDate()).toBe(5);
     });
 
     it('should calculate yearly due date correctly', () => {
-      const billingStart = new Date('2024-01-15');
-      const rentDueDay = 15;
-      const periodOffset = 1;
+      const billingStartDate = new Date('2024-01-15');
+      const result = calculateNextDueDate({
+        billingStartDate,
+        billingAnchorDay: 15,
+        paymentFrequency: PaymentFrequency.YEARLY,
+        cyclesAhead: 1,
+      });
 
-      const result = (service as any).calculateYearlyDueDate(
-        billingStart,
-        rentDueDay,
-        periodOffset,
-      );
+      expect(result.getUTCFullYear()).toBe(2025);
+      expect(result.getUTCMonth()).toBe(0); // January
+      expect(result.getUTCDate()).toBe(15);
+    });
 
-      expect(result.getFullYear()).toBe(2025);
-      expect(result.getMonth()).toBe(0); // January
-      expect(result.getDate()).toBe(15);
+    it('clamps to last day of month when needed', () => {
+      const billingStartDate = new Date('2024-01-31');
+      const result = calculateNextDueDate({
+        billingStartDate,
+        billingAnchorDay: 31,
+        paymentFrequency: PaymentFrequency.MONTHLY,
+        cyclesAhead: 1,
+      });
+
+      expect(result.getUTCFullYear()).toBe(2024);
+      expect(result.getUTCMonth()).toBe(1); // February
+      expect(result.getUTCDate()).toBe(29); // Leap year
     });
   });
 
@@ -318,12 +347,17 @@ describe('RentCycleGenerationService', () => {
         isVoid: false,
         isDeposit: false,
       } as any;
+      const companySettings = { autoApplyCredit: true } as any;
 
       mockPaymentRepository.find.mockResolvedValue([]);
       mockPaymentRepository.save.mockImplementation(async (payment) => payment);
       mockLeaseRepository.update.mockResolvedValue(undefined);
 
-      await (service as any).applyCreditToInvoice(rentCycle, lease);
+      await (service as any).applyCreditToInvoice(
+        rentCycle,
+        lease,
+        companySettings,
+      );
 
       expect(mockPaymentRepository.save).toHaveBeenCalled();
       const savedPayment = mockPaymentRepository.save.mock.calls[0][0];
@@ -359,10 +393,15 @@ describe('RentCycleGenerationService', () => {
         isVoid: false,
         isDeposit: false,
       } as any;
+      const companySettings = { autoApplyCredit: true } as any;
 
       mockPaymentRepository.find.mockResolvedValue([]);
 
-      await (service as any).applyCreditToInvoice(rentCycle, lease);
+      await (service as any).applyCreditToInvoice(
+        rentCycle,
+        lease,
+        companySettings,
+      );
 
       expect(mockPaymentRepository.save).not.toHaveBeenCalled();
       expect(mockLeaseRepository.update).not.toHaveBeenCalled();

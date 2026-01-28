@@ -16,6 +16,12 @@ import { AccountingEntry } from '../accounting/entities/accounting-entry.entity'
 import { AccountingAccount } from '../accounting/enums/accounting-account.enum';
 import { AccountingEntryDirection } from '../accounting/enums/accounting-entry-direction.enum';
 import { AccountingReferenceType } from '../accounting/enums/accounting-reference-type.enum';
+import { CompanySettingsResolver } from '../company/company-settings-resolver.service';
+import { CompanySettings } from '../company/entities/company-settings.entity';
+import {
+  calculateNextDueDate,
+  getPeriodsSinceStart,
+} from '../../common/utils/rent-due-date.util';
 
 @Injectable()
 export class RentCycleGenerationService {
@@ -32,6 +38,7 @@ export class RentCycleGenerationService {
     private paymentRepository: Repository<Payment>,
     @InjectDataSource()
     private dataSource: DataSource,
+    private companySettingsResolver: CompanySettingsResolver,
   ) {}
 
   /**
@@ -50,15 +57,16 @@ export class RentCycleGenerationService {
     const billingStart = lease.billingStartDate 
       ? new Date(lease.billingStartDate) 
       : new Date(lease.startDate);
-    const rentDueDay = lease.rentDueDay || this.getDayOfMonth(billingStart);
+    const billingAnchorDay =
+      lease.billingAnchorDay || this.getDayOfMonth(billingStart);
     const paymentFrequency =
       lease.paymentFrequency || PaymentFrequency.MONTHLY;
-    const dueDate = this.calculateNextDueDate(
-      billingStart,
-      rentDueDay,
+    const dueDate = calculateNextDueDate({
+      billingStartDate: billingStart,
+      billingAnchorDay,
       paymentFrequency,
-      0,
-    );
+      cyclesAhead: 0,
+    });
 
     const period = this.getPeriodForDate(dueDate, paymentFrequency);
 
@@ -127,19 +135,10 @@ export class RentCycleGenerationService {
     }
 
     if (created) {
-      await this.applyCreditToInvoice(savedCycle, lease);
+      const companySettings =
+        await this.companySettingsResolver.getSettings(lease.companyId);
+      await this.applyCreditToInvoice(savedCycle, lease, companySettings);
     }
-
-    // Update lease nextRentDueDate based on payment frequency
-    const nextDueDate = this.calculateNextDueDate(
-      billingStart,
-      rentDueDay,
-      lease.paymentFrequency || PaymentFrequency.MONTHLY,
-      1,
-    );
-    await this.leaseRepository.update(lease.id, {
-      nextRentDueDate: nextDueDate,
-    });
 
     this.logger.log(
       `Generated first rent cycle for lease ${lease.id}: ${savedCycle.invoiceNumber} (period: ${period})`,
@@ -179,20 +178,48 @@ export class RentCycleGenerationService {
       errors: 0,
     };
 
+    const settingsCache = new Map<string, CompanySettings>();
+    const getSettings = async (companyId: string) => {
+      const cached = settingsCache.get(companyId);
+      if (cached) {
+        return cached;
+      }
+      const settings = await this.companySettingsResolver.getSettings(companyId);
+      settingsCache.set(companyId, settings);
+      return settings;
+    };
+
     for (const lease of activeLeases) {
       try {
+        const companySettings = await getSettings(lease.companyId);
+        if (!this.companySettingsResolver.shouldAutoGenerateRentCycles(companySettings)) {
+          summary.skipped++;
+          this.logger.debug(
+            `Skipped lease ${lease.id}: autoGenerateRentCycles disabled for company ${lease.companyId}`,
+          );
+          continue;
+        }
+
         const leaseEndDate = new Date(lease.endDate);
         const billingStart = lease.billingStartDate
           ? new Date(lease.billingStartDate)
           : new Date(lease.startDate);
-        const rentDueDay = lease.rentDueDay || this.getDayOfMonth(billingStart);
+        const billingAnchorDay =
+          lease.billingAnchorDay || this.getDayOfMonth(billingStart);
         const paymentFrequency =
           lease.paymentFrequency || PaymentFrequency.MONTHLY;
 
-        // Calculate next due date based on payment frequency
-        const nextDueDate = lease.nextRentDueDate
-          ? new Date(lease.nextRentDueDate)
-          : this.calculateNextDueDate(billingStart, rentDueDay, paymentFrequency, 0);
+        const periodsSinceStart = getPeriodsSinceStart(
+          billingStart,
+          today,
+          paymentFrequency,
+        );
+        const nextDueDate = calculateNextDueDate({
+          billingStartDate: billingStart,
+          billingAnchorDay,
+          paymentFrequency,
+          cyclesAhead: periodsSinceStart,
+        });
 
         // Handle final period if lease has ended
         if (leaseEndDate < today) {
@@ -213,6 +240,7 @@ export class RentCycleGenerationService {
               leaseEndDate,
               finalPeriod,
               paymentFrequency,
+              companySettings,
             );
             summary.generated++;
             this.logger.log(
@@ -280,6 +308,7 @@ export class RentCycleGenerationService {
                   leaseEndDate,
                   period,
                   paymentFrequency,
+                  companySettings,
                 );
               } else {
                 // Generate full cycle
@@ -288,27 +317,8 @@ export class RentCycleGenerationService {
                   nextDueDate,
                   period,
                   paymentFrequency,
+                  companySettings,
                 );
-              }
-
-              // Calculate and update next due date
-              const periodsSinceStart = this.getPeriodsSinceStart(
-                billingStart,
-                nextDueDate,
-                paymentFrequency,
-              );
-              const newNextDueDate = this.calculateNextDueDate(
-                billingStart,
-                rentDueDay,
-                paymentFrequency,
-                periodsSinceStart + 1,
-              );
-
-              // Only update if new due date is before or equal to lease end date
-              if (newNextDueDate <= leaseEndDate) {
-                await this.leaseRepository.update(lease.id, {
-                  nextRentDueDate: newNextDueDate,
-                });
               }
 
               summary.generated++;
@@ -363,6 +373,7 @@ export class RentCycleGenerationService {
     dueDate: Date,
     period: string,
     paymentFrequency: PaymentFrequency = PaymentFrequency.MONTHLY,
+    companySettings?: CompanySettings,
   ): Promise<RentCycle> {
     // Calculate line items (not first period, no proration)
     const lineItems = this.calculateLineItems(lease, false, paymentFrequency);
@@ -398,7 +409,9 @@ export class RentCycleGenerationService {
       );
 
       await this.lineItemRepository.save(savedLineItems);
-      await this.applyCreditToInvoice(savedCycle, lease);
+      if (companySettings) {
+        await this.applyCreditToInvoice(savedCycle, lease, companySettings);
+      }
     }
 
     return savedCycle;
@@ -413,6 +426,7 @@ export class RentCycleGenerationService {
     periodEnd: Date,
     period: string,
     paymentFrequency: PaymentFrequency = PaymentFrequency.MONTHLY,
+    companySettings?: CompanySettings,
   ): Promise<RentCycle> {
     // Calculate line items with partial period adjustment
     const lineItems = this.calculateLineItems(
@@ -450,7 +464,9 @@ export class RentCycleGenerationService {
       );
 
       await this.lineItemRepository.save(savedLineItems);
-      await this.applyCreditToInvoice(savedCycle, lease);
+      if (companySettings) {
+        await this.applyCreditToInvoice(savedCycle, lease, companySettings);
+      }
     }
 
     return savedCycle;
@@ -555,7 +571,11 @@ export class RentCycleGenerationService {
   private async applyCreditToInvoice(
     rentCycle: RentCycle,
     lease: Lease,
+    companySettings: CompanySettings,
   ): Promise<void> {
+    if (!this.companySettingsResolver.shouldAutoApplyCredit(companySettings)) {
+      return;
+    }
     if (rentCycle.isVoid || rentCycle.isDeposit) {
       return;
     }
@@ -863,137 +883,6 @@ export class RentCycleGenerationService {
   }
 
   /**
-   * Calculate due date based on billing start date, rent due day, and payment frequency
-   */
-  private calculateNextDueDate(
-    billingStart: Date,
-    rentDueDay: number,
-    paymentFrequency: PaymentFrequency,
-    periodOffset: number,
-  ): Date {
-    switch (paymentFrequency) {
-      case PaymentFrequency.WEEKLY:
-        return this.calculateWeeklyDueDate(billingStart, rentDueDay, periodOffset);
-      case PaymentFrequency.BIWEEKLY:
-        return this.calculateBiweeklyDueDate(billingStart, rentDueDay, periodOffset);
-      case PaymentFrequency.QUARTERLY:
-        return this.calculateQuarterlyDueDate(billingStart, rentDueDay, periodOffset);
-      case PaymentFrequency.YEARLY:
-        return this.calculateYearlyDueDate(billingStart, rentDueDay, periodOffset);
-      case PaymentFrequency.MONTHLY:
-      default:
-        return this.calculateMonthlyDueDate(billingStart, rentDueDay, periodOffset);
-    }
-  }
-
-  /**
-   * Calculate monthly due date
-   */
-  private calculateMonthlyDueDate(
-    billingStart: Date,
-    rentDueDay: number,
-    periodOffset: number,
-  ): Date {
-    const dueDate = new Date(
-      billingStart.getFullYear(),
-      billingStart.getMonth() + periodOffset,
-      rentDueDay,
-    );
-
-    // Handle months with fewer days
-    if (dueDate.getDate() !== rentDueDay) {
-      dueDate.setDate(0); // Last day of previous month
-    }
-
-    return dueDate;
-  }
-
-  /**
-   * Calculate weekly due date
-   */
-  private calculateWeeklyDueDate(
-    billingStart: Date,
-    rentDueDay: number,
-    periodOffset: number,
-  ): Date {
-    // rentDueDay represents day of week (0-6, Sunday-Saturday) or day of month
-    // For weekly, we'll use the day of week from billing start
-    const dayOfWeek = billingStart.getDay();
-    const dueDate = new Date(billingStart);
-    dueDate.setDate(dueDate.getDate() + periodOffset * 7);
-
-    // Adjust to the correct day of week
-    const daysToAdd = (rentDueDay % 7) - dayOfWeek;
-    dueDate.setDate(dueDate.getDate() + daysToAdd);
-
-    return dueDate;
-  }
-
-  /**
-   * Calculate biweekly due date
-   */
-  private calculateBiweeklyDueDate(
-    billingStart: Date,
-    rentDueDay: number,
-    periodOffset: number,
-  ): Date {
-    const dueDate = new Date(billingStart);
-    dueDate.setDate(dueDate.getDate() + periodOffset * 14);
-
-    // Adjust to the correct day of week (biweekly = every 2 weeks)
-    const dayOfWeek = billingStart.getDay();
-    const targetDayOfWeek = rentDueDay % 7;
-    const daysToAdd = targetDayOfWeek - dayOfWeek;
-    dueDate.setDate(dueDate.getDate() + daysToAdd);
-
-    return dueDate;
-  }
-
-  /**
-   * Calculate quarterly due date
-   */
-  private calculateQuarterlyDueDate(
-    billingStart: Date,
-    rentDueDay: number,
-    periodOffset: number,
-  ): Date {
-    const dueDate = new Date(
-      billingStart.getFullYear(),
-      billingStart.getMonth() + periodOffset * 3,
-      rentDueDay,
-    );
-
-    // Handle months with fewer days
-    if (dueDate.getDate() !== rentDueDay) {
-      dueDate.setDate(0); // Last day of previous month
-    }
-
-    return dueDate;
-  }
-
-  /**
-   * Calculate yearly due date
-   */
-  private calculateYearlyDueDate(
-    billingStart: Date,
-    rentDueDay: number,
-    periodOffset: number,
-  ): Date {
-    const dueDate = new Date(
-      billingStart.getFullYear() + periodOffset,
-      billingStart.getMonth(),
-      rentDueDay,
-    );
-
-    // Handle February in leap years
-    if (dueDate.getDate() !== rentDueDay) {
-      dueDate.setDate(0); // Last day of previous month
-    }
-
-    return dueDate;
-  }
-
-  /**
    * Get period string for a given date based on payment frequency
    */
   private getPeriodForDate(
@@ -1070,52 +959,10 @@ export class RentCycleGenerationService {
   }
 
   /**
-   * Calculate number of periods since start based on payment frequency
-   */
-  private getPeriodsSinceStart(
-    startDate: Date,
-    currentDate: Date,
-    paymentFrequency: PaymentFrequency,
-  ): number {
-    switch (paymentFrequency) {
-      case PaymentFrequency.WEEKLY: {
-        const diffTime = currentDate.getTime() - startDate.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return Math.floor(diffDays / 7);
-      }
-      case PaymentFrequency.BIWEEKLY: {
-        const diffTime = currentDate.getTime() - startDate.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return Math.floor(diffDays / 14);
-      }
-      case PaymentFrequency.QUARTERLY: {
-        const years = currentDate.getFullYear() - startDate.getFullYear();
-        const months = currentDate.getMonth() - startDate.getMonth();
-        return Math.floor((years * 12 + months) / 3);
-      }
-      case PaymentFrequency.YEARLY: {
-        return currentDate.getFullYear() - startDate.getFullYear();
-      }
-      case PaymentFrequency.MONTHLY:
-      default:
-        return this.getMonthsDifference(startDate, currentDate);
-    }
-  }
-
-  /**
    * Get day of month from a date
    */
   private getDayOfMonth(date: Date): number {
-    return date.getDate();
-  }
-
-  /**
-   * Calculate months difference between two dates
-   */
-  private getMonthsDifference(startDate: Date, endDate: Date): number {
-    const years = endDate.getFullYear() - startDate.getFullYear();
-    const months = endDate.getMonth() - startDate.getMonth();
-    return years * 12 + months;
+    return date.getUTCDate();
   }
 
   /**

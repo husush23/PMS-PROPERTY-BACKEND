@@ -79,9 +79,12 @@ export class Lease {
   @Column({ type: 'date', nullable: true })
   noticeToVacateDate: Date;
 
-  // Billing Controls
+  // Billing Controls (per-contract values, not company defaults)
   @Column({ type: 'date', nullable: true })
   billingStartDate: Date;
+
+  @Column({ type: 'int', default: 1 })
+  billingAnchorDay: number; // Day-of-month anchor derived from billingStartDate
 
   @Column({ default: false })
   proratedFirstMonth: boolean;
@@ -94,7 +97,7 @@ export class Lease {
   rentDueDay: number; // 1-28, day of month when rent is due
 
   @Column({ type: 'date', nullable: true })
-  nextRentDueDate: Date; // Calculated next due date
+  nextRentDueDate: Date; // Derived field (not authoritative)
 
   @Column({
     type: 'enum',

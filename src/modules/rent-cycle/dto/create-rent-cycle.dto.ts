@@ -60,12 +60,13 @@ export class CreateRentCycleDto {
   @IsString()
   period: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Due date for this invoice',
     example: '2026-01-05',
   })
+  @IsOptional()
   @IsDateString({}, { message: 'Due date must be a valid date string' })
-  dueDate: string;
+  dueDate?: string;
 
   @ApiProperty({
     description: 'Line items for this invoice',

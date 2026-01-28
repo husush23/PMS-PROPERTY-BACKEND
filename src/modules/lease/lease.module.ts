@@ -14,6 +14,7 @@ import { Payment } from '../payment/entities/payment.entity';
 import { TenantModule } from '../tenant/tenant.module';
 import { PaymentModule } from '../payment/payment.module';
 import { RentCycleModule } from '../rent-cycle/rent-cycle.module';
+import { CompanyModule } from '../company/company.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { RentCycleModule } from '../rent-cycle/rent-cycle.module';
     forwardRef(() => TenantModule),
     forwardRef(() => PaymentModule),
     forwardRef(() => RentCycleModule),
+    CompanyModule,
   ],
   controllers: [LeaseController],
   providers: [LeaseService, LeaseSchedulerService],

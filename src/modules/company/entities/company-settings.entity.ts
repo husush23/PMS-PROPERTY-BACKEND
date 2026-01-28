@@ -9,11 +9,11 @@ import {
   Index,
 } from 'typeorm';
 import { Company } from './company.entity';
-import { PaymentFrequency } from '../../../shared/enums/payment-frequency.enum';
 import { LateFeeType } from '../../../shared/enums/late-fee-type.enum';
 import { PaymentMethod } from '../../../shared/enums/payment-method.enum';
 import { UserRole } from '../../../shared/enums/user-role.enum';
 
+// Company defaults are policy settings, not lease contract values.
 @Entity('company_settings')
 @Index(['companyId'], { unique: true })
 export class CompanySettings {
@@ -33,16 +33,6 @@ export class CompanySettings {
   @Column({ default: 'KES' })
   defaultCurrency: string;
 
-  @Column({
-    type: 'enum',
-    enum: PaymentFrequency,
-    default: PaymentFrequency.MONTHLY,
-  })
-  defaultPaymentFrequency: PaymentFrequency;
-
-  @Column({ type: 'int', default: 1 })
-  defaultRentDueDay: number;
-
   @Column({ type: 'int', default: 0 })
   defaultGracePeriodDays: number;
 
@@ -57,12 +47,6 @@ export class CompanySettings {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   // NOTE: Late fees will be recognized as income in future accounting.
   defaultLateFeeValue: number;
-
-  @Column({ default: false })
-  defaultProratedFirstMonth: boolean;
-
-  @Column({ type: 'int', nullable: true })
-  defaultLeaseTerm: number | null;
 
   @Column({
     type: 'enum',

@@ -13,6 +13,9 @@ import { PaymentType } from '../../shared/enums/payment-type.enum';
 import { PaymentMethod } from '../../shared/enums/payment-method.enum';
 import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { RentCycleStatus } from '../../shared/enums/rent-cycle-status.enum';
+import { CompanySettingsResolver } from '../company/company-settings-resolver.service';
+import { PaymentMethodEntity } from '../payment-method/entities/payment-method.entity';
+import { DataSource } from 'typeorm';
 
 describe('PaymentService (Credit Balance Refactor)', () => {
   let service: PaymentService;
@@ -61,12 +64,45 @@ describe('PaymentService (Credit Balance Refactor)', () => {
     find: jest.fn(),
   };
 
+  const mockPaymentMethodRepository = {
+    findOne: jest.fn(),
+  };
+
+  const mockDataSource = {
+    getRepository: jest.fn(() => ({
+      create: jest.fn((data) => data),
+      save: jest.fn(),
+    })),
+  };
+
   const mockRentCycleService = {
     calculateStatus: jest.fn(),
     calculateAmounts: jest.fn(),
   };
+  const mockCompanySettingsResolver = {
+    getSettings: jest.fn().mockResolvedValue({
+      requirePaymentApproval: false,
+      allowPartialPayments: true,
+      allowAdvancePayments: true,
+      requirePaymentReference: false,
+      allowedPaymentMethods: [PaymentMethod.CASH, PaymentMethod.OTHER],
+      defaultCurrency: 'KES',
+    }),
+    assertPaymentMethodAllowed: jest.fn(),
+    assertPaymentReference: jest.fn(),
+    assertPartialPaymentsAllowed: jest.fn(),
+    assertAdvancePaymentsAllowed: jest.fn(),
+    resolveCurrency: jest.fn().mockReturnValue('KES'),
+  };
 
   beforeEach(async () => {
+    mockPaymentMethodRepository.findOne.mockResolvedValue({
+      id: 'pm-1',
+      code: PaymentMethod.CASH,
+      isGlobal: true,
+      requiresReference: false,
+    });
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaymentService,
@@ -81,7 +117,13 @@ describe('PaymentService (Credit Balance Refactor)', () => {
           provide: getRepositoryToken(RentCycle),
           useValue: mockRentCycleRepository,
         },
+        {
+          provide: getRepositoryToken(PaymentMethodEntity),
+          useValue: mockPaymentMethodRepository,
+        },
         { provide: RentCycleService, useValue: mockRentCycleService },
+        { provide: CompanySettingsResolver, useValue: mockCompanySettingsResolver },
+        { provide: DataSource, useValue: mockDataSource },
       ],
     }).compile();
 
@@ -197,6 +239,74 @@ describe('PaymentService (Credit Balance Refactor)', () => {
         requesterUserId,
       ),
     ).rejects.toThrow('Cannot make payment on voided invoice');
+  });
+
+  it('uses company default currency when missing', async () => {
+    const requesterUserId = 'requester-1';
+    const lease = {
+      id: 'lease-1',
+      companyId: 'company-1',
+      tenantId: 'tenant-1',
+      status: LeaseStatus.ACTIVE,
+      isActive: true,
+      currency: null,
+    } as Lease;
+    const rentCycle = {
+      id: 'cycle-1',
+      leaseId: lease.id,
+      isVoid: false,
+      isDeposit: false,
+      totalAmountDue: 1000,
+      dueDate: new Date(),
+    } as RentCycle;
+
+    mockCompanySettingsResolver.resolveCurrency.mockReturnValueOnce('USD');
+    mockUserRepository.findOne.mockImplementation(
+      async ({ where }: { where: { id: string } }) =>
+        where.id === requesterUserId
+          ? ({ id: requesterUserId, isSuperAdmin: true } as User)
+          : ({ id: lease.tenantId, isActive: true } as User),
+    );
+    mockLeaseRepository.findOne.mockResolvedValue(lease);
+    mockRentCycleRepository.findOne.mockResolvedValue(rentCycle);
+    mockPaymentMethodRepository.findOne.mockResolvedValue({
+      id: 'pm-1',
+      code: PaymentMethod.CASH,
+      isGlobal: true,
+      requiresReference: false,
+    });
+
+    mockPaymentRepository.create.mockImplementation((data) => data);
+    mockPaymentRepository.save.mockImplementation(async (data) => ({
+      id: 'payment-1',
+      ...data,
+      lease,
+      tenant: { id: lease.tenantId },
+      company: { id: lease.companyId },
+      recordedByUser: { id: requesterUserId },
+    }));
+    mockPaymentRepository.find.mockResolvedValue([]);
+    mockPaymentRepository.findOne.mockResolvedValue(null);
+    mockRentCycleRepository.find.mockResolvedValue([]);
+
+    const result = await service.create(
+      {
+        leaseId: lease.id,
+        rentCycleId: rentCycle.id,
+        amount: 1000,
+        amountDue: 1000,
+        paymentDate: new Date().toISOString(),
+        paymentMethod: PaymentMethod.CASH,
+        paymentType: PaymentType.RENT,
+      },
+      requesterUserId,
+    );
+
+    expect(mockCompanySettingsResolver.resolveCurrency).toHaveBeenCalled();
+    expect(paymentRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({ currency: 'USD' }),
+    );
+    expect(result.currency).toBe('USD');
   });
 
   it('excludes pending and void invoices from outstanding balance', async () => {

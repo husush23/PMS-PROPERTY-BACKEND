@@ -24,6 +24,7 @@ import { PasswordUtil } from '../../common/utils/password.util';
 import { NotificationService } from '../notification/notification.service';
 import { UserService } from '../user/user.service';
 import { CompanyService } from '../company/company.service';
+import { CompanySettingsResolver } from '../company/company-settings-resolver.service';
 import { randomUUID } from 'crypto';
 
 @Injectable()
@@ -44,6 +45,7 @@ export class TenantService {
     private userService: UserService,
     @Inject(forwardRef(() => CompanyService))
     private companyService: CompanyService,
+    private companySettingsResolver: CompanySettingsResolver,
   ) {}
 
   async inviteTenant(
@@ -125,14 +127,19 @@ export class TenantService {
       user = await this.userRepository.save(user);
     }
 
+    const companySettings =
+      await this.companySettingsResolver.getSettings(companyId);
+
     // Create minimal TenantProfile with PENDING status
     // Profile data will be collected when tenant accepts the invitation
     const tenantProfile = this.tenantProfileRepository.create({
       userId: user.id,
       companyId,
       status: TenantStatus.PENDING,
-      emailNotifications: true,
-      smsNotifications: true,
+      // Company settings = system behavior defaults.
+      // Overrides allowed at transaction/lease level only.
+      emailNotifications: companySettings.defaultEmailNotifications,
+      smsNotifications: companySettings.defaultSmsNotifications,
     });
 
     const savedTenantProfile =
@@ -186,16 +193,18 @@ export class TenantService {
     // Send invitation email
     const inviterName =
       requesterUser?.name || requesterUser?.email || 'Someone';
-    this.notificationService
-      .sendTenantInvitationEmail(
-        inviteDto.email,
-        company.name,
-        token,
-        inviterName,
-      )
-      .catch((error) => {
-        console.error('Failed to send tenant invitation email:', error);
-      });
+    if (savedTenantProfile.emailNotifications) {
+      this.notificationService
+        .sendTenantInvitationEmail(
+          inviteDto.email,
+          company.name,
+          token,
+          inviterName,
+        )
+        .catch((error) => {
+          console.error('Failed to send tenant invitation email:', error);
+        });
+    }
   }
 
   async acceptTenantInvitation(
@@ -299,6 +308,9 @@ export class TenantService {
     });
 
     // Prepare tenant profile data with all provided fields from DTO
+    const companySettings =
+      await this.companySettingsResolver.getSettings(invitation.companyId);
+
     const profileData: Partial<TenantProfile> = {
       userId: user.id,
       companyId: invitation.companyId,
@@ -320,8 +332,13 @@ export class TenantService {
       emergencyContactRelationship: acceptDto.emergencyContactRelationship,
       notes: acceptDto.notes,
       tags: acceptDto.tags,
-      emailNotifications: acceptDto.emailNotifications ?? true,
-      smsNotifications: acceptDto.smsNotifications ?? true,
+      // Company settings = system behavior defaults.
+      // Overrides allowed at transaction/lease level only.
+      emailNotifications:
+        acceptDto.emailNotifications ??
+        companySettings.defaultEmailNotifications,
+      smsNotifications:
+        acceptDto.smsNotifications ?? companySettings.defaultSmsNotifications,
     };
 
     // Remove undefined values to avoid overwriting with null
@@ -395,6 +412,9 @@ export class TenantService {
         );
       }
     }
+
+    const companySettings =
+      await this.companySettingsResolver.getSettings(companyId);
 
     // Verify company exists
     const company = await this.companyRepository.findOne({
@@ -565,8 +585,13 @@ export class TenantService {
       userId: user.id,
       companyId,
       status: TenantStatus.PENDING,
-      emailNotifications: createDto.emailNotifications ?? true,
-      smsNotifications: createDto.smsNotifications ?? true,
+      // Company settings = system behavior defaults.
+      // Overrides allowed at transaction/lease level only.
+      emailNotifications:
+        createDto.emailNotifications ??
+        companySettings.defaultEmailNotifications,
+      smsNotifications:
+        createDto.smsNotifications ?? companySettings.defaultSmsNotifications,
     };
 
     if (!userAlreadyExisted) {
@@ -677,6 +702,13 @@ export class TenantService {
     // Only send invitation email for newly created users who are inactive
     // Existing users should handle password reset themselves if needed
     if (!userAlreadyExisted && !user.isActive) {
+      if (!savedTenantProfile.emailNotifications) {
+        return {
+          tenant: this.toResponseDto(savedTenantProfile, user, companyId),
+          userAlreadyExisted,
+        };
+      }
+
       const token = randomUUID();
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7);

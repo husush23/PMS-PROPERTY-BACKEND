@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { QueryFailedError, Repository, DataSource } from 'typeorm';
 import { RentCycleGenerationService } from './rent-cycle-generation.service';
 import { RentCycle } from './entities/rent-cycle.entity';
 import { RentCycleLineItem } from './entities/rent-cycle-line-item.entity';
@@ -8,6 +8,7 @@ import { Lease } from '../lease/entities/lease.entity';
 import { Payment } from '../payment/entities/payment.entity';
 import { PaymentFrequency } from '../../shared/enums/payment-frequency.enum';
 import { LeaseStatus } from '../../shared/enums/lease-status.enum';
+import { CompanySettingsResolver } from '../company/company-settings-resolver.service';
 
 describe('RentCycleGenerationService Integration', () => {
   let service: RentCycleGenerationService;
@@ -46,6 +47,24 @@ describe('RentCycleGenerationService Integration', () => {
     save: jest.fn(),
   };
 
+  const mockDataSource = {
+    getRepository: jest.fn(() => ({
+      create: jest.fn((data) => data),
+      save: jest.fn(),
+    })),
+  };
+
+  const mockCompanySettingsResolver = {
+    getSettings: jest.fn().mockResolvedValue({
+      autoGenerateRentCycles: true,
+      autoApplyCredit: true,
+      autoApplyLateFees: true,
+      lateFeeEnabled: true,
+    }),
+    shouldAutoGenerateRentCycles: jest.fn().mockReturnValue(true),
+    shouldAutoApplyCredit: jest.fn().mockReturnValue(true),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -66,6 +85,8 @@ describe('RentCycleGenerationService Integration', () => {
           provide: getRepositoryToken(Payment),
           useValue: mockPaymentRepository,
         },
+        { provide: DataSource, useValue: mockDataSource },
+        { provide: CompanySettingsResolver, useValue: mockCompanySettingsResolver },
       ],
     }).compile();
 
@@ -94,6 +115,7 @@ describe('RentCycleGenerationService Integration', () => {
         billingStartDate: new Date('2024-01-01'),
         endDate: new Date('2024-12-31'),
         rentDueDay: 5,
+        billingAnchorDay: 5,
         paymentFrequency: PaymentFrequency.MONTHLY,
         status: LeaseStatus.ACTIVE,
         isActive: true,
@@ -138,6 +160,7 @@ describe('RentCycleGenerationService Integration', () => {
         billingStartDate: new Date('2024-01-15'),
         endDate: new Date('2024-12-31'),
         rentDueDay: 5,
+        billingAnchorDay: 5,
         paymentFrequency: PaymentFrequency.MONTHLY,
         status: LeaseStatus.ACTIVE,
         isActive: true,
@@ -192,6 +215,7 @@ describe('RentCycleGenerationService Integration', () => {
         billingStartDate: new Date('2024-01-01'),
         endDate: new Date('2024-12-15'), // Ends mid-month
         rentDueDay: 5,
+        billingAnchorDay: 5,
         nextRentDueDate: new Date('2024-12-05'),
         paymentFrequency: PaymentFrequency.MONTHLY,
         status: LeaseStatus.ACTIVE,
@@ -243,6 +267,7 @@ describe('RentCycleGenerationService Integration', () => {
         billingStartDate: new Date('2024-01-01'),
         endDate: new Date('2024-12-31'),
         rentDueDay: 5,
+        billingAnchorDay: 5,
         paymentFrequency: PaymentFrequency.MONTHLY,
         status: LeaseStatus.ACTIVE,
         isActive: true,

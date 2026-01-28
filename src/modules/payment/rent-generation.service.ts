@@ -14,6 +14,10 @@ import { PaymentType } from '../../shared/enums/payment-type.enum';
 import { PaymentMethod } from '../../shared/enums/payment-method.enum';
 import { PaymentFrequency } from '../../shared/enums/payment-frequency.enum';
 import { PaymentMethodEntity } from '../payment-method/entities/payment-method.entity';
+import {
+  calculateNextDueDate,
+  getPeriodsSinceStart,
+} from '../../common/utils/rent-due-date.util';
 
 @Injectable()
 export class RentGenerationService {
@@ -71,8 +75,16 @@ export class RentGenerationService {
 
     // Calculate due date and amount
     const billingStart = lease.billingStartDate || lease.startDate;
-    const rentDueDay = lease.rentDueDay || this.getDayOfMonth(billingStart);
-    const dueDate = this.calculateDueDate(billingStart, rentDueDay, 0);
+    const billingAnchorDay =
+      lease.billingAnchorDay || billingStart.getUTCDate();
+    const paymentFrequency =
+      lease.paymentFrequency || PaymentFrequency.MONTHLY;
+    const dueDate = calculateNextDueDate({
+      billingStartDate: billingStart,
+      billingAnchorDay,
+      paymentFrequency,
+      cyclesAhead: 0,
+    });
 
     let amountDue = Number(lease.monthlyRent);
     if (lease.proratedFirstMonth) {
@@ -117,12 +129,6 @@ export class RentGenerationService {
 
     const savedPayment = await this.paymentRepository.save(payment);
 
-    // Update lease nextRentDueDate
-    const nextDueDate = this.calculateDueDate(billingStart, rentDueDay, 1);
-    await this.leaseRepository.update(leaseId, {
-      nextRentDueDate: nextDueDate,
-    });
-
     return savedPayment;
   }
 
@@ -150,12 +156,19 @@ export class RentGenerationService {
         }
 
         const billingStart = lease.billingStartDate || lease.startDate;
-        const rentDueDay = lease.rentDueDay || this.getDayOfMonth(billingStart);
-
-        // Calculate next due date
-        const nextDueDate = lease.nextRentDueDate
-          ? new Date(lease.nextRentDueDate)
-          : this.calculateDueDate(billingStart, rentDueDay, 0);
+        const billingAnchorDay =
+          lease.billingAnchorDay || billingStart.getUTCDate();
+        const periodsSinceStart = getPeriodsSinceStart(
+          billingStart,
+          today,
+          PaymentFrequency.MONTHLY,
+        );
+        const nextDueDate = calculateNextDueDate({
+          billingStartDate: billingStart,
+          billingAnchorDay,
+          paymentFrequency: PaymentFrequency.MONTHLY,
+          cyclesAhead: periodsSinceStart,
+        });
 
         // Check if we need to generate payment (due date is today or in the past)
         if (nextDueDate <= today) {
@@ -174,23 +187,6 @@ export class RentGenerationService {
             // Generate payment
             await this.generatePaymentForPeriod(lease, nextDueDate, period);
 
-            // Calculate and update next due date
-            const monthsSinceStart = this.getMonthsDifference(
-              billingStart,
-              nextDueDate,
-            );
-            const newNextDueDate = this.calculateDueDate(
-              billingStart,
-              rentDueDay,
-              monthsSinceStart + 1,
-            );
-
-            // Only update if new due date is before lease end date
-            if (newNextDueDate <= lease.endDate) {
-              await this.leaseRepository.update(lease.id, {
-                nextRentDueDate: newNextDueDate,
-              });
-            }
           }
         }
       } catch (error) {
@@ -249,29 +245,6 @@ export class RentGenerationService {
   }
 
   /**
-   * Calculate due date based on billing start date and rent due day
-   */
-  private calculateDueDate(
-    billingStart: Date,
-    rentDueDay: number,
-    periodOffset: number,
-  ): Date {
-    const start = new Date(billingStart);
-    const dueDate = new Date(
-      start.getFullYear(),
-      start.getMonth() + periodOffset,
-      rentDueDay,
-    );
-
-    // If day doesn't exist in month (e.g., Feb 30), use last day of month
-    if (dueDate.getDate() !== rentDueDay) {
-      dueDate.setDate(0); // Last day of previous month
-    }
-
-    return dueDate;
-  }
-
-  /**
    * Calculate prorated amount for first month
    */
   private calculateProratedAmount(lease: Lease): number {
@@ -313,21 +286,6 @@ export class RentGenerationService {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
   }
 
-  /**
-   * Get day of month from a date
-   */
-  private getDayOfMonth(date: Date): number {
-    return date.getDate();
-  }
-
-  /**
-   * Calculate months difference between two dates
-   */
-  private getMonthsDifference(date1: Date, date2: Date): number {
-    const years = date2.getFullYear() - date1.getFullYear();
-    const months = date2.getMonth() - date1.getMonth();
-    return years * 12 + months;
-  }
 
   private async getSystemPaymentMethodId(): Promise<string | null> {
     const method = await this.paymentMethodRepository.findOne({

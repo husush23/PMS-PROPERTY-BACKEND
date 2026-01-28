@@ -18,6 +18,11 @@ import { ReversePaymentDto } from './dto/reverse-payment.dto';
 import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 import { PaymentType } from '../../shared/enums/payment-type.enum';
 import { PaymentMethod } from '../../shared/enums/payment-method.enum';
+import { PaymentFrequency } from '../../shared/enums/payment-frequency.enum';
+import {
+  calculateNextDueDate,
+  getPeriodsSinceStart,
+} from '../../common/utils/rent-due-date.util';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { RentCycle } from '../rent-cycle/entities/rent-cycle.entity';
@@ -28,6 +33,7 @@ import { AccountingAccount } from '../accounting/enums/accounting-account.enum';
 import { AccountingEntryDirection } from '../accounting/enums/accounting-entry-direction.enum';
 import { AccountingReferenceType } from '../accounting/enums/accounting-reference-type.enum';
 import { PaymentMethodEntity } from '../payment-method/entities/payment-method.entity';
+import { CompanySettingsResolver } from '../company/company-settings-resolver.service';
 
 @Injectable()
 export class PaymentService {
@@ -48,6 +54,7 @@ export class PaymentService {
     private rentCycleService: RentCycleService,
     @InjectDataSource()
     private dataSource: DataSource,
+    private companySettingsResolver: CompanySettingsResolver,
   ) {}
 
   async create(
@@ -89,23 +96,28 @@ export class PaymentService {
       );
     }
 
+    const companySettings = await this.companySettingsResolver.getSettings(
+      lease.companyId,
+    );
+
     const paymentMethodEntity = await this.resolvePaymentMethod(
       lease.companyId,
       createDto.paymentMethodId,
       createDto.paymentMethod,
     );
 
-    if (paymentMethodEntity.requiresReference && !createDto.reference) {
-      throw new BusinessException(
-        ErrorCode.VALIDATION_ERROR,
-        'Payment method requires a reference code.',
-        HttpStatus.BAD_REQUEST,
-        { paymentMethodId: paymentMethodEntity.id },
-      );
-    }
-
     const resolvedPaymentMethod = this.mapPaymentMethodCode(
       paymentMethodEntity.code,
+    );
+
+    this.companySettingsResolver.assertPaymentMethodAllowed(
+      companySettings,
+      resolvedPaymentMethod,
+    );
+    this.companySettingsResolver.assertPaymentReference(
+      companySettings,
+      createDto.reference,
+      paymentMethodEntity.requiresReference,
     );
 
     // Check company access
@@ -190,6 +202,19 @@ export class PaymentService {
       }
     }
 
+    const resolvedCurrency = this.companySettingsResolver.resolveCurrency(
+      companySettings,
+      createDto.currency,
+      lease.currency,
+    );
+    const requiresApproval = companySettings.requirePaymentApproval;
+
+    // Company settings = system behavior defaults.
+    // Overrides allowed at transaction/lease level only.
+    if (createDto.amount < amountDue) {
+      this.companySettingsResolver.assertPartialPaymentsAllowed(companySettings);
+    }
+
     /**
      * IMPORTANT:
      * Invoices represent real rent obligations only.
@@ -202,6 +227,7 @@ export class PaymentService {
     // Accounting entries are recorded via recordCashEntry and liability helpers.
     const isOverpayment = createDto.amount > amountDue;
     if (isOverpayment) {
+      this.companySettingsResolver.assertAdvancePaymentsAllowed(companySettings);
       // Log overpayment but allow it - excess will be tracked as negative balance
       // This supports advance payments and overpayments
       // Credit is stored but never auto-applied (see CREDIT LIFECYCLE RULE above)
@@ -299,6 +325,9 @@ export class PaymentService {
         }
       } else {
         // Advance payment without invoice: store as credit balance
+        this.companySettingsResolver.assertAdvancePaymentsAllowed(
+          companySettings,
+        );
         if (createDto.paymentType !== PaymentType.DEPOSIT) {
           const creditBalance = Number(lease.creditBalance || 0);
           const newCreditBalance = creditBalance + Number(createDto.amount);
@@ -317,13 +346,13 @@ export class PaymentService {
           amountDue: amountDue,
           amountPaid: createDto.amount,
           balance: 0,
-          currency: createDto.currency || lease.currency || 'KES',
+          currency: resolvedCurrency,
           paymentDate: paymentDate,
           dueDate: createDto.dueDate ? new Date(createDto.dueDate) : paymentDate,
           paymentMethod: resolvedPaymentMethod,
           paymentMethodId: paymentMethodEntity.id,
           paymentType: createDto.paymentType,
-          status: PaymentStatus.PAID,
+      status: requiresApproval ? PaymentStatus.PENDING : PaymentStatus.PAID,
           reference: createDto.reference,
           recordedBy: requesterUserId,
           period: createDto.period,
@@ -331,7 +360,7 @@ export class PaymentService {
           isPartial: false,
           balanceAfter: 0,
           attachmentUrl: createDto.attachmentUrl,
-          paidAt: new Date(),
+      paidAt: requiresApproval ? undefined : new Date(),
           isLegacy: false,
         });
 
@@ -349,6 +378,7 @@ export class PaymentService {
       }
     } else if (!rentCycleId) {
       // Advance payment without period or invoice
+      this.companySettingsResolver.assertAdvancePaymentsAllowed(companySettings);
       if (createDto.paymentType !== PaymentType.DEPOSIT) {
         const creditBalance = Number(lease.creditBalance || 0);
         const newCreditBalance = creditBalance + Number(createDto.amount);
@@ -367,13 +397,13 @@ export class PaymentService {
         amountDue: amountDue,
         amountPaid: createDto.amount,
         balance: 0,
-        currency: createDto.currency || lease.currency || 'KES',
+        currency: resolvedCurrency,
         paymentDate: paymentDate,
         dueDate: createDto.dueDate ? new Date(createDto.dueDate) : paymentDate,
         paymentMethod: resolvedPaymentMethod,
         paymentMethodId: paymentMethodEntity.id,
         paymentType: createDto.paymentType,
-        status: PaymentStatus.PAID,
+        status: requiresApproval ? PaymentStatus.PENDING : PaymentStatus.PAID,
         reference: createDto.reference,
         recordedBy: requesterUserId,
         period: createDto.period,
@@ -381,7 +411,7 @@ export class PaymentService {
         isPartial: false,
         balanceAfter: 0,
         attachmentUrl: createDto.attachmentUrl,
-        paidAt: new Date(),
+        paidAt: requiresApproval ? undefined : new Date(),
         isLegacy: false,
       });
 
@@ -398,12 +428,28 @@ export class PaymentService {
       return this.toResponseDto(savedPayment, requesterUserId);
     }
 
-    // Calculate dueDate from RentCycle, lease nextRentDueDate, or use payment date
+    // Calculate dueDate from RentCycle, lease schedule, or use payment date
     let dueDate = createDto.dueDate ? new Date(createDto.dueDate) : null;
     if (!dueDate && rentCycle) {
       dueDate = new Date(rentCycle.dueDate);
-    } else if (!dueDate && lease.nextRentDueDate) {
-      dueDate = new Date(lease.nextRentDueDate);
+    } else if (!dueDate) {
+      const billingStart = lease.billingStartDate
+        ? new Date(lease.billingStartDate)
+        : new Date(lease.startDate);
+      const billingAnchorDay =
+        lease.billingAnchorDay || billingStart.getUTCDate();
+      const paymentFrequency =
+        lease.paymentFrequency || PaymentFrequency.MONTHLY;
+      const cyclesAhead = Math.max(
+        0,
+        getPeriodsSinceStart(billingStart, new Date(), paymentFrequency),
+      );
+      dueDate = calculateNextDueDate({
+        billingStartDate: billingStart,
+        billingAnchorDay,
+        paymentFrequency,
+        cyclesAhead,
+      });
     }
     if (!dueDate) {
       // Default to payment date if no due date available
@@ -418,20 +464,22 @@ export class PaymentService {
     // Negative balance means tenant has paid more than due (advance payment/credit)
     const balance = amountDue - amountPaid;
 
-    // Determine status based on balance and due date
+    // Determine status based on balance and due date.
     let status = PaymentStatus.PENDING;
-    if (balance <= 0) {
-      status = PaymentStatus.PAID;
-    } else if (amountPaid > 0) {
-      status = PaymentStatus.PARTIAL;
-    } else {
-      // Check if payment is due today
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const dueDateCheck = new Date(dueDate);
-      dueDateCheck.setHours(0, 0, 0, 0);
-      if (dueDateCheck.getTime() === today.getTime()) {
-        status = PaymentStatus.DUE;
+    if (!requiresApproval) {
+      if (balance <= 0) {
+        status = PaymentStatus.PAID;
+      } else if (amountPaid > 0) {
+        status = PaymentStatus.PARTIAL;
+      } else {
+        // Check if payment is due today
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const dueDateCheck = new Date(dueDate);
+        dueDateCheck.setHours(0, 0, 0, 0);
+        if (dueDateCheck.getTime() === today.getTime()) {
+          status = PaymentStatus.DUE;
+        }
       }
     }
 
@@ -445,7 +493,7 @@ export class PaymentService {
       amountDue: amountDue,
       amountPaid: amountPaid,
       balance: balance,
-      currency: createDto.currency || lease.currency || 'KES',
+      currency: resolvedCurrency,
       paymentDate: paymentDate,
       dueDate: dueDate,
       paymentMethod: resolvedPaymentMethod,
@@ -459,7 +507,7 @@ export class PaymentService {
       isPartial: balance > 0,
       balanceAfter: createDto.balanceAfter || balance,
       attachmentUrl: createDto.attachmentUrl,
-      paidAt: balance <= 0 ? new Date() : undefined,
+      paidAt: !requiresApproval && balance <= 0 ? new Date() : undefined,
       isLegacy: false, // New payments are not legacy
     });
 
@@ -665,6 +713,10 @@ export class PaymentService {
 
     // Access control
     await this.validateAccess(payment, requesterUserId);
+    const companySettings = await this.companySettingsResolver.getSettings(
+      payment.companyId,
+    );
+    this.companySettingsResolver.assertPartialPaymentsAllowed(companySettings);
 
     return this.toResponseDto(payment, requesterUserId);
   }

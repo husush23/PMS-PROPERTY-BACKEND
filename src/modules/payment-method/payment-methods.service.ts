@@ -1,10 +1,21 @@
 import { Injectable, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { PaymentMethod } from '../../shared/enums/payment-method.enum';
 import { PaymentMethodEntity } from './entities/payment-method.entity';
 import { CreatePaymentMethodDto } from './dto/create-payment-method.dto';
 import { UpdatePaymentMethodDto } from './dto/update-payment-method.dto';
 import { BusinessException, ErrorCode } from '../../common/exceptions/business.exception';
+
+const FALLBACK_GLOBAL_PAYMENT_METHOD_CODES: PaymentMethod[] = [
+  PaymentMethod.CASH,
+  PaymentMethod.BANK,
+  PaymentMethod.MPESA,
+  PaymentMethod.CARD,
+  PaymentMethod.CHECK,
+  PaymentMethod.CREDIT,
+  PaymentMethod.OTHER,
+];
 
 @Injectable()
 export class PaymentMethodsService {
@@ -12,6 +23,22 @@ export class PaymentMethodsService {
     @InjectRepository(PaymentMethodEntity)
     private paymentMethodRepository: Repository<PaymentMethodEntity>,
   ) {}
+
+  /**
+   * Returns PaymentMethod enum values for all active global payment methods.
+   * Used when creating company_settings (POST /companies). Does not require companyId.
+   * Falls back to a safe list if no global methods exist (e.g. before seed).
+   */
+  async getActiveGlobalPaymentMethodCodes(): Promise<PaymentMethod[]> {
+    const methods = await this.paymentMethodRepository.find({
+      where: { isGlobal: true, isActive: true },
+      order: { code: 'ASC' },
+    });
+    const codes = methods
+      .map((m) => m.code as PaymentMethod | null)
+      .filter((code): code is PaymentMethod => code != null && Object.values(PaymentMethod).includes(code));
+    return codes.length > 0 ? codes : FALLBACK_GLOBAL_PAYMENT_METHOD_CODES;
+  }
 
   async list(
     companyId: string,

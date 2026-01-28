@@ -16,6 +16,7 @@ import { RentCycleGenerationService } from '../rent-cycle/rent-cycle-generation.
 import { RentCycleService } from '../rent-cycle/rent-cycle.service';
 import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { UnitStatus } from '../../shared/enums/unit-status.enum';
+import { CompanySettingsResolver } from '../company/company-settings-resolver.service';
 
 describe('LeaseService (Credit Balance Refactor)', () => {
   let service: LeaseService;
@@ -52,6 +53,14 @@ describe('LeaseService (Credit Balance Refactor)', () => {
   const mockRentGenerationService = {};
   const mockRentCycleGenerationService = {};
   const mockRentCycleService = {};
+  const mockCompanySettingsResolver = {
+    getSettings: jest.fn().mockResolvedValue({
+      defaultGracePeriodDays: 0,
+      defaultLateFeeType: 'FIXED',
+      defaultLateFeeValue: 0,
+      defaultCurrency: 'KES',
+    }),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -78,6 +87,10 @@ describe('LeaseService (Credit Balance Refactor)', () => {
           useValue: mockRentCycleGenerationService,
         },
         { provide: RentCycleService, useValue: mockRentCycleService },
+        {
+          provide: CompanySettingsResolver,
+          useValue: mockCompanySettingsResolver,
+        },
       ],
     }).compile();
 

@@ -13,7 +13,6 @@ import { CompanyContext } from '../../common/decorators/company-context.decorato
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { UserRole } from '../../shared/enums/user-role.enum';
-import { LateFeeType } from '../../shared/enums/late-fee-type.enum';
 import { CompanySettings } from './entities/company-settings.entity';
 
 @ApiTags('settings')
@@ -52,8 +51,7 @@ export class CompanySettingsAliasController {
     @CompanyContext() companyId: string,
     @Body() updateDto: UpdateCompanySettingsDto,
   ) {
-    const normalized = this.normalizeUpdateDto(updateDto);
-    const settings = await this.settingsService.update(companyId, normalized);
+    const settings = await this.settingsService.update(companyId, updateDto);
     return {
       success: true,
       data: this.toResponse(settings),
@@ -61,54 +59,9 @@ export class CompanySettingsAliasController {
     };
   }
 
-  private normalizeUpdateDto(
-    updateDto: UpdateCompanySettingsDto,
-  ): UpdateCompanySettingsDto {
-    const normalized: UpdateCompanySettingsDto = { ...updateDto };
-
-    if (
-      updateDto.gracePeriodDays !== undefined &&
-      updateDto.defaultGracePeriodDays === undefined
-    ) {
-      normalized.defaultGracePeriodDays = updateDto.gracePeriodDays;
-    }
-
-    if (
-      updateDto.lateFeeValue !== undefined &&
-      updateDto.defaultLateFeeValue === undefined
-    ) {
-      normalized.defaultLateFeeValue = updateDto.lateFeeValue;
-    }
-
-    if (
-      updateDto.lateFeeType !== undefined &&
-      updateDto.defaultLateFeeType === undefined
-    ) {
-      normalized.defaultLateFeeType = this.mapLateFeeType(updateDto.lateFeeType);
-    }
-
-    return normalized;
-  }
-
-  private mapLateFeeType(value: string): LateFeeType {
-    if (value === 'PERCENT') {
-      return LateFeeType.PERCENTAGE;
-    }
-    if (value === 'PERCENTAGE') {
-      return LateFeeType.PERCENTAGE;
-    }
-    if (value === 'FIXED') {
-      return LateFeeType.FIXED;
-    }
-    return LateFeeType.NONE;
-  }
-
   private toResponse(settings: CompanySettings): CompanySettingsResponseDto {
     return {
       ...settings,
-      gracePeriodDays: settings.defaultGracePeriodDays,
-      lateFeeType: settings.defaultLateFeeType,
-      lateFeeValue: settings.defaultLateFeeValue,
     };
   }
 }

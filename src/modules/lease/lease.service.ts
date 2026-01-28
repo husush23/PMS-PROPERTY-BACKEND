@@ -32,6 +32,7 @@ import { Payment } from '../payment/entities/payment.entity';
 import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 import { PaymentFrequency } from '../../shared/enums/payment-frequency.enum';
 import { LateFeeType } from '../../shared/enums/late-fee-type.enum';
+import { CompanySettingsResolver } from '../company/company-settings-resolver.service';
 
 @Injectable()
 export class LeaseService {
@@ -60,6 +61,7 @@ export class LeaseService {
     private rentCycleGenerationService: RentCycleGenerationService,
     @Inject(forwardRef(() => RentCycleService))
     private rentCycleService: RentCycleService,
+    private companySettingsResolver: CompanySettingsResolver,
   ) {}
 
   async create(
@@ -129,6 +131,10 @@ export class LeaseService {
         { unitId: createDto.unitId },
       );
     }
+
+    const companySettings = await this.companySettingsResolver.getSettings(
+      unit.companyId,
+    );
 
     // Validate tenant profile exists (frontend sends tenant profile ID)
     // First, try to find tenant profile by ID
@@ -257,8 +263,17 @@ export class LeaseService {
       billingStartDate: createDto.billingStartDate
         ? new Date(createDto.billingStartDate)
         : undefined,
+      billingAnchorDay: (() => {
+        const anchorSource = createDto.billingStartDate
+          ? new Date(createDto.billingStartDate)
+          : startDate;
+        return createDto.rentDueDay ?? (anchorSource.getUTCDate() || 1);
+      })(),
       proratedFirstMonth: createDto.proratedFirstMonth ?? false,
-      gracePeriodDays: createDto.gracePeriodDays ?? 0,
+      // Company settings = system behavior defaults.
+      // Overrides allowed at transaction/lease level only.
+      gracePeriodDays:
+        createDto.gracePeriodDays ?? companySettings.defaultGracePeriodDays ?? 0,
       rentDueDay: (() => {
         // Validate rentDueDay if provided
         if (createDto.rentDueDay !== undefined) {
@@ -278,8 +293,15 @@ export class LeaseService {
           : new Date(createDto.startDate).getDate() || 1;
       })(),
       paymentFrequency: createDto.paymentFrequency || PaymentFrequency.MONTHLY,
-      lateFeeType: createDto.lateFeeType || LateFeeType.FIXED,
-      lateFeeValue: createDto.lateFeeValue || createDto.lateFeeAmount,
+      lateFeeType:
+        createDto.lateFeeType ??
+        companySettings.defaultLateFeeType ??
+        LateFeeType.FIXED,
+      lateFeeValue:
+        createDto.lateFeeValue ??
+        createDto.lateFeeAmount ??
+        companySettings.defaultLateFeeValue ??
+        0,
       monthlyRent: createDto.monthlyRent,
       securityDeposit: createDto.securityDeposit,
       petDeposit: createDto.petDeposit,
@@ -287,7 +309,8 @@ export class LeaseService {
       lateFeeAmount: createDto.lateFeeAmount,
       utilitiesIncluded: createDto.utilitiesIncluded ?? false,
       utilityCosts: createDto.utilityCosts,
-      currency: createDto.currency || 'KES',
+      currency:
+        createDto.currency ?? companySettings.defaultCurrency ?? 'KES',
       leaseTerm: createDto.leaseTerm,
       renewalOptions: createDto.renewalOptions,
       noticePeriod: createDto.noticePeriod,
@@ -755,6 +778,14 @@ export class LeaseService {
         updateData.billingStartDate = updateData.billingStartDate
           ? new Date(updateData.billingStartDate)
           : null;
+      }
+      if (updateData.billingStartDate || updateData.rentDueDay) {
+        const anchorSource =
+          updateData.billingStartDate ||
+          lease.billingStartDate ||
+          lease.startDate;
+        updateData.billingAnchorDay =
+          updateData.rentDueDay ?? (anchorSource.getUTCDate() || 1);
       }
       if (updateData.actualTerminationDate) {
         updateData.actualTerminationDate = updateData.actualTerminationDate

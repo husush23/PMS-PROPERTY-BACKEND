@@ -19,6 +19,12 @@ import { RentCycleLineItemType } from '../../shared/enums/rent-cycle-line-item-t
 import { Payment } from '../payment/entities/payment.entity';
 import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 import { UserRole } from '../../shared/enums/user-role.enum';
+import { CompanySettingsResolver } from '../company/company-settings-resolver.service';
+import { PaymentFrequency } from '../../shared/enums/payment-frequency.enum';
+import {
+  calculateNextDueDate,
+  getPeriodsSinceStart,
+} from '../../common/utils/rent-due-date.util';
 
 /**
  * TENANT TRUTH SOURCE RULE:
@@ -47,6 +53,7 @@ export class RentCycleService {
     private paymentRepository: Repository<Payment>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    private companySettingsResolver: CompanySettingsResolver,
   ) {}
 
   async create(
@@ -166,7 +173,9 @@ export class RentCycleService {
       tenantId: lease.tenantId,
       invoiceNumber,
       period: createDto.period,
-      dueDate: new Date(createDto.dueDate),
+      dueDate: createDto.dueDate
+        ? new Date(createDto.dueDate)
+        : this.calculateDueDateFromPeriod(lease, createDto.period),
       totalAmountDue,
     });
 
@@ -656,6 +665,17 @@ export class RentCycleService {
     }
 
     await this.validateCompanyAccess(cycle.companyId, requesterUserId);
+    const companySettings = await this.companySettingsResolver.getSettings(
+      cycle.companyId,
+    );
+    if (!this.companySettingsResolver.isLateFeeEnabled(companySettings)) {
+      throw new BusinessException(
+        ErrorCode.BAD_REQUEST,
+        'Late fees are disabled for this company.',
+        HttpStatus.BAD_REQUEST,
+        { rentCycleId },
+      );
+    }
 
     // Check if late fee already applied
     const hasLateFee = cycle.lineItems.some((item) => item.isLateFee);
@@ -1115,6 +1135,94 @@ export class RentCycleService {
         );
       }
     }
+  }
+
+  private calculateDueDateFromPeriod(lease: Lease, period: string): Date {
+    const billingStart = lease.billingStartDate
+      ? new Date(lease.billingStartDate)
+      : new Date(lease.startDate);
+    const billingAnchorDay =
+      lease.billingAnchorDay || billingStart.getUTCDate();
+    const paymentFrequency =
+      lease.paymentFrequency || PaymentFrequency.MONTHLY;
+    const periodStartDate = this.getPeriodStartDate(
+      period,
+      paymentFrequency,
+    );
+    const cyclesAhead = Math.max(
+      0,
+      getPeriodsSinceStart(billingStart, periodStartDate, paymentFrequency),
+    );
+    return calculateNextDueDate({
+      billingStartDate: billingStart,
+      billingAnchorDay,
+      paymentFrequency,
+      cyclesAhead,
+    });
+  }
+
+  private getPeriodStartDate(
+    period: string,
+    paymentFrequency: PaymentFrequency,
+  ): Date {
+    switch (paymentFrequency) {
+      case PaymentFrequency.QUARTERLY: {
+        const match = period.match(/^(\d{4})-Q([1-4])$/);
+        if (!match) {
+          break;
+        }
+        const year = Number(match[1]);
+        const quarter = Number(match[2]);
+        return new Date(Date.UTC(year, (quarter - 1) * 3, 1));
+      }
+      case PaymentFrequency.YEARLY: {
+        if (!/^\d{4}$/.test(period)) {
+          break;
+        }
+        return new Date(Date.UTC(Number(period), 0, 1));
+      }
+      case PaymentFrequency.WEEKLY:
+      case PaymentFrequency.BIWEEKLY: {
+        const match = period.match(/^(\d{4})-W(\d{2})/);
+        if (!match) {
+          break;
+        }
+        const year = Number(match[1]);
+        const week = Number(match[2]);
+        return this.getIsoWeekStartDate(year, week);
+      }
+      case PaymentFrequency.MONTHLY:
+      default: {
+        const match = period.match(/^(\d{4})-(\d{2})$/);
+        if (!match) {
+          break;
+        }
+        const year = Number(match[1]);
+        const month = Number(match[2]);
+        return new Date(Date.UTC(year, month - 1, 1));
+      }
+    }
+
+    throw new BusinessException(
+      ErrorCode.BAD_REQUEST,
+      'Invalid billing period format for due date calculation.',
+      HttpStatus.BAD_REQUEST,
+      { period, paymentFrequency },
+    );
+  }
+
+  private getIsoWeekStartDate(year: number, week: number): Date {
+    const simple = new Date(Date.UTC(year, 0, 1 + (week - 1) * 7));
+    const dayOfWeek = simple.getUTCDay();
+    const isoWeekStart = new Date(simple);
+    if (dayOfWeek <= 4) {
+      isoWeekStart.setUTCDate(
+        simple.getUTCDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1),
+      );
+    } else {
+      isoWeekStart.setUTCDate(simple.getUTCDate() + (8 - dayOfWeek));
+    }
+    return isoWeekStart;
   }
 }
 

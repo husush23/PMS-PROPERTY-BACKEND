@@ -11,6 +11,8 @@ import { LateFeeType } from '../../shared/enums/late-fee-type.enum';
 import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { RentCycleStatus } from '../../shared/enums/rent-cycle-status.enum';
 import { RentCycleService } from '../rent-cycle/rent-cycle.service';
+import { CompanySettingsResolver } from '../company/company-settings-resolver.service';
+import { CompanySettings } from '../company/entities/company-settings.entity';
 
 /**
  * GRACE PERIOD RULE (Authoritative - Single Source of Truth):
@@ -39,6 +41,7 @@ export class OverdueHandlerService {
     private rentCycleRepository: Repository<RentCycle>,
     @Inject(forwardRef(() => RentCycleService))
     private rentCycleService: RentCycleService,
+    private companySettingsResolver: CompanySettingsResolver,
   ) {}
 
   /**
@@ -58,6 +61,17 @@ export class OverdueHandlerService {
       })
       .andWhere('lease.isActive = :isActive', { isActive: true })
       .getMany();
+
+    const settingsCache = new Map<string, CompanySettings>();
+    const getSettings = async (companyId: string) => {
+      const cached = settingsCache.get(companyId);
+      if (cached) {
+        return cached;
+      }
+      const settings = await this.companySettingsResolver.getSettings(companyId);
+      settingsCache.set(companyId, settings);
+      return settings;
+    };
 
     for (const rentCycle of rentCycles) {
       try {
@@ -96,7 +110,12 @@ export class OverdueHandlerService {
           const hasLateFee = rentCycle.lineItems.some((item) => item.isLateFee);
 
           // Apply late fee if not already applied
-          if (!hasLateFee && lease.lateFeeType !== LateFeeType.NONE) {
+          const companySettings = await getSettings(lease.companyId);
+          if (
+            !hasLateFee &&
+            lease.lateFeeType !== LateFeeType.NONE &&
+            this.companySettingsResolver.shouldAutoApplyLateFees(companySettings)
+          ) {
             await this.applyLateFee(rentCycle.id, lease);
           }
         }

@@ -7,7 +7,6 @@ import { PaymentMethodsService } from '../payment-method/payment-methods.service
 import { CompanySettingsResponseDto } from './dto/company-settings-response.dto';
 import { PaymentMethodResponseDto } from '../payment-method/dto/payment-method-response.dto';
 import { CompanySettings } from './entities/company-settings.entity';
-import { LateFeeType } from '../../shared/enums/late-fee-type.enum';
 
 @ApiTags('settings')
 @Controller({ path: 'settings/bootstrap', version: '1' })
@@ -41,9 +40,6 @@ export class SettingsBootstrapController {
   private toResponse(settings: CompanySettings): CompanySettingsResponseDto {
     return {
       ...settings,
-      gracePeriodDays: settings.defaultGracePeriodDays,
-      lateFeeType: settings.defaultLateFeeType as LateFeeType,
-      lateFeeValue: settings.defaultLateFeeValue,
     };
   }
 }

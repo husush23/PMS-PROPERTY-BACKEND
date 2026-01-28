@@ -1,5 +1,4 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { PaymentFrequency } from '../../../shared/enums/payment-frequency.enum';
 import { LateFeeType } from '../../../shared/enums/late-fee-type.enum';
 import { PaymentMethod } from '../../../shared/enums/payment-method.enum';
 import { UserRole } from '../../../shared/enums/user-role.enum';
@@ -24,68 +23,22 @@ export class CompanySettingsResponseDto {
   defaultCurrency: string;
 
   @ApiProperty({
-    description: 'Default payment frequency for new leases',
-    enum: PaymentFrequency,
-  })
-  defaultPaymentFrequency: PaymentFrequency;
-
-  @ApiProperty({
-    description: 'Default rent due day (1-28)',
-    example: 5,
-  })
-  defaultRentDueDay: number;
-
-  @ApiProperty({
     description: 'Default grace period days',
     example: 0,
   })
-  // NOTE: defaultGracePeriodDays is deprecated. Use gracePeriodDays.
   defaultGracePeriodDays: number;
-
-  @ApiProperty({
-    description: 'Grace period days (alias)',
-    example: 0,
-  })
-  gracePeriodDays: number;
 
   @ApiProperty({
     description: 'Default late fee type',
     enum: LateFeeType,
   })
-  // NOTE: defaultLateFeeType is deprecated. Use lateFeeType.
   defaultLateFeeType: LateFeeType;
-
-  @ApiProperty({
-    description: 'Late fee type (alias)',
-    enum: LateFeeType,
-  })
-  lateFeeType: LateFeeType;
 
   @ApiProperty({
     description: 'Default late fee value (amount or percentage)',
     example: 50,
   })
-  // NOTE: defaultLateFeeValue is deprecated. Use lateFeeValue.
   defaultLateFeeValue: number;
-
-  @ApiProperty({
-    description: 'Late fee value (alias)',
-    example: 50,
-  })
-  lateFeeValue: number;
-
-  @ApiProperty({
-    description: 'Whether first month is prorated by default',
-    example: false,
-  })
-  defaultProratedFirstMonth: boolean;
-
-  @ApiProperty({
-    description: 'Default lease term in months',
-    example: 12,
-    nullable: true,
-  })
-  defaultLeaseTerm: number | null;
 
   @ApiProperty({
     description: 'Default role for invited users',

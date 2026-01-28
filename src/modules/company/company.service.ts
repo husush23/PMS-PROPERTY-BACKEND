@@ -12,11 +12,12 @@ import {
   ErrorCode,
 } from '../../common/exceptions/business.exception';
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { Company } from './entities/company.entity';
 import { CompanySettingsService } from './company-settings.service';
+import { PaymentMethodsService } from '../payment-method/payment-methods.service';
 import { UserCompany } from './entities/user-company.entity';
 import {
   CompanyInvitation,
@@ -39,12 +40,15 @@ export class CompanyService {
     @InjectRepository(Company)
     private companyRepository: Repository<Company>,
     private companySettingsService: CompanySettingsService,
+    private paymentMethodsService: PaymentMethodsService,
     @InjectRepository(UserCompany)
     private userCompanyRepository: Repository<UserCompany>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
     @InjectRepository(CompanyInvitation)
     private invitationRepository: Repository<CompanyInvitation>,
+    @InjectDataSource()
+    private dataSource: DataSource,
     @Inject(forwardRef(() => NotificationService))
     private notificationService: NotificationService,
   ) {}
@@ -84,13 +88,24 @@ export class CompanyService {
       slug = uniqueSlug;
     }
 
-    const company = this.companyRepository.create({
-      ...createCompanyDto,
-      slug,
-    });
+    const allowedPaymentMethods =
+      await this.paymentMethodsService.getActiveGlobalPaymentMethodCodes();
 
-    const savedCompany = await this.companyRepository.save(company);
-    await this.companySettingsService.getOrCreate(savedCompany.id);
+    const { company: savedCompany, settings } =
+      await this.dataSource.transaction(async (manager) => {
+        const company = this.companyRepository.create({
+          ...createCompanyDto,
+          slug,
+        });
+        const companyEntity = await manager.getRepository(Company).save(company);
+        const companySettings =
+          await this.companySettingsService.createWithDefaults(
+            companyEntity.id,
+            allowedPaymentMethods,
+            manager,
+          );
+        return { company: companyEntity, settings: companySettings };
+      });
 
     // Assign creator as COMPANY_ADMIN
     await this.assignUserToCompany(
@@ -99,7 +114,10 @@ export class CompanyService {
       UserRole.COMPANY_ADMIN,
     );
 
-    return this.toResponseDto(savedCompany);
+    return {
+      ...this.toResponseDto(savedCompany),
+      settingsId: settings.id,
+    };
   }
 
   async findAll(userId: string): Promise<CompanyResponseDto[]> {

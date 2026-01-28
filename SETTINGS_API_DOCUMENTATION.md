@@ -47,16 +47,9 @@ Alias for `/settings/company` (kept for backward compatibility).
     "companyId": "uuid",
     "timezone": "UTC",
     "defaultCurrency": "KES",
-    "defaultPaymentFrequency": "MONTHLY",
-    "defaultRentDueDay": 1,
     "defaultGracePeriodDays": 0,
-    "gracePeriodDays": 0,
     "defaultLateFeeType": "FIXED",
-    "lateFeeType": "FIXED",
     "defaultLateFeeValue": 0,
-    "lateFeeValue": 0,
-    "defaultProratedFirstMonth": false,
-    "defaultLeaseTerm": null,
     "defaultInvitedRole": "TENANT",
     "staffCanRecordPayments": true,
     "staffCanApprovePayments": false,
@@ -89,13 +82,9 @@ Alias for `/settings/company` (kept for backward compatibility).
 {
   "timezone": "Africa/Nairobi",
   "defaultCurrency": "KES",
-  "defaultPaymentFrequency": "MONTHLY",
-  "defaultRentDueDay": 5,
   "defaultGracePeriodDays": 3,
   "defaultLateFeeType": "FIXED",
   "defaultLateFeeValue": 50,
-  "defaultProratedFirstMonth": false,
-  "defaultLeaseTerm": 12,
   "defaultInvitedRole": "TENANT",
   "staffCanRecordPayments": true,
   "staffCanApprovePayments": false,
@@ -110,27 +99,9 @@ Alias for `/settings/company` (kept for backward compatibility).
   "autoGenerateRentCycles": true,
   "autoApplyCredit": true,
   "autoApplyLateFees": true,
-  "lateFeeEnabled": false,
-
-  // Canonical fields (recommended)
-  "gracePeriodDays": 3,
-  "lateFeeType": "PERCENT",
-  "lateFeeValue": 10
+  "lateFeeEnabled": false
 }
 ```
-
-#### Canonical field names
-Use these fields going forward:
-- `gracePeriodDays`
-- `lateFeeType` (FIXED | PERCENT | PERCENTAGE | NONE)
-- `lateFeeValue`
-
-#### Deprecated aliases (still supported)
-- `defaultGracePeriodDays`
-- `defaultLateFeeType`
-- `defaultLateFeeValue`
-
-Aliases are mapped internally to canonical fields.
 
 ---
 

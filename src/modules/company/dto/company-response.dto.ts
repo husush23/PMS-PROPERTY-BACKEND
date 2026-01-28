@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CompanyResponseDto {
   @ApiProperty({
@@ -64,4 +64,11 @@ export class CompanyResponseDto {
     example: '2024-01-01T00:00:00.000Z',
   })
   updatedAt: Date;
+
+  @ApiPropertyOptional({
+    description:
+      'Company settings ID (included when company is created via POST /companies)',
+    example: '123e4567-e89b-12d3-a456-426614174001',
+  })
+  settingsId?: string;
 }

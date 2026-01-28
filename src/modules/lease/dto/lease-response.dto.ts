@@ -153,7 +153,7 @@ export class LeaseResponseDto {
   rentDueDay?: number;
 
   @ApiPropertyOptional({
-    description: 'Next rent due date',
+    description: 'Next rent due date (derived, not authoritative)',
     example: '2024-02-05',
   })
   nextRentDueDate?: Date;

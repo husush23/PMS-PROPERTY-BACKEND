@@ -5,9 +5,6 @@ export class CreateCompanySettings1769512000000 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `CREATE TYPE "public"."company_settings_defaultpaymentfrequency_enum" AS ENUM('MONTHLY', 'WEEKLY', 'BIWEEKLY', 'QUARTERLY', 'YEARLY')`,
-    );
-    await queryRunner.query(
       `CREATE TYPE "public"."company_settings_defaultlatefeetype_enum" AS ENUM('FIXED', 'PERCENTAGE', 'NONE')`,
     );
     await queryRunner.query(
@@ -20,13 +17,9 @@ export class CreateCompanySettings1769512000000 implements MigrationInterface {
         "companyId" uuid NOT NULL,
         "timezone" character varying NOT NULL DEFAULT 'UTC',
         "defaultCurrency" character varying NOT NULL DEFAULT 'KES',
-        "defaultPaymentFrequency" "public"."company_settings_defaultpaymentfrequency_enum" NOT NULL DEFAULT 'MONTHLY',
-        "defaultRentDueDay" integer NOT NULL DEFAULT 1,
         "defaultGracePeriodDays" integer NOT NULL DEFAULT 0,
         "defaultLateFeeType" "public"."company_settings_defaultlatefeetype_enum" NOT NULL DEFAULT 'FIXED',
         "defaultLateFeeValue" numeric(10,2) NOT NULL DEFAULT 0,
-        "defaultProratedFirstMonth" boolean NOT NULL DEFAULT false,
-        "defaultLeaseTerm" integer,
         "defaultInvitedRole" "public"."company_settings_defaultinvitedrole_enum" NOT NULL DEFAULT 'TENANT',
         "staffCanRecordPayments" boolean NOT NULL DEFAULT true,
         "staffCanApprovePayments" boolean NOT NULL DEFAULT false,
@@ -77,9 +70,6 @@ export class CreateCompanySettings1769512000000 implements MigrationInterface {
     );
     await queryRunner.query(
       `DROP TYPE IF EXISTS "public"."company_settings_defaultlatefeetype_enum"`,
-    );
-    await queryRunner.query(
-      `DROP TYPE IF EXISTS "public"."company_settings_defaultpaymentfrequency_enum"`,
     );
   }
 }

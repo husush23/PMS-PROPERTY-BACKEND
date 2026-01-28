@@ -6,6 +6,7 @@ import { CompanySettingsAliasController } from './company-settings-alias.control
 import { SettingsBootstrapController } from './settings-bootstrap.controller';
 import { CompanyService } from './company.service';
 import { CompanySettingsService } from './company-settings.service';
+import { CompanySettingsResolver } from './company-settings-resolver.service';
 import { Company } from './entities/company.entity';
 import { CompanySettings } from './entities/company-settings.entity';
 import { UserCompany } from './entities/user-company.entity';
@@ -32,7 +33,7 @@ import { PaymentMethodsModule } from '../payment-method/payment-methods.module';
     CompanySettingsAliasController,
     SettingsBootstrapController,
   ],
-  providers: [CompanyService, CompanySettingsService],
-  exports: [CompanyService, CompanySettingsService],
+  providers: [CompanyService, CompanySettingsService, CompanySettingsResolver],
+  exports: [CompanyService, CompanySettingsService, CompanySettingsResolver],
 })
 export class CompanyModule {}

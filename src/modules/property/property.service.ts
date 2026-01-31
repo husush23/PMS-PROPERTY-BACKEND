@@ -11,12 +11,23 @@ import { Company } from '../company/entities/company.entity';
 import { UserCompany } from '../company/entities/user-company.entity';
 import { User } from '../user/entities/user.entity';
 import { Unit } from '../unit/entities/unit.entity';
+import { Lease } from '../lease/entities/lease.entity';
+import { RentCycle } from '../rent-cycle/entities/rent-cycle.entity';
+import { Payment } from '../payment/entities/payment.entity';
+import { CompanySettingsService } from '../company/company-settings.service';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { PropertyResponseDto } from './dto/property-response.dto';
+import {
+  PropertyDetailsResponseDto,
+  PropertyOccupancySummaryDto,
+  PropertyFinancialSummaryDto,
+} from './dto/property-details-response.dto';
 import { ListPropertiesQueryDto } from './dto/list-properties-query.dto';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { PropertyStatus } from '../../shared/enums/property-status.enum';
+import { LeaseStatus } from '../../shared/enums/lease-status.enum';
+import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 
 @Injectable()
 export class PropertyService {
@@ -31,6 +42,13 @@ export class PropertyService {
     private userRepository: Repository<User>,
     @InjectRepository(Unit)
     private unitRepository: Repository<Unit>,
+    @InjectRepository(Lease)
+    private leaseRepository: Repository<Lease>,
+    @InjectRepository(RentCycle)
+    private rentCycleRepository: Repository<RentCycle>,
+    @InjectRepository(Payment)
+    private paymentRepository: Repository<Payment>,
+    private readonly companySettingsService: CompanySettingsService,
   ) {}
 
   async create(
@@ -190,8 +208,26 @@ export class PropertyService {
     const [properties, total] = await queryBuilder.getManyAndCount();
     const totalPages = Math.ceil(total / limit);
 
+    const countMap = new Map<string, number>();
+    if (properties.length > 0) {
+      const propertyIds = properties.map((p) => p.id);
+      const counts = await this.unitRepository
+        .createQueryBuilder('u')
+        .select('u.propertyId', 'propertyId')
+        .addSelect('COUNT(*)', 'cnt')
+        .where('u.propertyId IN (:...propertyIds)', { propertyIds })
+        .andWhere('u.isActive = :isActive', { isActive: true })
+        .groupBy('u.propertyId')
+        .getRawMany();
+      for (const row of counts) {
+        countMap.set(row.propertyId, Number(row.cnt) || 0);
+      }
+    }
+
     return {
-      data: properties.map((property) => this.toResponseDto(property, 0)), // numberOfUnits will be 0 until Units module is implemented
+      data: properties.map((property) =>
+        this.toResponseDto(property, countMap.get(property.id) ?? 0),
+      ),
       pagination: {
         total,
         page,
@@ -201,7 +237,10 @@ export class PropertyService {
     };
   }
 
-  async findOne(id: string, userId: string): Promise<PropertyResponseDto> {
+  async findOne(
+    id: string,
+    userId: string,
+  ): Promise<PropertyDetailsResponseDto> {
     // Check if user is super admin
     const user = await this.userRepository.findOne({ where: { id: userId } });
     const isSuperAdmin = user?.isSuperAdmin || false;
@@ -242,7 +281,107 @@ export class PropertyService {
     const unitCount = await this.unitRepository.count({
       where: { propertyId: id, isActive: true },
     });
-    return this.toResponseDto(property, unitCount);
+
+    const base = this.toResponseDto(property, unitCount);
+    const occupancy = await this.getOccupancySummary(id, unitCount);
+    const financial = await this.getFinancialSummary(id, property.companyId);
+    return {
+      ...base,
+      occupancy: occupancy ?? undefined,
+      financial: financial ?? undefined,
+    };
+  }
+
+  private async getOccupancySummary(
+    propertyId: string,
+    totalUnits: number,
+  ): Promise<PropertyOccupancySummaryDto | null> {
+    const asOfDate = new Date().toISOString().slice(0, 10);
+    const occupiedCount = await this.leaseRepository
+      .createQueryBuilder('l')
+      .innerJoin('l.unit', 'unit')
+      .where('unit.propertyId = :propertyId', { propertyId })
+      .andWhere('l.status = :status', { status: LeaseStatus.ACTIVE })
+      .andWhere('l.startDate <= :asOfDate', { asOfDate })
+      .andWhere('l.endDate >= :asOfDate', { asOfDate })
+      .getCount();
+    const occupancyRatePercent =
+      totalUnits > 0 ? Math.round((occupiedCount / totalUnits) * 100) : 0;
+    return {
+      occupiedUnits: occupiedCount,
+      totalUnits,
+      occupancyRatePercent,
+      asOfDate,
+    };
+  }
+
+  private async getFinancialSummary(
+    propertyId: string,
+    companyId: string,
+  ): Promise<PropertyFinancialSummaryDto | null> {
+    const now = new Date();
+    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
+      .toISOString()
+      .slice(0, 10);
+    const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      .toISOString()
+      .slice(0, 10);
+
+    const settings = await this.companySettingsService.getOrCreate(companyId);
+    const currency = settings?.defaultCurrency ?? 'KES';
+
+    const cycles = await this.rentCycleRepository
+      .createQueryBuilder('rc')
+      .innerJoin('rc.lease', 'lease')
+      .innerJoin('lease.unit', 'unit')
+      .where('unit.propertyId = :propertyId', { propertyId })
+      .andWhere('rc.isVoid = :isVoid', { isVoid: false })
+      .andWhere('rc.dueDate >= :periodStart', { periodStart })
+      .andWhere('rc.dueDate <= :periodEnd', { periodEnd })
+      .andWhere('lease.currency = :currency', { currency })
+      .getMany();
+
+    const totalRentDue = cycles.reduce(
+      (sum, c) => sum + Number(c.totalAmountDue ?? 0),
+      0,
+    );
+    const cycleIds = cycles.map((c) => c.id);
+    if (cycleIds.length === 0) {
+      return {
+        currency,
+        totalRentDue: 0,
+        totalRentCollected: 0,
+        outstandingBalance: 0,
+        periodStart,
+        periodEnd,
+      };
+    }
+
+    const excludedStatuses = [PaymentStatus.REFUNDED, PaymentStatus.CANCELLED];
+    const payments = await this.paymentRepository
+      .createQueryBuilder('p')
+      .where('p.rentCycleId IN (:...cycleIds)', { cycleIds })
+      .andWhere('p.isActive = :isActive', { isActive: true })
+      .andWhere('p.status NOT IN (:...excluded)', {
+        excluded: excludedStatuses,
+      })
+      .getMany();
+    const totalRentCollected = payments.reduce(
+      (sum, p) => sum + Number(p.amount ?? 0),
+      0,
+    );
+    const outstandingBalance = Math.max(
+      0,
+      totalRentDue - totalRentCollected,
+    );
+    return {
+      currency,
+      totalRentDue,
+      totalRentCollected,
+      outstandingBalance,
+      periodStart,
+      periodEnd,
+    };
   }
 
   async update(

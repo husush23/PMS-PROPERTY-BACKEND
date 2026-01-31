@@ -11,14 +11,26 @@ import { Property } from '../property/entities/property.entity';
 import { Company } from '../company/entities/company.entity';
 import { UserCompany } from '../company/entities/user-company.entity';
 import { User } from '../user/entities/user.entity';
+import { Lease } from '../lease/entities/lease.entity';
+import { RentCycle } from '../rent-cycle/entities/rent-cycle.entity';
+import { Payment } from '../payment/entities/payment.entity';
+import { CompanySettingsService } from '../company/company-settings.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
 import { UnitResponseDto } from './dto/unit-response.dto';
+import { UnitListItemDto } from './dto/unit-list-item.dto';
+import {
+  UnitDetailsResponseDto,
+  UnitCurrentLeaseSummaryDto,
+  UnitFinancialSummaryDto,
+} from './dto/unit-details-response.dto';
 import { ListUnitsQueryDto } from './dto/list-units-query.dto';
 import { UnitGroupDto } from './dto/create-units-group.dto';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { UnitStatus } from '../../shared/enums/unit-status.enum';
 import { UnitType } from '../../shared/enums/unit-type.enum';
+import { LeaseStatus } from '../../shared/enums/lease-status.enum';
+import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 
 @Injectable()
 export class UnitService {
@@ -33,6 +45,13 @@ export class UnitService {
     private userCompanyRepository: Repository<UserCompany>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(Lease)
+    private leaseRepository: Repository<Lease>,
+    @InjectRepository(RentCycle)
+    private rentCycleRepository: Repository<RentCycle>,
+    @InjectRepository(Payment)
+    private paymentRepository: Repository<Payment>,
+    private readonly companySettingsService: CompanySettingsService,
   ) {}
 
   async create(
@@ -119,7 +138,7 @@ export class UnitService {
     query: ListUnitsQueryDto,
     userId: string,
   ): Promise<{
-    data: UnitResponseDto[];
+    data: UnitListItemDto[];
     pagination: {
       total: number;
       page: number;
@@ -236,8 +255,50 @@ export class UnitService {
     const [units, total] = await queryBuilder.getManyAndCount();
     const totalPages = Math.ceil(total / limit);
 
+    const propertyNameMap = new Map<string, string>();
+    const occupancyMap = new Map<string, { status: 'occupied' | 'vacant'; leaseId?: string }>();
+    if (units.length > 0) {
+      const propertyIds = [...new Set(units.map((u) => u.propertyId))];
+      const properties = await this.propertyRepository
+        .createQueryBuilder('p')
+        .select('p.id', 'id')
+        .addSelect('p.name', 'name')
+        .where('p.id IN (:...propertyIds)', { propertyIds })
+        .getRawMany();
+      for (const p of properties) {
+        propertyNameMap.set(p.id, p.name ?? '');
+      }
+      const unitIds = units.map((u) => u.id);
+      const asOfDate = new Date().toISOString().slice(0, 10);
+      const activeLeases = await this.leaseRepository
+        .createQueryBuilder('l')
+        .select('l.unitId', 'unitId')
+        .addSelect('l.id', 'id')
+        .where('l.unitId IN (:...unitIds)', { unitIds })
+        .andWhere('l.status = :status', { status: LeaseStatus.ACTIVE })
+        .andWhere('l.startDate <= :asOfDate', { asOfDate })
+        .andWhere('l.endDate >= :asOfDate', { asOfDate })
+        .getRawMany();
+      for (const u of units) {
+        const lease = activeLeases.find((l) => l.unitId === u.id);
+        occupancyMap.set(u.id, {
+          status: lease ? 'occupied' : 'vacant',
+          leaseId: lease?.id,
+        });
+      }
+    }
+
     return {
-      data: units.map((unit) => this.toResponseDto(unit)),
+      data: units.map((unit) => {
+        const base = this.toResponseDto(unit);
+        const occ = occupancyMap.get(unit.id);
+        return {
+          ...base,
+          propertyName: propertyNameMap.get(unit.propertyId) ?? '',
+          occupancyStatus: occ?.status ?? 'vacant',
+          currentLeaseId: occ?.leaseId ?? null,
+        } as UnitListItemDto;
+      }),
       pagination: {
         total,
         page,
@@ -247,7 +308,7 @@ export class UnitService {
     };
   }
 
-  async findOne(id: string, userId: string): Promise<UnitResponseDto> {
+  async findOne(id: string, userId: string): Promise<UnitDetailsResponseDto> {
     // Check if user is super admin
     const user = await this.userRepository.findOne({ where: { id: userId } });
     const isSuperAdmin = user?.isSuperAdmin || false;

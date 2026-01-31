@@ -6,6 +6,11 @@ import {
   Index,
 } from 'typeorm';
 
+/**
+ * Stores revoked refresh token JTIs so that after logout,
+ * the refresh token cannot be used to obtain new access tokens.
+ * expiresAt matches the token's exp for pruning old rows.
+ */
 @Entity('revoked_refresh_tokens')
 @Index(['jti'], { unique: true })
 @Index(['expiresAt'])
@@ -19,6 +24,6 @@ export class RevokedRefreshToken {
   @Column({ type: 'timestamptz' })
   expiresAt: Date;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }

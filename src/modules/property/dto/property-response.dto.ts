@@ -172,4 +172,46 @@ export class PropertyResponseDto {
     example: '2024-01-01T00:00:00.000Z',
   })
   updatedAt: Date;
+
+  /** Present only when fetching single property (details). */
+  @ApiPropertyOptional({
+    description: 'Number of occupied units (details only)',
+    example: 42,
+  })
+  occupiedUnits?: number;
+
+  /** Present only when fetching single property (details). */
+  @ApiPropertyOptional({
+    description: 'Number of vacant units (details only)',
+    example: 8,
+  })
+  vacantUnits?: number;
+
+  /** Present only when fetching single property (details). 0-100.',
+  @ApiPropertyOptional({
+    description: 'Occupancy rate percentage (details only)',
+    example: 84,
+  })
+  occupancyRate?: number;
+
+  /** Present only when fetching single property (details). */
+  @ApiPropertyOptional({
+    description: 'Sum of monthly rent from active leases (details only)',
+    example: 500000,
+  })
+  monthlyRentPotential?: number;
+
+  /** Present only when fetching single property (details). */
+  @ApiPropertyOptional({
+    description: 'Payments collected in current month for this property (details only)',
+    example: 450000,
+  })
+  monthlyCollected?: number;
+
+  /** Present only when fetching single property (details). */
+  @ApiPropertyOptional({
+    description: 'Outstanding balance (unpaid invoices) for this property (details only)',
+    example: 10000,
+  })
+  outstandingBalance?: number;
 }

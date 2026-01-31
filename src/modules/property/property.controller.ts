@@ -25,6 +25,7 @@ import { AuthUser } from '../../common/decorators/auth-user.decorator';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { PropertyResponseDto } from './dto/property-response.dto';
+import { PropertyDetailsResponseDto } from './dto/property-details-response.dto';
 import { ListPropertiesQueryDto } from './dto/list-properties-query.dto';
 import { CreateUnitsGroupDto } from '../unit/dto/create-units-group.dto';
 import { CreateUnitsGroupResponseDto } from '../unit/dto/create-units-group-response.dto';
@@ -96,12 +97,14 @@ export class PropertyController {
 
   @Get(':id')
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Get property by ID' })
+  @ApiOperation({
+    summary: 'Get property by ID with occupancy and financial summary',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,
     description: 'Property retrieved successfully',
-    type: PropertyResponseDto,
+    type: PropertyDetailsResponseDto,
   })
   @ApiResponse({
     status: 404,

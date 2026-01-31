@@ -1,9 +1,12 @@
+import { randomUUID } from 'crypto';
 import {
   Injectable,
   UnauthorizedException,
   NotFoundException,
   HttpStatus,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import {
   BusinessException,
   ErrorCode,
@@ -14,6 +17,7 @@ import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
 import { UserService } from '../user/user.service';
 import { CompanyService } from '../company/company.service';
+import { RevokedRefreshToken } from './entities/revoked-refresh-token.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
@@ -30,6 +34,8 @@ export class AuthService {
     private companyService: CompanyService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    @InjectRepository(RevokedRefreshToken)
+    private revokedRefreshTokenRepository: Repository<RevokedRefreshToken>,
   ) {}
 
   async validateUser(email: string, password: string): Promise<User> {
@@ -398,6 +404,7 @@ export class AuthService {
       sub: userId,
       email: email,
       type: 'refresh',
+      jti: randomUUID(),
     };
 
     // Include companyId if provided
@@ -412,6 +419,19 @@ export class AuthService {
     };
 
     return jwt.sign(payload, refreshSecret as jwt.Secret, options);
+  }
+
+  /**
+   * Revoke a refresh token by jti (server-side invalidation on logout).
+   */
+  async revokeRefreshToken(jti: string, expiresAt: Date): Promise<void> {
+    await this.revokedRefreshTokenRepository
+      .createQueryBuilder()
+      .insert()
+      .into(RevokedRefreshToken)
+      .values({ jti, expiresAt })
+      .orIgnore()
+      .execute();
   }
 
   /**
@@ -437,6 +457,7 @@ export class AuthService {
         sub: string;
         type: string;
         companyId?: string;
+        jti?: string;
       }
       const payload = jwt.verify(
         refreshToken,
@@ -449,6 +470,20 @@ export class AuthService {
           ERROR_MESSAGES.TOKEN_INVALID,
           HttpStatus.UNAUTHORIZED,
         );
+      }
+
+      // Server-side revocation: if jti present, reject if revoked (e.g. after logout)
+      if (payload.jti) {
+        const revoked = await this.revokedRefreshTokenRepository.findOne({
+          where: { jti: payload.jti },
+        });
+        if (revoked) {
+          throw new BusinessException(
+            ErrorCode.TOKEN_INVALID,
+            ERROR_MESSAGES.TOKEN_INVALID,
+            HttpStatus.UNAUTHORIZED,
+          );
+        }
       }
 
       // Get user to ensure they still exist and are active

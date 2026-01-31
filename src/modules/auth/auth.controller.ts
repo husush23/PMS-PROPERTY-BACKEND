@@ -19,6 +19,7 @@ import {
 import type { Response, Request } from 'express';
 import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
+import type { JwtPayload } from 'jsonwebtoken';
 import { AuthService } from './auth.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { AuthUser } from '../../common/decorators/auth-user.decorator';
@@ -392,20 +393,45 @@ export class AuthController {
     });
   }
 
+  @Public()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Logout user and clear authentication cookies' })
+  @ApiOperation({
+    summary:
+      'Logout user and clear authentication cookies (always succeeds, no auth required)',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Logged out successfully',
+    description:
+      'Logged out successfully. Auth cookies are cleared regardless of token validity.',
   })
-  @ApiResponse({
-    status: 401,
-    description: 'Unauthorized',
-  })
-  logout(@Res() res: Response): void {
-    clearAuthCookies(res, this.configService);
-
+  async logout(@Req() req: Request, @Res() res: Response): Promise<void> {
+    const refreshCookieName =
+      this.configService.get<string>('jwt.refreshCookieName') ??
+      'refresh_token';
+    const refreshToken = req.cookies?.[refreshCookieName] as
+      | string
+      | undefined;
+    if (refreshToken) {
+      try {
+        const decoded = jwt.decode(refreshToken) as
+          | (JwtPayload & { jti?: string })
+          | null;
+        if (decoded?.jti && typeof decoded.exp === 'number') {
+          await this.authService.revokeRefreshToken(
+            decoded.jti,
+            new Date(decoded.exp * 1000),
+          );
+        }
+      } catch {
+        // Ignore; still clear cookies below
+      }
+    }
+    try {
+      clearAuthCookies(res, this.configService);
+    } catch {
+      // Still return 200 so logout is idempotent and unconditional
+    }
     res.json({
       success: true,
       message: 'Logged out successfully',

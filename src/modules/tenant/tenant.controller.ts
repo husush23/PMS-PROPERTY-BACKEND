@@ -31,6 +31,8 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { InviteTenantDto } from './dto/invite-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { TenantResponseDto } from './dto/tenant-response.dto';
+import { TenantListItemDto } from './dto/tenant-list-item.dto';
+import { TenantDetailsResponseDto } from './dto/tenant-details-response.dto';
 import { ListTenantsQueryDto } from './dto/list-tenants-query.dto';
 import { AcceptTenantInviteDto } from './dto/accept-tenant-invite.dto';
 
@@ -252,13 +254,14 @@ export class TenantController {
   @Get(':id')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
-    summary: 'Get tenant details (tenant can only see own profile)',
+    summary:
+      'Get tenant details with active leases and financial summary (tenant can only see own profile)',
   })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,
     description: 'Tenant retrieved successfully',
-    type: TenantResponseDto,
+    type: TenantDetailsResponseDto,
   })
   @ApiResponse({
     status: 403,

@@ -346,7 +346,114 @@ export class UnitService {
       }
     }
 
-    return this.toResponseDto(unit);
+    const property = await this.propertyRepository.findOne({
+      where: { id: unit.propertyId },
+      select: ['id', 'name'],
+    });
+    const propertyName = property?.name ?? '';
+
+    const asOfDate = new Date().toISOString().slice(0, 10);
+    const currentLease = await this.leaseRepository
+      .createQueryBuilder('l')
+      .leftJoinAndSelect('l.tenant', 'tenant')
+      .where('l.unitId = :unitId', { unitId: id })
+      .andWhere('l.status = :status', { status: LeaseStatus.ACTIVE })
+      .andWhere('l.startDate <= :asOfDate', { asOfDate })
+      .andWhere('l.endDate >= :asOfDate', { asOfDate })
+      .getOne();
+
+    const currentLeaseSummary: UnitCurrentLeaseSummaryDto | null = currentLease
+      ? {
+          id: currentLease.id,
+          startDate: new Date(currentLease.startDate).toISOString().slice(0, 10),
+          endDate: new Date(currentLease.endDate).toISOString().slice(0, 10),
+          status: currentLease.status,
+          tenantId: currentLease.tenantId,
+          tenantName: (currentLease as any).tenant?.name ?? null,
+          tenantEmail: (currentLease as any).tenant?.email ?? null,
+          monthlyRent: currentLease.monthlyRent
+            ? Number(currentLease.monthlyRent)
+            : null,
+          leaseNumber: currentLease.leaseNumber ?? null,
+        }
+      : null;
+
+    const financial = currentLease
+      ? await this.getFinancialSummaryForLease(
+          currentLease.id,
+          unit.companyId,
+          currentLease.currency ?? 'KES',
+        )
+      : null;
+
+    const base = this.toResponseDto(unit);
+    return {
+      ...base,
+      propertyName,
+      currentLease: currentLeaseSummary ?? undefined,
+      financial: financial ?? undefined,
+    };
+  }
+
+  private async getFinancialSummaryForLease(
+    leaseId: string,
+    companyId: string,
+    currency: string,
+  ): Promise<UnitFinancialSummaryDto | null> {
+    const now = new Date();
+    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
+      .toISOString()
+      .slice(0, 10);
+    const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      .toISOString()
+      .slice(0, 10);
+
+    const cycles = await this.rentCycleRepository
+      .createQueryBuilder('rc')
+      .where('rc.leaseId = :leaseId', { leaseId })
+      .andWhere('rc.isVoid = :isVoid', { isVoid: false })
+      .andWhere('rc.dueDate >= :periodStart', { periodStart })
+      .andWhere('rc.dueDate <= :periodEnd', { periodEnd })
+      .getMany();
+
+    const totalRentDue = cycles.reduce(
+      (sum, c) => sum + Number(c.totalAmountDue ?? 0),
+      0,
+    );
+    const cycleIds = cycles.map((c) => c.id);
+    if (cycleIds.length === 0) {
+      return {
+        currency,
+        totalRentDue: 0,
+        totalRentCollected: 0,
+        outstandingBalance: 0,
+        periodStart,
+        periodEnd,
+      };
+    }
+
+    const excludedStatuses = [PaymentStatus.REFUNDED, PaymentStatus.CANCELLED];
+    const payments = await this.paymentRepository
+      .createQueryBuilder('p')
+      .where('p.rentCycleId IN (:...cycleIds)', { cycleIds })
+      .andWhere('p.isActive = :isActive', { isActive: true })
+      .andWhere('p.status NOT IN (:...excluded)', {
+        excluded: excludedStatuses,
+      })
+      .getMany();
+    const totalRentCollected = payments.reduce(
+      (sum, p) => sum + Number(p.amount ?? 0),
+      0,
+    );
+    const outstandingBalance = Math.max(0, totalRentDue - totalRentCollected);
+    return {
+      currency,
+      totalRentDue,
+      totalRentCollected,
+      outstandingBalance,
+      periodStart,
+      periodEnd,
+    };
   }
 
   async update(

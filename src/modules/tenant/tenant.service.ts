@@ -11,14 +11,28 @@ import { TenantInvitation } from './entities/tenant-invitation.entity';
 import { User } from '../user/entities/user.entity';
 import { Company } from '../company/entities/company.entity';
 import { UserCompany } from '../company/entities/user-company.entity';
+import { Lease } from '../lease/entities/lease.entity';
+import { Unit } from '../unit/entities/unit.entity';
+import { Property } from '../property/entities/property.entity';
+import { RentCycle } from '../rent-cycle/entities/rent-cycle.entity';
+import { Payment } from '../payment/entities/payment.entity';
+import { CompanySettingsService } from '../company/company-settings.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { InviteTenantDto } from './dto/invite-tenant.dto';
 import { AcceptTenantInviteDto } from './dto/accept-tenant-invite.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { TenantResponseDto } from './dto/tenant-response.dto';
+import { TenantListItemDto } from './dto/tenant-list-item.dto';
+import {
+  TenantDetailsResponseDto,
+  TenantActiveLeaseSummaryDto,
+  TenantFinancialSummaryDto,
+} from './dto/tenant-details-response.dto';
 import { ListTenantsQueryDto } from './dto/list-tenants-query.dto';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { TenantStatus } from '../../shared/enums/tenant-status.enum';
+import { LeaseStatus } from '../../shared/enums/lease-status.enum';
+import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 import { InvitationStatus } from '../company/entities/company-invitation.entity';
 import { PasswordUtil } from '../../common/utils/password.util';
 import { NotificationService } from '../notification/notification.service';
@@ -40,6 +54,17 @@ export class TenantService {
     private companyRepository: Repository<Company>,
     @InjectRepository(UserCompany)
     private userCompanyRepository: Repository<UserCompany>,
+    @InjectRepository(Lease)
+    private leaseRepository: Repository<Lease>,
+    @InjectRepository(Unit)
+    private unitRepository: Repository<Unit>,
+    @InjectRepository(Property)
+    private propertyRepository: Repository<Property>,
+    @InjectRepository(RentCycle)
+    private rentCycleRepository: Repository<RentCycle>,
+    @InjectRepository(Payment)
+    private paymentRepository: Repository<Payment>,
+    private readonly companySettingsService: CompanySettingsService,
     private notificationService: NotificationService,
     @Inject(forwardRef(() => UserService))
     private userService: UserService,
@@ -754,7 +779,7 @@ export class TenantService {
     queryDto: ListTenantsQueryDto,
     requesterUserId: string,
   ): Promise<{
-    data: TenantResponseDto[];
+    data: TenantListItemDto[];
     pagination: {
       total: number;
       page: number;
@@ -799,15 +824,24 @@ export class TenantService {
         where: { userId: requesterUserId, companyId, isActive: true },
       });
 
+      const leaseInfo = await this.getLeaseInfoForTenantUserId(
+        tenantProfile.userId,
+      );
+      const base = this.toResponseDto(
+        tenantProfile,
+        tenantProfile.user,
+        companyId,
+        userCompany!,
+      );
+      const listItem: TenantListItemDto = {
+        ...base,
+        activeLeaseCount: leaseInfo.count,
+        currentUnitNumber: leaseInfo.firstUnitNumber ?? null,
+        currentPropertyName: leaseInfo.firstPropertyName ?? null,
+      };
+
       return {
-        data: [
-          this.toResponseDto(
-            tenantProfile,
-            tenantProfile.user,
-            companyId,
-            userCompany!,
-          ),
-        ],
+        data: [listItem],
         pagination: {
           total: 1,
           page: 1,
@@ -896,14 +930,57 @@ export class TenantService {
       (tp) => tp.user !== null && tp.user !== undefined,
     );
 
-    const data = validTenantProfiles.map((tenantProfile) =>
-      this.toResponseDto(
+    const leaseInfoMap = new Map<
+      string,
+      { count: number; firstUnitNumber: string | null; firstPropertyName: string | null }
+    >();
+    if (validTenantProfiles.length > 0) {
+      const userIds = validTenantProfiles.map((tp) => tp.userId);
+      const asOfDate = new Date().toISOString().slice(0, 10);
+      const activeLeases = await this.leaseRepository
+        .createQueryBuilder('l')
+        .innerJoin('l.unit', 'unit')
+        .innerJoin('unit.property', 'property')
+        .select('l.tenantId', 'tenantId')
+        .addSelect('unit.unitNumber', 'unitNumber')
+        .addSelect('property.name', 'propertyName')
+        .where('l.tenantId IN (:...userIds)', { userIds })
+        .andWhere('l.status = :status', { status: LeaseStatus.ACTIVE })
+        .andWhere('l.startDate <= :asOfDate', { asOfDate })
+        .andWhere('l.endDate >= :asOfDate', { asOfDate })
+        .orderBy('l.startDate', 'ASC')
+        .getRawMany();
+
+      for (const uid of userIds) {
+        const leases = activeLeases.filter((r: any) => r.tenantId === uid);
+        const first = leases[0];
+        leaseInfoMap.set(uid, {
+          count: leases.length,
+          firstUnitNumber: first?.unitNumber ?? null,
+          firstPropertyName: first?.propertyName ?? null,
+        });
+      }
+    }
+
+    const data: TenantListItemDto[] = validTenantProfiles.map((tenantProfile) => {
+      const base = this.toResponseDto(
         tenantProfile,
         tenantProfile.user,
         companyId,
         userCompanyMap.get(tenantProfile.userId),
-      ),
-    );
+      );
+      const leaseInfo = leaseInfoMap.get(tenantProfile.userId) ?? {
+        count: 0,
+        firstUnitNumber: null,
+        firstPropertyName: null,
+      };
+      return {
+        ...base,
+        activeLeaseCount: leaseInfo.count,
+        currentUnitNumber: leaseInfo.firstUnitNumber,
+        currentPropertyName: leaseInfo.firstPropertyName,
+      };
+    });
 
     const totalPages = Math.ceil(total / limit);
 
@@ -918,10 +995,38 @@ export class TenantService {
     };
   }
 
+  private async getLeaseInfoForTenantUserId(
+    userId: string,
+  ): Promise<{
+    count: number;
+    firstUnitNumber: string | null;
+    firstPropertyName: string | null;
+  }> {
+    const asOfDate = new Date().toISOString().slice(0, 10);
+    const rows = await this.leaseRepository
+      .createQueryBuilder('l')
+      .innerJoin('l.unit', 'unit')
+      .innerJoin('unit.property', 'property')
+      .select('unit.unitNumber', 'unitNumber')
+      .addSelect('property.name', 'propertyName')
+      .where('l.tenantId = :userId', { userId })
+      .andWhere('l.status = :status', { status: LeaseStatus.ACTIVE })
+      .andWhere('l.startDate <= :asOfDate', { asOfDate })
+      .andWhere('l.endDate >= :asOfDate', { asOfDate })
+      .orderBy('l.startDate', 'ASC')
+      .getRawMany();
+    const first = rows[0];
+    return {
+      count: rows.length,
+      firstUnitNumber: first?.unitNumber ?? null,
+      firstPropertyName: first?.propertyName ?? null,
+    };
+  }
+
   async findOne(
     tenantId: string,
     requesterUserId: string,
-  ): Promise<TenantResponseDto> {
+  ): Promise<TenantDetailsResponseDto> {
     const tenantProfile = await this.tenantProfileRepository.findOne({
       where: { id: tenantId },
       relations: ['user', 'company'],
@@ -992,12 +1097,118 @@ export class TenantService {
       }
     }
 
-    return this.toResponseDto(
+    const base = this.toResponseDto(
       tenantProfile,
       tenantProfile.user,
       tenantProfile.companyId,
       userCompany,
     );
+
+    const asOfDate = new Date().toISOString().slice(0, 10);
+    const activeLeaseEntities = await this.leaseRepository
+      .createQueryBuilder('l')
+      .innerJoinAndSelect('l.unit', 'unit')
+      .innerJoinAndSelect('unit.property', 'property')
+      .where('l.tenantId = :userId', { userId: tenantProfile.userId })
+      .andWhere('l.status = :status', { status: LeaseStatus.ACTIVE })
+      .andWhere('l.startDate <= :asOfDate', { asOfDate })
+      .andWhere('l.endDate >= :asOfDate', { asOfDate })
+      .orderBy('l.startDate', 'ASC')
+      .getMany();
+
+    const activeLeases: TenantActiveLeaseSummaryDto[] = activeLeaseEntities.map(
+      (l) => ({
+        id: l.id,
+        unitId: l.unitId,
+        unitNumber: (l as any).unit?.unitNumber ?? '',
+        propertyId: (l as any).unit?.propertyId ?? '',
+        propertyName: (l as any).unit?.property?.name ?? '',
+        startDate: new Date(l.startDate).toISOString().slice(0, 10),
+        endDate: new Date(l.endDate).toISOString().slice(0, 10),
+        status: l.status,
+        monthlyRent: l.monthlyRent ? Number(l.monthlyRent) : null,
+        leaseNumber: l.leaseNumber ?? null,
+      }),
+    );
+
+    const financialSummary =
+      activeLeaseEntities.length > 0
+        ? await this.getFinancialSummaryForTenant(
+            tenantProfile.userId,
+            tenantProfile.companyId,
+          )
+        : null;
+
+    return {
+      ...base,
+      activeLeases,
+      financialSummary: financialSummary ?? undefined,
+    };
+  }
+
+  private async getFinancialSummaryForTenant(
+    userId: string,
+    companyId: string,
+  ): Promise<TenantFinancialSummaryDto | null> {
+    const settings = await this.companySettingsService.getOrCreate(companyId);
+    const currency = settings?.defaultCurrency ?? 'KES';
+
+    const now = new Date();
+    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
+      .toISOString()
+      .slice(0, 10);
+    const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      .toISOString()
+      .slice(0, 10);
+
+    const cycles = await this.rentCycleRepository
+      .createQueryBuilder('rc')
+      .where('rc.tenantId = :userId', { userId })
+      .andWhere('rc.companyId = :companyId', { companyId })
+      .andWhere('rc.isVoid = :isVoid', { isVoid: false })
+      .andWhere('rc.dueDate >= :periodStart', { periodStart })
+      .andWhere('rc.dueDate <= :periodEnd', { periodEnd })
+      .getMany();
+
+    const totalRentDue = cycles.reduce(
+      (sum, c) => sum + Number(c.totalAmountDue ?? 0),
+      0,
+    );
+    const cycleIds = cycles.map((c) => c.id);
+    if (cycleIds.length === 0) {
+      return {
+        currency,
+        totalRentDue: 0,
+        totalRentCollected: 0,
+        outstandingBalance: 0,
+        periodStart,
+        periodEnd,
+      };
+    }
+
+    const excludedStatuses = [PaymentStatus.REFUNDED, PaymentStatus.CANCELLED];
+    const payments = await this.paymentRepository
+      .createQueryBuilder('p')
+      .where('p.rentCycleId IN (:...cycleIds)', { cycleIds })
+      .andWhere('p.tenantId = :userId', { userId })
+      .andWhere('p.isActive = :isActive', { isActive: true })
+      .andWhere('p.status NOT IN (:...excluded)', {
+        excluded: excludedStatuses,
+      })
+      .getMany();
+    const totalRentCollected = payments.reduce(
+      (sum, p) => sum + Number(p.amount ?? 0),
+      0,
+    );
+    const outstandingBalance = Math.max(0, totalRentDue - totalRentCollected);
+    return {
+      currency,
+      totalRentDue,
+      totalRentCollected,
+      outstandingBalance,
+      periodStart,
+      periodEnd,
+    };
   }
 
   async update(

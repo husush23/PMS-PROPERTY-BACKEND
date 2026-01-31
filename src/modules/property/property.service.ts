@@ -18,6 +18,7 @@ import { CompanySettingsService } from '../company/company-settings.service';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { PropertyResponseDto } from './dto/property-response.dto';
+import { PropertyListItemDto } from './dto/property-list-item.dto';
 import {
   PropertyDetailsResponseDto,
   PropertyOccupancySummaryDto,
@@ -112,7 +113,7 @@ export class PropertyService {
     query: ListPropertiesQueryDto,
     userId: string,
   ): Promise<{
-    data: PropertyResponseDto[];
+    data: PropertyListItemDto[];
     pagination: {
       total: number;
       page: number;
@@ -209,6 +210,7 @@ export class PropertyService {
     const totalPages = Math.ceil(total / limit);
 
     const countMap = new Map<string, number>();
+    const occupiedMap = new Map<string, number>();
     if (properties.length > 0) {
       const propertyIds = properties.map((p) => p.id);
       const counts = await this.unitRepository
@@ -222,12 +224,37 @@ export class PropertyService {
       for (const row of counts) {
         countMap.set(row.propertyId, Number(row.cnt) || 0);
       }
+
+      const asOfDate = new Date().toISOString().slice(0, 10);
+      const occupiedCounts = await this.leaseRepository
+        .createQueryBuilder('l')
+        .innerJoin('l.unit', 'unit')
+        .select('unit.propertyId', 'propertyId')
+        .addSelect('COUNT(*)', 'cnt')
+        .where('unit.propertyId IN (:...propertyIds)', { propertyIds })
+        .andWhere('l.status = :status', { status: LeaseStatus.ACTIVE })
+        .andWhere('l.startDate <= :asOfDate', { asOfDate })
+        .andWhere('l.endDate >= :asOfDate', { asOfDate })
+        .groupBy('unit.propertyId')
+        .getRawMany();
+      for (const row of occupiedCounts) {
+        occupiedMap.set(row.propertyId, Number(row.cnt) || 0);
+      }
     }
 
     return {
-      data: properties.map((property) =>
-        this.toResponseDto(property, countMap.get(property.id) ?? 0),
-      ),
+      data: properties.map((property) => {
+        const totalUnits = countMap.get(property.id) ?? 0;
+        const occupiedUnits = occupiedMap.get(property.id) ?? 0;
+        const occupancyRatePercent =
+          totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0;
+        const base = this.toResponseDto(property, totalUnits);
+        return {
+          ...base,
+          occupiedUnits,
+          occupancyRatePercent,
+        } as PropertyListItemDto;
+      }),
       pagination: {
         total,
         page,

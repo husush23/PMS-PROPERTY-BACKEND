@@ -25,6 +25,7 @@ import { AuthUser } from '../../common/decorators/auth-user.decorator';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { PropertyResponseDto } from './dto/property-response.dto';
+import { PropertyListItemDto } from './dto/property-list-item.dto';
 import { PropertyDetailsResponseDto } from './dto/property-details-response.dto';
 import { ListPropertiesQueryDto } from './dto/list-properties-query.dto';
 import { CreateUnitsGroupDto } from '../unit/dto/create-units-group.dto';
@@ -78,10 +79,14 @@ export class PropertyController {
 
   @Get()
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'List properties with filtering and pagination' })
+  @ApiOperation({
+    summary:
+      'List properties with filtering, pagination, unit count and occupancy',
+  })
   @ApiResponse({
     status: 200,
     description: 'Properties retrieved successfully',
+    type: [PropertyListItemDto],
   })
   async findAll(
     @Query() query: ListPropertiesQueryDto,

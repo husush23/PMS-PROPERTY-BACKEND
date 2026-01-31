@@ -23,6 +23,8 @@ import { AuthUser } from '../../common/decorators/auth-user.decorator';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
 import { UnitResponseDto } from './dto/unit-response.dto';
+import { UnitListItemDto } from './dto/unit-list-item.dto';
+import { UnitDetailsResponseDto } from './dto/unit-details-response.dto';
 import { ListUnitsQueryDto } from './dto/list-units-query.dto';
 
 @ApiTags('units')
@@ -69,10 +71,13 @@ export class UnitController {
 
   @Get()
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'List units with filtering and pagination' })
+  @ApiOperation({
+    summary: 'List units with filtering, pagination, property name and occupancy',
+  })
   @ApiResponse({
     status: 200,
     description: 'Units retrieved successfully',
+    type: [UnitListItemDto],
   })
   async findAll(
     @Query() query: ListUnitsQueryDto,
@@ -88,12 +93,14 @@ export class UnitController {
 
   @Get(':id')
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Get unit by ID' })
+  @ApiOperation({
+    summary: 'Get unit by ID with property name, current lease and financial summary',
+  })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
     status: 200,
     description: 'Unit retrieved successfully',
-    type: UnitResponseDto,
+    type: UnitDetailsResponseDto,
   })
   @ApiResponse({
     status: 404,

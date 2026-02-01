@@ -20,8 +20,9 @@ export class LoggingInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap(() => {
         const duration = Date.now() - now;
+        // Put duration/requestId after " | " so copying the log line doesn't paste junk into URL (e.g. in Postman)
         this.logger.log(
-          `${request.method} ${request.url} ${duration}ms requestId=${requestId}`,
+          `${request.method} ${request.url} | ${duration}ms requestId=${requestId}`,
         );
       }),
     );

@@ -255,6 +255,38 @@ export class AccountingService {
     return RentCycleStatus.DUE;
   }
 
+  /**
+   * Get tenant credit balance (liability) for a specific tenant.
+   * Read-only; returns a single number. No ledger exposure.
+   */
+  async getTenantCreditBalance(
+    companyId: string,
+    tenantId: string,
+  ): Promise<number> {
+    const rows = await this.accountingEntryRepository
+      .createQueryBuilder('entry')
+      .select('entry.direction', 'direction')
+      .addSelect('COALESCE(SUM(entry.amount), 0)', 'total')
+      .where('entry.companyId = :companyId', { companyId })
+      .andWhere('entry.tenantId = :tenantId', { tenantId })
+      .andWhere('entry.account = :account', {
+        account: AccountingAccount.TENANT_CREDIT_LIABILITY,
+      })
+      .groupBy('entry.direction')
+      .getRawMany<{ direction: string; total: string }>();
+
+    let debit = 0;
+    let credit = 0;
+    for (const row of rows) {
+      if (row.direction === AccountingEntryDirection.DEBIT) {
+        debit = Number(row.total || 0);
+      } else {
+        credit = Number(row.total || 0);
+      }
+    }
+    return credit - debit;
+  }
+
   private async getAccountBalance(
     account: AccountingAccount,
     companyId: string,

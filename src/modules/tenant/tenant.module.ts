@@ -1,7 +1,9 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TenantController } from './tenant.controller';
+import { TenantDashboardController } from './tenant-dashboard.controller';
 import { TenantService } from './tenant.service';
+import { TenantDashboardService } from './tenant-dashboard.service';
 import { TenantProfile } from './entities/tenant-profile.entity';
 import { TenantInvitation } from './entities/tenant-invitation.entity';
 import { User } from '../user/entities/user.entity';
@@ -15,6 +17,8 @@ import { Payment } from '../payment/entities/payment.entity';
 import { UserModule } from '../user/user.module';
 import { CompanyModule } from '../company/company.module';
 import { NotificationModule } from '../notification/notification.module';
+import { RentCycleModule } from '../rent-cycle/rent-cycle.module';
+import { AccountingModule } from '../accounting/accounting.module';
 
 @Module({
   imports: [
@@ -33,9 +37,11 @@ import { NotificationModule } from '../notification/notification.module';
     forwardRef(() => UserModule),
     forwardRef(() => CompanyModule),
     NotificationModule,
+    RentCycleModule,
+    AccountingModule,
   ],
-  controllers: [TenantController],
-  providers: [TenantService],
+  controllers: [TenantController, TenantDashboardController],
+  providers: [TenantService, TenantDashboardService],
   exports: [TenantService],
 })
 export class TenantModule {}

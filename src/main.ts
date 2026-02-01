@@ -126,11 +126,11 @@ async function bootstrap() {
     new LoggingInterceptor(),
   );
 
-  // Global exception filters (catch-all last)
+  // Global exception filters: register catch-all first so it runs last (only catches unhandled)
   app.useGlobalFilters(
-    new HttpExceptionFilter(),
-    new DatabaseExceptionFilter(),
     new AllExceptionsFilter(),
+    new DatabaseExceptionFilter(),
+    new HttpExceptionFilter(),
   );
 
   // Swagger/OpenAPI documentation

@@ -19,7 +19,7 @@ export class CompanySettingsResponseDto {
   @ApiProperty({ description: 'Company timezone', example: 'Africa/Nairobi' })
   timezone: string;
 
-  @ApiProperty({ description: 'Default currency code', example: 'KES' })
+  @ApiProperty({ description: 'Default currency code', example: 'USD' })
   defaultCurrency: string;
 
   @ApiProperty({

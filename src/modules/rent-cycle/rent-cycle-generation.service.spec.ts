@@ -56,7 +56,7 @@ describe('RentCycleGenerationService', () => {
       autoApplyCredit: true,
       autoApplyLateFees: true,
       lateFeeEnabled: true,
-      defaultCurrency: 'KES',
+      defaultCurrency: 'USD',
     }),
     shouldAutoGenerateRentCycles: jest.fn().mockReturnValue(true),
     shouldAutoApplyCredit: jest.fn().mockReturnValue(true),
@@ -334,7 +334,7 @@ describe('RentCycleGenerationService', () => {
         companyId: 'company-1',
         tenantId: 'tenant-1',
         creditBalance: 500,
-        currency: 'KES',
+        currency: 'USD',
         createdBy: 'user-1',
       } as Lease;
 
@@ -381,7 +381,7 @@ describe('RentCycleGenerationService', () => {
         companyId: 'company-1',
         tenantId: 'tenant-1',
         creditBalance: 500,
-        currency: 'KES',
+        currency: 'USD',
       } as Lease;
 
       const rentCycle = {

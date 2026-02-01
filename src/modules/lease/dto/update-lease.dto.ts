@@ -280,7 +280,7 @@ export class UpdateLeaseDto {
 
   @ApiPropertyOptional({
     description: 'Currency code',
-    example: 'KES',
+    example: 'USD',
   })
   @IsOptional()
   @IsString()

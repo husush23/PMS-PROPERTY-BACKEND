@@ -1151,7 +1151,7 @@ export class TenantService {
     companyId: string,
   ): Promise<TenantFinancialSummaryDto | null> {
     const settings = await this.companySettingsService.getOrCreate(companyId);
-    const currency = settings?.defaultCurrency ?? 'KES';
+    const currency = settings?.defaultCurrency ?? 'USD';
 
     const now = new Date();
     const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)

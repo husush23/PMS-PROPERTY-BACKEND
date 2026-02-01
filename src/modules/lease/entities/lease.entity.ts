@@ -141,7 +141,7 @@ export class Lease {
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   utilityCosts: number;
 
-  @Column({ default: 'KES' })
+  @Column({ default: 'USD' })
   currency: string;
 
   // Termination Metadata

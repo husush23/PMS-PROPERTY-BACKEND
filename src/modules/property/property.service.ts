@@ -355,7 +355,7 @@ export class PropertyService {
       .slice(0, 10);
 
     const settings = await this.companySettingsService.getOrCreate(companyId);
-    const currency = settings?.defaultCurrency ?? 'KES';
+    const currency = settings?.defaultCurrency ?? 'USD';
 
     const cycles = await this.rentCycleRepository
       .createQueryBuilder('rc')

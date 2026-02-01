@@ -66,7 +66,7 @@ export class ReportsService {
     query: FinancialReportQueryDto,
   ): Promise<FinancialReportResponseDto> {
     const settings = await this.companySettingsService.getOrCreate(companyId);
-    const currency = query.currency ?? settings.defaultCurrency ?? 'KES';
+    const currency = query.currency ?? settings.defaultCurrency ?? 'USD';
 
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);

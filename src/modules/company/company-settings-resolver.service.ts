@@ -73,7 +73,7 @@ export class CompanySettingsResolver {
       providedCurrency ??
       leaseCurrency ??
       settings.defaultCurrency ??
-      'KES'
+      'USD'
     );
   }
 

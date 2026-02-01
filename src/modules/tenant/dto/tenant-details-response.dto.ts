@@ -76,7 +76,7 @@ export class TenantActiveLeaseSummaryDto {
 export class TenantFinancialSummaryDto {
   @ApiProperty({
     description: 'Currency code',
-    example: 'KES',
+    example: 'USD',
   })
   currency: string;
 

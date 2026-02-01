@@ -382,7 +382,7 @@ export class UnitService {
       ? await this.getFinancialSummaryForLease(
           currentLease.id,
           unit.companyId,
-          currentLease.currency ?? 'KES',
+          currentLease.currency ?? 'USD',
         )
       : null;
 

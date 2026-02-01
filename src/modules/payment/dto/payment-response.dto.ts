@@ -66,8 +66,8 @@ export class PaymentResponseDto {
 
   @ApiProperty({
     description: 'Currency code',
-    default: 'KES',
-    example: 'KES',
+default: 'USD',
+  example: 'USD',
   })
   currency: string;
 

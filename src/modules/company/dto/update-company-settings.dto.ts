@@ -20,7 +20,7 @@ export class UpdateCompanySettingsDto {
   @IsString()
   timezone?: string;
 
-  @ApiPropertyOptional({ description: 'Default currency code', example: 'KES' })
+  @ApiPropertyOptional({ description: 'Default currency code', example: 'USD' })
   @IsOptional()
   @IsString()
   @MinLength(3, { message: 'Currency code must be at least 3 characters' })

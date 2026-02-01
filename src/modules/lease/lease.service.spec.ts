@@ -58,7 +58,7 @@ describe('LeaseService (Credit Balance Refactor)', () => {
       defaultGracePeriodDays: 0,
       defaultLateFeeType: 'FIXED',
       defaultLateFeeValue: 0,
-      defaultCurrency: 'KES',
+      defaultCurrency: 'USD',
     }),
   };
 
@@ -118,7 +118,7 @@ describe('LeaseService (Credit Balance Refactor)', () => {
       companyId: 'company-1',
       tenantId: 'tenant-1',
       unitId: 'unit-1',
-      currency: 'KES',
+      currency: 'USD',
       creditBalance: 250,
       status: LeaseStatus.ACTIVE,
       isActive: true,

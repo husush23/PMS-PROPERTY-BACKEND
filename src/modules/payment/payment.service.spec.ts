@@ -86,13 +86,13 @@ describe('PaymentService (Credit Balance Refactor)', () => {
       allowAdvancePayments: true,
       requirePaymentReference: false,
       allowedPaymentMethods: [PaymentMethod.CASH, PaymentMethod.OTHER],
-      defaultCurrency: 'KES',
+      defaultCurrency: 'USD',
     }),
     assertPaymentMethodAllowed: jest.fn(),
     assertPaymentReference: jest.fn(),
     assertPartialPaymentsAllowed: jest.fn(),
     assertAdvancePaymentsAllowed: jest.fn(),
-    resolveCurrency: jest.fn().mockReturnValue('KES'),
+    resolveCurrency: jest.fn().mockReturnValue('USD'),
   };
 
   beforeEach(async () => {
@@ -152,7 +152,7 @@ describe('PaymentService (Credit Balance Refactor)', () => {
       status: LeaseStatus.ACTIVE,
       isActive: true,
       creditBalance: 0,
-      currency: 'KES',
+      currency: 'USD',
     } as Lease;
 
     mockUserRepository.findOne.mockImplementation(
@@ -206,7 +206,7 @@ describe('PaymentService (Credit Balance Refactor)', () => {
       tenantId: 'tenant-1',
       status: LeaseStatus.ACTIVE,
       isActive: true,
-      currency: 'KES',
+      currency: 'USD',
     } as Lease;
     const rentCycle = {
       id: 'cycle-1',

@@ -303,8 +303,8 @@ export class CreateLeaseDto {
 
   @ApiPropertyOptional({
     description: 'Currency code (default: KES)',
-    default: 'KES',
-    example: 'KES',
+    default: 'USD',
+    example: 'USD',
   })
   @IsOptional()
   @IsString()

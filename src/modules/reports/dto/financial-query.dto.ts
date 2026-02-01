@@ -46,7 +46,7 @@ export class FinancialReportQueryDto {
 
   @ApiPropertyOptional({
     description: 'Filter by currency (default: company default currency)',
-    example: 'KES',
+    example: 'USD',
   })
   @IsOptional()
   @IsString()

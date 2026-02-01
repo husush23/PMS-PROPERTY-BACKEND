@@ -5,7 +5,6 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
-import { SampleModule } from './modules/sample/sample.module';
 import { CompanyModule } from './modules/company/company.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { PropertyModule } from './modules/property/property.module';
@@ -43,7 +42,6 @@ import cacheConfig from './config/cache.config';
     ExpenseModule,
     AccountingModule,
     ReportsModule,
-    SampleModule,
   ],
   controllers: [AppController],
   providers: [AppService],

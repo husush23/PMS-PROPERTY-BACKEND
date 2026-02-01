@@ -37,7 +37,7 @@ export class PropertyOccupancySummaryDto {
 export class PropertyFinancialSummaryDto {
   @ApiProperty({
     description: 'Currency code',
-    example: 'KES',
+    example: 'USD',
   })
   currency: string;
 

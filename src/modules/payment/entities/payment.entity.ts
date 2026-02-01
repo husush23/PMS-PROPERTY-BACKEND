@@ -56,7 +56,7 @@ export class Payment {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   balance: number; // amountDue - amountPaid
 
-  @Column({ default: 'KES' })
+  @Column({ default: 'USD' })
   currency: string;
 
   @Column({ type: 'date' })

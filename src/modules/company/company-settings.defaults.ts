@@ -9,7 +9,7 @@ import { UserRole } from '../../shared/enums/user-role.enum';
  */
 export const COMPANY_SETTINGS_MVP_DEFAULTS = {
   timezone: 'UTC',
-  defaultCurrency: 'KES',
+  defaultCurrency: 'USD',
   defaultGracePeriodDays: 5,
   lateFeeEnabled: false,
   defaultLateFeeType: LateFeeType.NONE,

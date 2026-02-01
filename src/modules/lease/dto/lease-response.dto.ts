@@ -229,7 +229,7 @@ export class LeaseResponseDto {
 
   @ApiPropertyOptional({
     description: 'Currency code',
-    default: 'KES',
+    default: 'USD',
   })
   currency?: string;
 

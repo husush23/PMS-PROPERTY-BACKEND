@@ -310,7 +310,7 @@ export class LeaseService {
       utilitiesIncluded: createDto.utilitiesIncluded ?? false,
       utilityCosts: createDto.utilityCosts,
       currency:
-        createDto.currency ?? companySettings.defaultCurrency ?? 'KES',
+        createDto.currency ?? companySettings.defaultCurrency ?? 'USD',
       leaseTerm: createDto.leaseTerm,
       renewalOptions: createDto.renewalOptions,
       noticePeriod: createDto.noticePeriod,

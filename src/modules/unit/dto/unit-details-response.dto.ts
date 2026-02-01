@@ -72,7 +72,7 @@ export class UnitCurrentLeaseSummaryDto {
 export class UnitFinancialSummaryDto {
   @ApiProperty({
     description: 'Currency code',
-    example: 'KES',
+    example: 'USD',
   })
   currency: string;
 

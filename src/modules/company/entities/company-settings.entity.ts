@@ -30,7 +30,7 @@ export class CompanySettings {
   @Column({ default: 'UTC' })
   timezone: string;
 
-  @Column({ default: 'KES' })
+  @Column({ default: 'USD' })
   defaultCurrency: string;
 
   @Column({ type: 'int', default: 0 })

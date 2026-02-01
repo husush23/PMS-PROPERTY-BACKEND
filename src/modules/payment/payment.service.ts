@@ -1,4 +1,10 @@
-import { Injectable, HttpStatus, forwardRef, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  HttpStatus,
+  forwardRef,
+  Inject,
+  Logger,
+} from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import {
@@ -37,6 +43,8 @@ import { CompanySettingsResolver } from '../company/company-settings-resolver.se
 
 @Injectable()
 export class PaymentService {
+  private readonly logger = new Logger(PaymentService.name);
+
   constructor(
     @InjectRepository(Payment)
     private paymentRepository: Repository<Payment>,
@@ -1881,9 +1889,10 @@ export class PaymentService {
         }
       } catch (error) {
         // Log error but continue with other payments
-        console.error(
-          `Error processing due payment ${payment.id}:`,
-          error.message,
+        const err = error instanceof Error ? error : new Error(String(error));
+        this.logger.error(
+          `Error processing due payment ${payment.id}: ${err.message}`,
+          err.stack,
         );
       }
     }

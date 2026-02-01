@@ -1,4 +1,10 @@
-import { Injectable, HttpStatus, forwardRef, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  HttpStatus,
+  forwardRef,
+  Inject,
+  Logger,
+} from '@nestjs/common';
 import {
   BusinessException,
   ErrorCode,
@@ -36,6 +42,8 @@ import { CompanySettingsResolver } from '../company/company-settings-resolver.se
 
 @Injectable()
 export class LeaseService {
+  private readonly logger = new Logger(LeaseService.name);
+
   constructor(
     @InjectRepository(Lease)
     private leaseRepository: Repository<Lease>,
@@ -337,9 +345,10 @@ export class LeaseService {
       );
     } catch (error) {
       // Log error but don't fail lease creation if deposit creation fails
-      console.error(
-        `Failed to create deposit invoices for lease ${savedLease.id}:`,
-        error.message,
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(
+        `Failed to create deposit invoices for lease ${savedLease.id}: ${err.message}`,
+        err.stack,
       );
     }
 
@@ -910,10 +919,10 @@ export class LeaseService {
       await this.rentCycleGenerationService.generateFirstCycle(leaseId);
     } catch (error) {
       // Log detailed error for debugging
-      console.error(
-        `Failed to generate first rent cycle for lease ${leaseId}:`,
-        error.message,
-        error.stack,
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(
+        `Failed to generate first rent cycle for lease ${leaseId}: ${err.message}`,
+        err.stack,
       );
       // Re-throw error to fail activation - rent cycle generation is critical
       throw new BusinessException(
@@ -1000,7 +1009,7 @@ export class LeaseService {
 
     if (totalOutstanding > 0) {
       // Log warning but allow termination
-      console.warn(
+      this.logger.warn(
         `Lease ${leaseId} terminated with outstanding balance: ${lease.currency} ${totalOutstanding.toFixed(2)}`,
       );
     }
@@ -1494,13 +1503,15 @@ export class LeaseService {
     for (const lease of leasesToActivate) {
       try {
         await this.activateLeaseInternal(lease.id);
-        console.log(`Successfully activated lease ${lease.leaseNumber} (${lease.id})`);
+        this.logger.log(
+          `Successfully activated lease ${lease.leaseNumber} (${lease.id})`,
+        );
       } catch (error) {
         // Log error but continue with other leases
-        console.error(
-          `Failed to activate lease ${lease.leaseNumber} (${lease.id}):`,
-          error.message,
-          error.stack,
+        const err = error instanceof Error ? error : new Error(String(error));
+        this.logger.error(
+          `Failed to activate lease ${lease.leaseNumber} (${lease.id}): ${err.message}`,
+          err.stack,
         );
       }
     }

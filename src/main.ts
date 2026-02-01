@@ -13,11 +13,16 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { seedSuperAdmin } from './database/seeds/super-admin.seed';
 import { DataSource } from 'typeorm';
+import { requestIdMiddleware } from './common/middleware/request-id.middleware';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
   const reflector = app.get(Reflector);
+
+  // Request ID for tracing (must run early)
+  app.use(requestIdMiddleware);
 
   // Cookie parser middleware
   app.use(cookieParser());
@@ -85,7 +90,7 @@ async function bootstrap() {
       'Access-Control-Allow-Methods',
       'Access-Control-Allow-Credentials',
     ],
-    exposedHeaders: ['Set-Cookie'],
+    exposedHeaders: ['Set-Cookie', 'X-Request-Id'],
     preflightContinue: false,
     optionsSuccessStatus: 204,
   });
@@ -121,10 +126,11 @@ async function bootstrap() {
     new LoggingInterceptor(),
   );
 
-  // Global exception filters
+  // Global exception filters (catch-all last)
   app.useGlobalFilters(
     new HttpExceptionFilter(),
     new DatabaseExceptionFilter(),
+    new AllExceptionsFilter(),
   );
 
   // Swagger/OpenAPI documentation

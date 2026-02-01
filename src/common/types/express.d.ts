@@ -13,6 +13,7 @@ declare module 'express' {
   interface Request {
     user?: AuthUser;
     companyId?: string;
+    requestId?: string;
   }
 }
 

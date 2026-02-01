@@ -3,20 +3,43 @@ import {
   Catch,
   ArgumentsHost,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { QueryFailedError } from 'typeorm';
+import { QueryFailedError, EntityNotFoundError } from 'typeorm';
 import { ErrorCode } from '../exceptions/business.exception';
 import { ERROR_MESSAGES } from '../constants/error-messages.constant';
 
-@Catch(QueryFailedError)
+@Catch(QueryFailedError, EntityNotFoundError)
 export class DatabaseExceptionFilter implements ExceptionFilter {
-  catch(exception: QueryFailedError, host: ArgumentsHost) {
+  private readonly logger = new Logger(DatabaseExceptionFilter.name);
+
+  catch(
+    exception: QueryFailedError | EntityNotFoundError,
+    host: ArgumentsHost,
+  ) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
-    // Handle specific database errors
+    // Handle TypeORM EntityNotFoundError (e.g. from findOneOrFail)
+    if (exception instanceof EntityNotFoundError) {
+      const logMsg = `DB EntityNotFound ${request.method} ${request.url} requestId=${request.requestId ?? '-'}`;
+      this.logger.warn(logMsg);
+      return response.status(HttpStatus.NOT_FOUND).json({
+        success: false,
+        error: {
+          code: ErrorCode.NOT_FOUND,
+          message: ERROR_MESSAGES.NOT_FOUND,
+          details: {},
+        },
+        timestamp: new Date().toISOString(),
+        path: request.url,
+        ...(request.requestId && { requestId: request.requestId }),
+      });
+    }
+
+    // Handle QueryFailedError
     const errorMessage = exception.message;
     let humanReadableMessage: string = ERROR_MESSAGES.INTERNAL_SERVER_ERROR;
     let errorCode = ErrorCode.INTERNAL_SERVER_ERROR;
@@ -81,6 +104,14 @@ export class DatabaseExceptionFilter implements ExceptionFilter {
       details = { ...details, originalError: errorMessage };
     }
 
+    // Structured logging: warn for constraint/validation (4xx), error for 5xx
+    const logMsg = `DB error ${statusCode} ${request.method} ${request.url} requestId=${request.requestId ?? '-'} ${errorCode}`;
+    if (statusCode >= 500) {
+      this.logger.error(logMsg);
+    } else {
+      this.logger.warn(logMsg);
+    }
+
     return response.status(statusCode).json({
       success: false,
       error: {
@@ -90,6 +121,7 @@ export class DatabaseExceptionFilter implements ExceptionFilter {
       },
       timestamp: new Date().toISOString(),
       path: request.url,
+      ...(request.requestId && { requestId: request.requestId }),
     });
   }
 

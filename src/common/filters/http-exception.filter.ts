@@ -4,13 +4,29 @@ import {
   ArgumentsHost,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { BusinessException, ErrorCode } from '../exceptions/business.exception';
 import { ERROR_MESSAGES } from '../constants/error-messages.constant';
 
+function errorResponse(
+  request: Request,
+  error: { code: string; message: string; details: Record<string, unknown> },
+) {
+  return {
+    success: false,
+    error,
+    timestamp: new Date().toISOString(),
+    path: request.url,
+    ...(request.requestId && { requestId: request.requestId }),
+  };
+}
+
 @Catch(HttpException)
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpExceptionFilter.name);
+
   catch(exception: HttpException, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
@@ -18,18 +34,23 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const status = exception.getStatus();
     const exceptionResponse = exception.getResponse();
 
+    // Structured logging: 4xx = warn, 5xx = error (method, path, requestId for tracing)
+    const logMsg = `HTTP ${status} ${request.method} ${request.url} requestId=${request.requestId ?? '-'} ${exception.message}`;
+    if (status >= 500) {
+      this.logger.error(logMsg);
+    } else {
+      this.logger.warn(logMsg);
+    }
+
     // Handle BusinessException with error codes
     if (exception instanceof BusinessException) {
-      return response.status(status).json({
-        success: false,
-        error: {
+      return response.status(status).json(
+        errorResponse(request, {
           code: exception.errorCode,
           message: exception.message,
           details: exception.details || {},
-        },
-        timestamp: new Date().toISOString(),
-        path: request.url,
-      });
+        }),
+      );
     }
 
     // Handle validation errors (from ValidationPipe)
@@ -62,18 +83,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
           };
         });
 
-        return response.status(status).json({
-          success: false,
-          error: {
+        return response.status(status).json(
+          errorResponse(request, {
             code: ErrorCode.VALIDATION_ERROR,
             message: 'Please check the following fields and try again:',
-            details: {
-              fields: formattedErrors,
-            },
-          },
-          timestamp: new Date().toISOString(),
-          path: request.url,
-        });
+            details: { fields: formattedErrors },
+          }),
+        );
       }
 
       // Check if it's a validation error with array of messages (string format)
@@ -121,18 +137,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
           },
         );
 
-        return response.status(status).json({
-          success: false,
-          error: {
+        return response.status(status).json(
+          errorResponse(request, {
             code: ErrorCode.VALIDATION_ERROR,
             message: 'Please check the following fields and try again:',
-            details: {
-              fields: formattedErrors,
-            },
-          },
-          timestamp: new Date().toISOString(),
-          path: request.url,
-        });
+            details: { fields: formattedErrors },
+          }),
+        );
       }
     }
 
@@ -140,9 +151,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const message = this.getHumanReadableMessage(exception.message, status);
     const errorCode = this.getErrorCodeFromStatus(status);
 
-    return response.status(status).json({
-      success: false,
-      error: {
+    return response.status(status).json(
+      errorResponse(request, {
         code: errorCode,
         message: message,
         details:
@@ -152,10 +162,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
             ? (exceptionResponse as { details?: Record<string, unknown> })
                 .details || {}
             : {},
-      },
-      timestamp: new Date().toISOString(),
-      path: request.url,
-    });
+      }),
+    );
   }
 
   private formatValidationMessage(message: string): string {

@@ -6,6 +6,7 @@ import {
   HttpStatus,
   forwardRef,
   Inject,
+  Logger,
 } from '@nestjs/common';
 import {
   BusinessException,
@@ -36,6 +37,8 @@ import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class CompanyService {
+  private readonly logger = new Logger(CompanyService.name);
+
   constructor(
     @InjectRepository(Company)
     private companyRepository: Repository<Company>,
@@ -512,7 +515,7 @@ export class CompanyService {
     this.notificationService
       .sendInvitationEmail(inviteDto.email, company.name, token, inviterName)
       .catch((error) => {
-        console.error('Failed to send invitation email:', error);
+        this.logger.error('Failed to send invitation email', error);
         // Don't throw - invitation is created, email failure shouldn't block the operation
       });
   }

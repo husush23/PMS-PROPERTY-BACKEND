@@ -1,4 +1,10 @@
-import { Injectable, HttpStatus, forwardRef, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  HttpStatus,
+  forwardRef,
+  Inject,
+  Logger,
+} from '@nestjs/common';
 import {
   BusinessException,
   ErrorCode,
@@ -43,6 +49,8 @@ import { randomUUID } from 'crypto';
 
 @Injectable()
 export class TenantService {
+  private readonly logger = new Logger(TenantService.name);
+
   constructor(
     @InjectRepository(TenantProfile)
     private tenantProfileRepository: Repository<TenantProfile>,
@@ -227,7 +235,7 @@ export class TenantService {
           inviterName,
         )
         .catch((error) => {
-          console.error('Failed to send tenant invitation email:', error);
+          this.logger.error('Failed to send tenant invitation email', error);
         });
     }
   }
@@ -521,7 +529,7 @@ export class TenantService {
       // Verify original data integrity - if something changed, restore it
       if (user.name !== originalUserData.name) {
         // Something modified the name - restore original
-        console.warn(
+        this.logger.warn(
           `[TENANT CREATE] User name was unexpectedly modified from "${originalUserData.name}" to "${user.name}". Restoring original name for user ${user.id}.`,
         );
         await this.userRepository.update(user.id, { name: originalUserData.name });
@@ -535,13 +543,8 @@ export class TenantService {
         user.emailVerified !== originalUserData.emailVerified
       ) {
         // Restore all original data
-        console.warn(
-          `[TENANT CREATE] User data was unexpectedly modified for user ${user.id}. Restoring original values.`,
-          {
-            email: { original: originalUserData.email, current: user.email },
-            isActive: { original: originalUserData.isActive, current: user.isActive },
-            emailVerified: { original: originalUserData.emailVerified, current: user.emailVerified },
-          },
+        this.logger.warn(
+          `[TENANT CREATE] User data was unexpectedly modified for user ${user.id}. Restoring original values. email=${user.email} isActive=${user.isActive} emailVerified=${user.emailVerified}`,
         );
         await this.userRepository.update(user.id, {
           email: originalUserData.email,
@@ -575,7 +578,7 @@ export class TenantService {
       }
 
       // Log successful protection
-      console.log(
+      this.logger.log(
         `[TENANT CREATE] Existing user ${user.id} (${normalizedEmail}) data protected: name="${originalUserData.name}", password preserved, isActive=${originalUserData.isActive}, emailVerified=${originalUserData.emailVerified}`,
       );
     }
@@ -683,7 +686,10 @@ export class TenantService {
             await this.tenantProfileRepository.remove(savedTenantProfile);
           } catch (cleanupError) {
             // Log but don't throw - main error is more important
-            console.error('Failed to cleanup tenant profile after UserCompany assignment failure:', cleanupError);
+            this.logger.error(
+              'Failed to cleanup tenant profile after UserCompany assignment failure',
+              cleanupError,
+            );
           }
         }
         // Re-throw the error with better context
@@ -764,7 +770,7 @@ export class TenantService {
           inviterName,
         )
         .catch((error) => {
-          console.error('Failed to send tenant invitation email:', error);
+          this.logger.error('Failed to send tenant invitation email', error);
         });
     }
 

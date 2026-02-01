@@ -23,7 +23,12 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Property Management System (PMS) Backend API — NestJS TypeScript application.
+
+**API documentation** is available via Swagger UI when the server is running:
+
+- Local: `http://localhost:8000/api/docs` (or `http://localhost:8000/api/v1/docs` depending on config)
+- All endpoints, request/response schemas, and auth (cookie) are documented there.
 
 ## Project setup
 

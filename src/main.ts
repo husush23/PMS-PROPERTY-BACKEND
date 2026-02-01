@@ -143,14 +143,21 @@ async function bootstrap() {
     .addCookieAuth('access_token')
     .addTag('auth', 'Authentication endpoints')
     .addTag('users', 'User management endpoints')
+    .addTag('admin', 'Super admin / system endpoints')
+    .addTag('companies', 'Company and membership management')
+    .addTag('settings', 'Company settings and bootstrap')
     .addTag('properties', 'Property management endpoints')
     .addTag('units', 'Unit management endpoints')
     .addTag('leases', 'Lease management endpoints')
     .addTag('tenants', 'Tenant management endpoints')
     .addTag('payments', 'Payment management endpoints')
+    .addTag('payment-methods', 'Payment method configuration')
+    .addTag('rent-cycles', 'Rent cycle and billing periods')
+    .addTag('expenses', 'Expense management')
+    .addTag('accounting', 'Accounting summary and reports')
+    .addTag('reports', 'Financial and occupancy reports')
     .addTag('maintenance', 'Maintenance request endpoints')
     .addTag('documents', 'Document management endpoints')
-    .addTag('notifications', 'Notification endpoints')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

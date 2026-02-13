@@ -26,7 +26,7 @@ function parseDatabaseUrl(databaseUrl: string) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     throw new Error(
       `Failed to parse DATABASE_URL: ${errorMessage}\n` +
-        `Please ensure your connection string follows the format: postgresql://user:password@host:port/database`,
+      `Please ensure your connection string follows the format: postgresql://user:password@host:port/database`,
     );
   }
 }
@@ -46,8 +46,13 @@ const dbConfig = parseDatabaseUrl(process.env.DATABASE_URL);
       ssl: { rejectUnauthorized: false },
       autoLoadEntities: true,
       synchronize: false,
+      extra: {
+        max: 10,
+        idleTimeoutMillis: 30000,
+        prepareThreshold: 0,
+      },
     }),
   ],
   exports: [TypeOrmModule],
 })
-export class DatabaseModule {}
+export class DatabaseModule { }

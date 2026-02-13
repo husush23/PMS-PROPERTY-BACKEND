@@ -48,4 +48,4 @@ import cacheConfig from './config/cache.config';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }

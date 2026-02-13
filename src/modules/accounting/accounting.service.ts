@@ -201,9 +201,8 @@ export class AccountingService {
     const totalExpenses = Number(expensesRow?.total || 0);
     const totalCreditLiability = creditTotals.credit - creditTotals.debit;
     const totalDepositsLiability = depositTotals.credit - depositTotals.debit;
-    const totalLiabilities = totalCreditLiability + totalDepositsLiability;
-    // Expenses reduce net income only.
-    const netPosition = totalRentIncome - totalExpenses - totalLiabilities;
+    // Net position = income minus expenses (liabilities shown separately on UI).
+    const netPosition = totalRentIncome - totalExpenses;
 
     return {
       totalRentIncome,

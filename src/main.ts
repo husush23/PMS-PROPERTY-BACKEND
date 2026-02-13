@@ -162,6 +162,7 @@ async function bootstrap() {
     .addTag('expenses', 'Expense management')
     .addTag('accounting', 'Accounting summary and reports')
     .addTag('reports', 'Financial and occupancy reports')
+    .addTag('dashboard', 'Dashboard summary for landlord/admin')
     .addTag('maintenance', 'Maintenance request endpoints')
     .addTag('documents', 'Document management endpoints')
     .build();

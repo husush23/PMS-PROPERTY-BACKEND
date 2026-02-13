@@ -16,6 +16,7 @@ import { PaymentMethodsModule } from './modules/payment-method/payment-methods.m
 import { ExpenseModule } from './modules/expense/expense.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import appConfig from './config/app.config';
 import dbConfig from './config/db.config';
 import jwtConfig from './config/jwt.config';
@@ -42,6 +43,7 @@ import cacheConfig from './config/cache.config';
     ExpenseModule,
     AccountingModule,
     ReportsModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],

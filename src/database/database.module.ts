@@ -51,7 +51,7 @@ const dbConfig = parseDatabaseUrl(process.env.DATABASE_URL);
         idleTimeoutMillis: 30000,
         prepareThreshold: 0,
       },
-      logging: true,
+      logging: false, // Disable logging to reduce noise
     }),
   ],
   exports: [TypeOrmModule],

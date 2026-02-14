@@ -4,12 +4,13 @@ import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { Company } from '../company/entities/company.entity';
 import { User } from '../user/entities/user.entity';
+import { Property } from '../property/entities/property.entity';
 import { UserModule } from '../user/user.module';
 import { CompanyModule } from '../company/company.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Company, User]),
+    TypeOrmModule.forFeature([Company, User, Property]),
     UserModule,
     CompanyModule,
   ],
@@ -17,4 +18,4 @@ import { CompanyModule } from '../company/company.module';
   providers: [AdminService],
   exports: [AdminService],
 })
-export class AdminModule {}
+export class AdminModule { }

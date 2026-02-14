@@ -15,4 +15,10 @@ export class SystemStatsResponseDto {
 
   @ApiProperty({ description: 'Total number of active users', example: 180 })
   activeUsers: number;
+
+  @ApiProperty({ description: 'Total number of properties', example: 120 })
+  totalProperties: number;
+
+  @ApiProperty({ description: 'Total number of active properties', example: 115 })
+  activeProperties: number;
 }

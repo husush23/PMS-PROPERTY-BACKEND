@@ -41,4 +41,20 @@ export class ListUsersQueryDto {
   @IsOptional()
   @Type(() => Boolean)
   isSuperAdmin?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Sort by field',
+    enum: ['name', 'email', 'createdAt'],
+    example: 'createdAt',
+  })
+  @IsOptional()
+  sortBy?: 'name' | 'email' | 'createdAt';
+
+  @ApiPropertyOptional({
+    description: 'Sort order',
+    enum: ['ASC', 'DESC'],
+    example: 'DESC',
+  })
+  @IsOptional()
+  sortOrder?: 'ASC' | 'DESC';
 }

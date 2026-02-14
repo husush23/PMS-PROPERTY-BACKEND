@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike } from 'typeorm';
 import { Company } from '../company/entities/company.entity';
 import { User } from '../user/entities/user.entity';
+import { Property } from '../property/entities/property.entity';
 import { CompanyResponseDto } from '../company/dto/company-response.dto';
 import { UserResponseDto } from '../user/dto/user-response.dto';
 import { CreateCompanyDto } from '../company/dto/create-company.dto';
@@ -29,9 +30,43 @@ export class AdminService {
     private companyRepository: Repository<Company>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(Property)
+    private propertyRepository: Repository<Property>,
     private userService: UserService,
     private companyService: CompanyService,
-  ) {}
+  ) { }
+
+  // ... (rest of the file until getSystemStats)
+
+  async getSystemStats(): Promise<SystemStatsResponseDto> {
+    const [
+      totalCompanies,
+      totalUsers,
+      totalSuperAdmins,
+      activeCompanies,
+      activeUsers,
+      totalProperties,
+      activeProperties,
+    ] = await Promise.all([
+      this.companyRepository.count(),
+      this.userRepository.count(),
+      this.userRepository.count({ where: { isSuperAdmin: true } }),
+      this.companyRepository.count({ where: { isActive: true } }),
+      this.userRepository.count({ where: { isActive: true } }),
+      this.propertyRepository.count(),
+      this.propertyRepository.count({ where: { isActive: true } }),
+    ]);
+
+    return {
+      totalCompanies,
+      totalUsers,
+      totalSuperAdmins,
+      activeCompanies,
+      activeUsers,
+      totalProperties,
+      activeProperties,
+    };
+  }
 
   async findAllCompanies(query: ListCompaniesQueryDto): Promise<{
     data: CompanyResponseDto[];
@@ -206,7 +241,19 @@ export class AdminService {
       });
     }
 
-    queryBuilder.skip(skip).take(limit).orderBy('user.createdAt', 'DESC');
+    const sortBy = query.sortBy || 'createdAt';
+    const sortOrder = query.sortOrder || 'DESC';
+
+    // Map frontend sort fields to database columns
+    const sortFieldMap: Record<string, string> = {
+      name: 'user.name',
+      email: 'user.email',
+      createdAt: 'user.createdAt',
+    };
+
+    const sortColumn = sortFieldMap[sortBy] || 'user.createdAt';
+
+    queryBuilder.skip(skip).take(limit).orderBy(sortColumn, sortOrder);
 
     const [users, total] = await queryBuilder.getManyAndCount();
 
@@ -414,29 +461,7 @@ export class AdminService {
     }
   }
 
-  async getSystemStats(): Promise<SystemStatsResponseDto> {
-    const [
-      totalCompanies,
-      totalUsers,
-      totalSuperAdmins,
-      activeCompanies,
-      activeUsers,
-    ] = await Promise.all([
-      this.companyRepository.count(),
-      this.userRepository.count(),
-      this.userRepository.count({ where: { isSuperAdmin: true } }),
-      this.companyRepository.count({ where: { isActive: true } }),
-      this.userRepository.count({ where: { isActive: true } }),
-    ]);
 
-    return {
-      totalCompanies,
-      totalUsers,
-      totalSuperAdmins,
-      activeCompanies,
-      activeUsers,
-    };
-  }
 
   private toCompanyResponseDto(company: Company): CompanyResponseDto {
     return {

@@ -10,6 +10,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { RevokedRefreshToken } from './entities/revoked-refresh-token.entity';
 import { UserModule } from '../user/user.module';
 import { CompanyModule } from '../company/company.module';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
@@ -49,9 +50,10 @@ import { CompanyModule } from '../company/company.module';
     }),
     UserModule,
     CompanyModule,
+    NotificationModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
   exports: [AuthService],
 })
-export class AuthModule {}
+export class AuthModule { }

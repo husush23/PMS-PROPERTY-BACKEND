@@ -31,6 +31,12 @@ export class User {
   @Column({ default: false })
   emailVerified: boolean;
 
+  @Column({ type: 'varchar', nullable: true })
+  resetPasswordToken: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  resetPasswordExpires: Date | null;
+
   @OneToMany(() => UserCompany, (userCompany) => userCompany.user)
   userCompanies: UserCompany[];
 

@@ -35,4 +35,9 @@ export default new DataSource({
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
   synchronize: false,
   logging: process.env.NODE_ENV === 'development',
+  extra: {
+    max: 10,
+    idleTimeoutMillis: 30000,
+    prepareThreshold: 0,
+  },
 });

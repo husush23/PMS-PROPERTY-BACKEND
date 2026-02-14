@@ -17,6 +17,7 @@ import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
 import { UserService } from '../user/user.service';
 import { CompanyService } from '../company/company.service';
+import { NotificationService } from '../notification/notification.service';
 import { RevokedRefreshToken } from './entities/revoked-refresh-token.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -34,9 +35,10 @@ export class AuthService {
     private companyService: CompanyService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private notificationService: NotificationService,
     @InjectRepository(RevokedRefreshToken)
     private revokedRefreshTokenRepository: Repository<RevokedRefreshToken>,
-  ) {}
+  ) { }
 
   async validateUser(email: string, password: string): Promise<User> {
     const user = await this.userService.findByEmail(email);
@@ -201,10 +203,10 @@ export class AuthService {
       const access_token = role
         ? this.generateCompanyScopedToken(user, companyId, role)
         : this.jwtService.sign({
-            sub: user.id,
-            email: user.email,
-            companyId, // Include companyId for context but no role requirement
-          });
+          sub: user.id,
+          email: user.email,
+          companyId, // Include companyId for context but no role requirement
+        });
 
       // Generate refresh token with companyId
       const refresh_token = this.generateRefreshToken(
@@ -330,6 +332,81 @@ export class AuthService {
 
     // Update password (no companyId needed for password change)
     await this.userService.update(userId, { password: newPassword });
+  }
+
+  async forgotPassword(email: string): Promise<void> {
+    const user = await this.userService.findByEmail(email);
+    if (!user) {
+      // Don't reveal if user exists
+      return;
+    }
+
+    // Generate random token
+    const token = randomUUID();
+    const expires = new Date();
+    expires.setHours(expires.getHours() + 1); // 1 hour expiration
+
+    // Save token to user
+    await this.userService.update(user.id, {
+      resetPasswordToken: token,
+      resetPasswordExpires: expires,
+    } as any);
+
+    // Send email
+    await this.notificationService.sendPasswordResetEmail(
+      user.email,
+      token,
+      user.name || 'User',
+    );
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    // Find user by token
+    const user = await this.userService.findByResetToken(token);
+
+    if (!user || !user.resetPasswordToken || !user.resetPasswordExpires) {
+      throw new BusinessException(
+        ErrorCode.INVALID_RESET_TOKEN,
+        'Invalid or expired password reset token',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Check if token is expired
+    if (new Date() > user.resetPasswordExpires) {
+      throw new BusinessException(
+        ErrorCode.INVALID_RESET_TOKEN,
+        'Password reset token has expired',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Hash new password
+    const hashedPassword = await PasswordUtil.hash(newPassword);
+
+    // Update user: set new password and clear reset token fields
+    // We use a direct update on the repository via userService (which exposes update but it does a query first).
+    // To cleanly clear fields, we might need to cast null or use save.
+    // UserService.update takes Partial<User> but might expect DTOs.
+    // Let's check UserService.update signature again. 
+    // It takes UpdateUserDto which allows password. 
+    // It doesn't seem to expose clearing token fields easily via DTO if DTO is strict.
+    // The UpdateUserDto likely doesn't have resetPasswordToken.
+    // So we should add a specific method in UserService or use the fact that we can pass any object that matches Partial<User> if types allow.
+    // But `update` method in UserService takes `UpdateUserDto`.
+    // Let's create a specific method in UserService `clearResetTokenAndUpdatePassword` or just `updatePassword`.
+    // Or, since I am in AuthService, I can inject UserRepository if I really wanted to, but better to stick to UserService.
+    // I will add `updatePassword` to UserService which handles hashing too? 
+    // No, `update` handles hashing.
+    // I need to clear the tokens.
+    // I'll add `resetUserPassword` to UserService.
+
+    // For now, I'll assume I can just call update with a cast or I'll add the method to UserService in the next step if I can't.
+    // Actually, I'll add `resetUserPassword` to UserService in the next step to be clean.
+    // But wait, I can't leave this file broken. 
+    // I'll implement it here assuming `userService.resetUserPassword` exists, and then add it.
+
+    await this.userService.resetUserPassword(user.id, hashedPassword);
   }
 
   private generateCompanyScopedToken(

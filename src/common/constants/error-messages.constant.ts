@@ -6,6 +6,7 @@ export const ERROR_MESSAGES = {
     'Your account has been deactivated. Please contact support for assistance.',
   TOKEN_EXPIRED: 'Your session has expired. Please log in again.',
   TOKEN_INVALID: 'Your session is invalid. Please log in again.',
+  INVALID_RESET_TOKEN: 'The password reset token is invalid or has expired.',
   USER_NOT_FOUND_AUTH: "We couldn't find an account with that email address.",
 
   // User

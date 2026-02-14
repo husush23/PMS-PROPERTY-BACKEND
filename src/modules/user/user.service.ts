@@ -30,7 +30,7 @@ export class UserService {
     @InjectRepository(UserCompany)
     private userCompanyRepository: Repository<UserCompany>,
     private companyService: CompanyService,
-  ) {}
+  ) { }
 
   async findAll(
     companyId: string,
@@ -104,6 +104,10 @@ export class UserService {
 
   async findByEmail(email: string): Promise<User | null> {
     return this.userRepository.findOne({ where: { email } });
+  }
+
+  async findByResetToken(token: string): Promise<User | null> {
+    return this.userRepository.findOne({ where: { resetPasswordToken: token } });
   }
 
   async findByEmailForCompany(
@@ -263,6 +267,14 @@ export class UserService {
     await this.userRepository.update(id, updateData);
     const updatedUser = await this.userRepository.findOne({ where: { id } });
     return this.toResponseDto(updatedUser!);
+  }
+
+  async resetUserPassword(userId: string, hashedPassword: string): Promise<void> {
+    await this.userRepository.update(userId, {
+      password: hashedPassword,
+      resetPasswordToken: null,
+      resetPasswordExpires: null,
+    });
   }
 
   async delete(id: string, companyId: string): Promise<boolean> {

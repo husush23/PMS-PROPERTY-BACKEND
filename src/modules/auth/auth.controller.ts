@@ -30,6 +30,8 @@ import { LoginResponseDto } from './dto/login-response.dto';
 import { SelectCompanyDto } from './dto/select-company.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UserResponseDto } from '../user/dto/user-response.dto';
 import {
   setAccessTokenCookie,
@@ -43,7 +45,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   @Public()
   @Post('register')
@@ -573,6 +575,48 @@ export class AuthController {
     return {
       success: true,
       message: 'Password changed successfully',
+    };
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Request password reset' })
+  @ApiBody({ type: ForgotPasswordDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset email sent (if email exists)',
+  })
+  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+    await this.authService.forgotPassword(forgotPasswordDto.email);
+    return {
+      success: true,
+      message:
+        'If an account with that email exists, we have sent a password reset link.',
+    };
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset password using token' })
+  @ApiBody({ type: ResetPasswordDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset successfully',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or expired token',
+  })
+  async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+    await this.authService.resetPassword(
+      resetPasswordDto.token,
+      resetPasswordDto.newPassword,
+    );
+    return {
+      success: true,
+      message: 'Password has been reset successfully. You can now log in.',
     };
   }
 }

@@ -17,6 +17,8 @@ import { ExpenseModule } from './modules/expense/expense.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { ContactModule } from './modules/contact/contact.module';
+import { ThrottlerModule } from '@nestjs/throttler';
 import appConfig from './config/app.config';
 import dbConfig from './config/db.config';
 import jwtConfig from './config/jwt.config';
@@ -29,6 +31,10 @@ import cacheConfig from './config/cache.config';
       isGlobal: true,
       load: [appConfig, dbConfig, jwtConfig, mailConfig, cacheConfig],
     }),
+    ThrottlerModule.forRoot([{
+      ttl: 60000,
+      limit: 10,
+    }]),
     ScheduleModule.forRoot(), // Enable cron jobs for scheduled tasks
     DatabaseModule,
     AuthModule,
@@ -44,6 +50,7 @@ import cacheConfig from './config/cache.config';
     AccountingModule,
     ReportsModule,
     DashboardModule,
+    ContactModule,
   ],
   controllers: [AppController],
   providers: [AppService],

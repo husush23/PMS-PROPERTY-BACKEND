@@ -17,7 +17,7 @@ export class NotificationService {
   ): Promise<void> {
     const frontendUrl =
       this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
-    const acceptInviteUrl = `${frontendUrl}/accept-invite?token=${invitationToken}`;
+    const acceptInviteUrl = `${frontendUrl}/accept-invitation?token=${invitationToken}`;
 
     await this.mailerService.sendMail({
       to: email,
@@ -141,6 +141,50 @@ export class NotificationService {
         </html>
       `,
       text: `Hello ${name},\n\nWe received a request to reset your password. To reset your password, visit: ${resetUrl}\n\nThis link will expire in 1 hour.`,
+    });
+  }
+
+  async sendContactEmail(
+    name: string,
+    email: string,
+    message: string,
+  ): Promise<void> {
+    const supportEmail = 'hi@aqalstream.com';
+
+    await this.mailerService.sendMail({
+      to: supportEmail,
+      subject: `New Contact Form Submission from ${name}`,
+      replyTo: email,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+            .header { background-color: #f4f4f4; padding: 10px; border-bottom: 1px solid #ddd; }
+            .content { padding: 20px 0; }
+            .label { font-weight: bold; color: #555; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h2>New Contact Message</h2>
+            </div>
+            <div class="content">
+              <p><span class="label">Name:</span> ${name}</p>
+              <p><span class="label">Email:</span> ${email}</p>
+              <hr>
+              <p><span class="label">Message:</span></p>
+              <p>${message.replace(/\n/g, '<br>')}</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `Name: ${name}\nEmail: ${email}\n\nMessage:\n${message}`,
     });
   }
 }

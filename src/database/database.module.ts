@@ -45,11 +45,14 @@ const dbConfig = parseDatabaseUrl(process.env.DATABASE_URL);
       database: dbConfig.database,
       ssl: { rejectUnauthorized: false },
       autoLoadEntities: true,
-      synchronize: false,
+      synchronize: false, // Disable in production to prevent data loss
       extra: {
-        max: 10,
+        // Production (Serverless) -> 1 connection per lambda to avoid exhausting Supavisor
+        // Development (Local) -> 10 connections to handle concurrent local requests
+        max: process.env.DB_POOL_SIZE ? parseInt(process.env.DB_POOL_SIZE) : (process.env.NODE_ENV === 'production' ? 1 : 10),
         idleTimeoutMillis: 30000,
-        prepareThreshold: 0,
+        connectionTimeoutMillis: 10000,
+        prepareThreshold: 0, // Disable prepared statements for Supavisor transaction mode compatibility
       },
       logging: false, // Disable logging to reduce noise
     }),

@@ -24,9 +24,9 @@ import { DashboardSummaryResponseDto } from './dto/dashboard-summary-response.dt
 @ApiTags('dashboard')
 @Controller({ path: 'dashboard', version: '1' })
 @UseGuards(CompanyAccessGuard, RolesGuard)
-@Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD)
+@Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD, UserRole.CASHIER)
 export class DashboardController {
-  constructor(private readonly dashboardService: DashboardService) {}
+  constructor(private readonly dashboardService: DashboardService) { }
 
   @Get('summary')
   @ApiCookieAuth('access_token')

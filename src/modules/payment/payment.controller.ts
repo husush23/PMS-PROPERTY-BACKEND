@@ -39,12 +39,17 @@ export class PaymentController {
   constructor(
     private readonly paymentService: PaymentService,
     private readonly paymentSchedulerService: PaymentSchedulerService,
-  ) {}
+  ) { }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiCookieAuth('access_token')
-  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD)
+  @Roles(
+    UserRole.COMPANY_ADMIN,
+    UserRole.MANAGER,
+    UserRole.LANDLORD,
+    UserRole.CASHIER,
+  )
   @ApiOperation({
     summary: 'Create a new payment (COMPANY_ADMIN/MANAGER/LANDLORD only)',
   })
@@ -213,7 +218,7 @@ export class PaymentController {
 
   @Patch(':id')
   @ApiCookieAuth('access_token')
-  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.CASHIER)
   @ApiOperation({
     summary:
       'Update payment (limited fields only) (COMPANY_ADMIN/MANAGER only)',
@@ -255,7 +260,7 @@ export class PaymentController {
 
   @Post(':id/reverse')
   @ApiCookieAuth('access_token')
-  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.CASHIER)
   @ApiOperation({ summary: 'Reverse a payment (COMPANY_ADMIN/MANAGER only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
@@ -294,7 +299,7 @@ export class PaymentController {
 
   @Post(':id/mark-failed')
   @ApiCookieAuth('access_token')
-  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.CASHIER)
   @ApiOperation({
     summary: 'Mark payment as failed (COMPANY_ADMIN/MANAGER only)',
   })

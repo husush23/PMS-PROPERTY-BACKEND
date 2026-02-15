@@ -10,7 +10,11 @@ import {
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { UserRole } from '../../shared/enums/user-role.enum';
 import { Public } from '../../common/decorators/public.decorator';
 import {
   BusinessException,
@@ -39,11 +43,13 @@ import { AcceptTenantInviteDto } from './dto/accept-tenant-invite.dto';
 @ApiTags('tenants')
 @Controller({ path: 'tenants', version: '1' })
 export class TenantController {
-  constructor(private readonly tenantService: TenantService) {}
+  constructor(private readonly tenantService: TenantService) { }
 
   @Post('invite')
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth('JWT-auth')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
   @ApiOperation({
     summary:
       'Invite a tenant to a company by email only (creates user if needed, sends invitation). Profile data will be collected when tenant accepts the invitation.',
@@ -131,6 +137,8 @@ export class TenantController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth('JWT-auth')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
   @ApiOperation({
     summary: 'Create a tenant directly (COMPANY_ADMIN/MANAGER only). Note: If user already exists in the system, all existing user information (password, name, etc.) is preserved for security. Response includes a notice if user already existed.',
   })
@@ -285,6 +293,8 @@ export class TenantController {
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth('JWT-auth')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.TENANT)
   @ApiOperation({ summary: 'Update tenant (tenant can update own profile)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({
@@ -325,6 +335,8 @@ export class TenantController {
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth('JWT-auth')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
   @ApiOperation({ summary: 'Remove tenant (COMPANY_ADMIN/MANAGER only)' })
   @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
   @ApiResponse({

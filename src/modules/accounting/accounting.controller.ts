@@ -23,11 +23,16 @@ import { AccountingSummaryResponseDto } from './dto/accounting-summary-response.
 @Controller({ path: 'accounting', version: '1' })
 @UseGuards(RolesGuard)
 export class AccountingController {
-  constructor(private readonly accountingService: AccountingService) {}
+  constructor(private readonly accountingService: AccountingService) { }
 
   @Get('summary')
   @ApiCookieAuth('access_token')
-  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD)
+  @Roles(
+    UserRole.COMPANY_ADMIN,
+    UserRole.MANAGER,
+    UserRole.LANDLORD,
+    UserRole.CASHIER,
+  )
   @ApiOperation({ summary: 'Get accounting summary (read-only)' })
   @ApiQuery({
     name: 'companyId',

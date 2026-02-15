@@ -63,7 +63,7 @@ export class PaymentService {
     @InjectDataSource()
     private dataSource: DataSource,
     private companySettingsResolver: CompanySettingsResolver,
-  ) {}
+  ) { }
 
   async create(
     createDto: CreatePaymentDto,
@@ -140,19 +140,20 @@ export class PaymentService {
 
       if (
         !requester ||
-        ![UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD].includes(
+        ![UserRole.COMPANY_ADMIN, UserRole.MANAGER, UserRole.LANDLORD, UserRole.CASHIER].includes(
           requester.role,
         )
       ) {
         throw new BusinessException(
           ErrorCode.INSUFFICIENT_PERMISSIONS,
-          'Only company administrators, managers, and landlords can create payments.',
+          'Only company administrators, managers, landlords, and cashiers can create payments.',
           HttpStatus.FORBIDDEN,
           {
             requiredRoles: [
               UserRole.COMPANY_ADMIN,
               UserRole.MANAGER,
               UserRole.LANDLORD,
+              UserRole.CASHIER,
             ],
           },
         );
@@ -360,7 +361,7 @@ export class PaymentService {
           paymentMethod: resolvedPaymentMethod,
           paymentMethodId: paymentMethodEntity.id,
           paymentType: createDto.paymentType,
-      status: requiresApproval ? PaymentStatus.PENDING : PaymentStatus.PAID,
+          status: requiresApproval ? PaymentStatus.PENDING : PaymentStatus.PAID,
           reference: createDto.reference,
           recordedBy: requesterUserId,
           period: createDto.period,
@@ -368,7 +369,7 @@ export class PaymentService {
           isPartial: false,
           balanceAfter: 0,
           attachmentUrl: createDto.attachmentUrl,
-      paidAt: requiresApproval ? undefined : new Date(),
+          paidAt: requiresApproval ? undefined : new Date(),
           isLegacy: false,
         });
 
@@ -527,12 +528,12 @@ export class PaymentService {
         Number(savedPayment.amount),
       );
     }
-    
+
     // Accounting entries for payments:
     // - CASH is recorded here.
     // - Liability entries are recorded for advance payments and deposits.
     // - Income is recorded at invoice creation, not at payment time.
-    
+
     return this.toResponseDto(savedPayment, requesterUserId);
   }
 
@@ -822,7 +823,7 @@ export class PaymentService {
     // Note: amountPaid can be updated through recordPayment method
     if (payment.amountPaid !== undefined && payment.amountDue !== undefined) {
       payment.balance = Number(payment.amountDue) - Number(payment.amountPaid);
-      
+
       // Auto-update status based on balance
       if (payment.balance <= 0 && payment.status !== PaymentStatus.PAID) {
         payment.status = PaymentStatus.PAID;

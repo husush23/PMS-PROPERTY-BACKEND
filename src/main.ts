@@ -12,6 +12,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { seedSuperAdmin } from './database/seeds/super-admin.seed';
+import { seedCashier } from './database/seeds/cashier.seed';
 import { DataSource } from 'typeorm';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -50,9 +51,9 @@ async function bootstrap() {
   // In development, allow localhost
   const allowedOrigins = corsOrigin
     ? corsOrigin
-        .split(',')
-        .map((origin) => origin.trim())
-        .filter(Boolean)
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean)
     : process.env.NODE_ENV === 'production'
       ? [] // Production: no fallback, must set CORS_ORIGIN
       : ['http://localhost:3000']; // Development only
@@ -138,12 +139,12 @@ async function bootstrap() {
     .setTitle('PMS Backend API')
     .setDescription(
       'Property Management System Backend API Documentation\n\n' +
-        '**Authentication**: This API uses HTTP-only cookies for authentication. ' +
-        'Access tokens and refresh tokens are automatically set as cookies when you login, register, or refresh tokens. ' +
-        'Cookies are sent automatically with each request. ' +
-        'Use the `/auth/refresh` endpoint to refresh your access token when it expires. ' +
-        'Use the `/auth/logout` endpoint to clear authentication cookies.\n\n' +
-        '**Important**: Ensure your client sends credentials (cookies) with requests by setting `withCredentials: true` (axios) or `credentials: "include"` (fetch).',
+      '**Authentication**: This API uses HTTP-only cookies for authentication. ' +
+      'Access tokens and refresh tokens are automatically set as cookies when you login, register, or refresh tokens. ' +
+      'Cookies are sent automatically with each request. ' +
+      'Use the `/auth/refresh` endpoint to refresh your access token when it expires. ' +
+      'Use the `/auth/logout` endpoint to clear authentication cookies.\n\n' +
+      '**Important**: Ensure your client sends credentials (cookies) with requests by setting `withCredentials: true` (axios) or `credentials: "include"` (fetch).',
     )
     .setVersion('1.0')
     .addCookieAuth('access_token')
@@ -174,6 +175,8 @@ async function bootstrap() {
     const dataSource = app.get(DataSource);
     await seedSuperAdmin(dataSource);
     console.log('Super admin seeded successfully');
+    await seedCashier(dataSource);
+    console.log('Cashier seeded successfully');
   } catch (error) {
     console.error('Error seeding super admin', error);
   }

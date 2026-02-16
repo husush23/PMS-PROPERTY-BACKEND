@@ -29,11 +29,13 @@ import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { InviteUserDto } from './dto/invite-user.dto';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
 import { MemberResponseDto } from './dto/member-response.dto';
+import { Public } from '../../common/decorators/public.decorator';
+import { AcceptCompanyInvitationPublicDto } from './dto/accept-company-invitation-public.dto';
 
 @ApiTags('companies')
 @Controller({ path: 'companies', version: '1' })
 export class CompanyController {
-  constructor(private readonly companyService: CompanyService) {}
+  constructor(private readonly companyService: CompanyService) { }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -200,6 +202,26 @@ export class CompanyController {
     };
   }
 
+  @Post('invitations/accept')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Accept company invitation (public, token-based)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Invitation accepted successfully',
+  })
+  async acceptInvitationPublic(
+    @Body() acceptDto: AcceptCompanyInvitationPublicDto,
+  ) {
+    await this.companyService.acceptInvitationPublic(acceptDto);
+    return {
+      success: true,
+      message: 'Invitation accepted successfully',
+    };
+  }
+
   @Post(':id/accept-invite')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth('JWT-auth')
@@ -259,6 +281,34 @@ export class CompanyController {
     return {
       success: true,
       data: members,
+    };
+  }
+
+  @Get(':id/invitations')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'List all company invitations (COMPANY_ADMIN/MANAGER only)',
+  })
+  @ApiParam({ name: 'id', type: 'string', format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Invitations retrieved successfully',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Insufficient permissions',
+  })
+  async getInvitations(
+    @Param('id', ParseUUIDPipe) companyId: string,
+    @AuthUser() user: { id: string },
+  ) {
+    const invitations = await this.companyService.getCompanyInvitations(
+      companyId,
+      user.id,
+    );
+    return {
+      success: true,
+      data: invitations,
     };
   }
 

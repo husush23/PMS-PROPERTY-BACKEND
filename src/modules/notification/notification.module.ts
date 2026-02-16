@@ -18,7 +18,7 @@ import { NotificationService } from './notification.service';
           },
         },
         defaults: {
-          from: configService.get<string>('mail.from') || 'noreply@pms.com',
+          from: configService.get<string>('mail.from') || '"Aqal Stream" <hi@aqalstream.com>',
         },
       }),
       inject: [ConfigService],
@@ -27,4 +27,4 @@ import { NotificationService } from './notification.service';
   providers: [NotificationService],
   exports: [NotificationService],
 })
-export class NotificationModule {}
+export class NotificationModule { }

@@ -34,6 +34,8 @@ import { MemberResponseDto } from './dto/member-response.dto';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { User } from '../user/entities/user.entity';
 import { NotificationService } from '../notification/notification.service';
+import { AcceptCompanyInvitationPublicDto } from './dto/accept-company-invitation-public.dto';
+import { PasswordUtil } from '../../common/utils/password.util';
 
 @Injectable()
 export class CompanyService {
@@ -54,7 +56,7 @@ export class CompanyService {
     private dataSource: DataSource,
     @Inject(forwardRef(() => NotificationService))
     private notificationService: NotificationService,
-  ) {}
+  ) { }
 
   async create(
     createCompanyDto: CreateCompanyDto,
@@ -283,6 +285,40 @@ export class CompanyService {
       companyId,
       addUserDto.role,
     );
+  }
+
+  async getCompanyInvitations(
+    companyId: string,
+    userId: string,
+  ): Promise<CompanyInvitation[]> {
+    const member = await this.userCompanyRepository.findOne({
+      where: { userId, companyId },
+    });
+
+    if (!member) {
+      throw new BusinessException(
+        ErrorCode.COMPANY_NOT_FOUND,
+        'You are not a member of this company',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    if (
+      member.role !== UserRole.COMPANY_ADMIN &&
+      member.role !== UserRole.MANAGER
+    ) {
+      throw new BusinessException(
+        ErrorCode.INSUFFICIENT_PERMISSIONS,
+        'Insufficient permissions to view invitations',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    return this.invitationRepository.find({
+      where: { companyId },
+      relations: ['inviter'],
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async updateUserRole(
@@ -632,6 +668,116 @@ export class CompanyService {
       invitation.companyId,
       invitation.role,
     );
+
+    // Mark invitation as accepted
+    await this.invitationRepository.update(invitation.id, {
+      status: InvitationStatus.ACCEPTED,
+      acceptedAt: new Date(),
+    });
+  }
+
+  async acceptInvitationPublic(
+    acceptDto: AcceptCompanyInvitationPublicDto,
+  ): Promise<void> {
+    // Find invitation by token
+    const invitation = await this.invitationRepository.findOne({
+      where: { token: acceptDto.token },
+      relations: ['company'],
+    });
+
+    if (!invitation) {
+      throw new BusinessException(
+        ErrorCode.INVITATION_NOT_FOUND,
+        ERROR_MESSAGES.INVITATION_NOT_FOUND,
+        HttpStatus.NOT_FOUND,
+        { token: acceptDto.token },
+      );
+    }
+
+    // Check invitation status
+    if (invitation.status === InvitationStatus.ACCEPTED) {
+      throw new BusinessException(
+        ErrorCode.INVITATION_ALREADY_ACCEPTED,
+        ERROR_MESSAGES.INVITATION_ALREADY_ACCEPTED,
+        HttpStatus.BAD_REQUEST,
+        { token: acceptDto.token },
+      );
+    }
+
+    if (
+      invitation.status === InvitationStatus.CANCELLED ||
+      invitation.status === InvitationStatus.EXPIRED
+    ) {
+      throw new BusinessException(
+        ErrorCode.INVITATION_EXPIRED,
+        ERROR_MESSAGES.INVITATION_EXPIRED,
+        HttpStatus.BAD_REQUEST,
+        { token: acceptDto.token },
+      );
+    }
+
+    // Check if expired
+    if (new Date() > invitation.expiresAt) {
+      await this.invitationRepository.update(invitation.id, {
+        status: InvitationStatus.EXPIRED,
+      });
+      throw new BusinessException(
+        ErrorCode.INVITATION_EXPIRED,
+        ERROR_MESSAGES.INVITATION_EXPIRED,
+        HttpStatus.BAD_REQUEST,
+        { token: acceptDto.token },
+      );
+    }
+
+    // Find or create user
+    let user = await this.userRepository.findOne({
+      where: { email: invitation.email.toLowerCase() },
+    });
+
+    if (!user) {
+      // User doesn't exist yet, create it
+      const hashedPassword = await PasswordUtil.hash(acceptDto.password);
+      user = this.userRepository.create({
+        email: invitation.email.toLowerCase(),
+        password: hashedPassword,
+        name: acceptDto.name,
+        isActive: true,
+        emailVerified: true, // Specific valid invitation -> trusted email
+      });
+      user = await this.userRepository.save(user);
+    } else {
+      // User exists, update password and activate
+      const hashedPassword = await PasswordUtil.hash(acceptDto.password);
+      await this.userRepository.update(user.id, {
+        password: hashedPassword,
+        isActive: true,
+        emailVerified: true,
+        // Also update name if provided? Yes.
+        name: acceptDto.name || user.name,
+      });
+    }
+
+    // Check if user is already in company
+    const existingMember = await this.userCompanyRepository.findOne({
+      where: { userId: user.id, companyId: invitation.companyId },
+    });
+
+    if (existingMember) {
+      // Already member, update role? Or keep existing?
+      // Usually, invitation defines role. But if they're already member, maybe ignore?
+      // Let's assume invitation updates role or adds them.
+      // If invitation role is different, update.
+      if (existingMember.role !== invitation.role) {
+        await this.userCompanyRepository.update(existingMember.id, { role: invitation.role });
+      }
+    } else {
+      // Add user to company
+      await this.assignUserToCompany(
+        user.id,
+        invitation.companyId,
+        invitation.role,
+      );
+    }
 
     // Mark invitation as accepted
     await this.invitationRepository.update(invitation.id, {

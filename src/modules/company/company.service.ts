@@ -107,6 +107,7 @@ export class CompanyService {
           await this.companySettingsService.createWithDefaults(
             companyEntity.id,
             allowedPaymentMethods,
+            createCompanyDto.defaultCurrency,
             manager,
           );
         return { company: companyEntity, settings: companySettings };

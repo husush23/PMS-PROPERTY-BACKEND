@@ -50,4 +50,13 @@ export class CreateCompanyDto {
   @IsOptional()
   @IsEmail()
   email?: string;
+
+  @ApiPropertyOptional({
+    description: 'Default currency code (e.g. USD, KES)',
+    example: 'USD',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  defaultCurrency?: string;
 }

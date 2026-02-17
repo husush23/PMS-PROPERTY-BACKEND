@@ -11,7 +11,7 @@ export class CompanySettingsService {
   constructor(
     @InjectRepository(CompanySettings)
     private settingsRepository: Repository<CompanySettings>,
-  ) {}
+  ) { }
 
   /**
    * Creates company_settings with MVP defaults. Used only by POST /companies (create-company flow).
@@ -20,11 +20,13 @@ export class CompanySettingsService {
   async createWithDefaults(
     companyId: string,
     allowedPaymentMethods: PaymentMethod[],
+    defaultCurrency?: string,
     manager?: EntityManager,
   ): Promise<CompanySettings> {
     const settings = this.settingsRepository.create({
       companyId,
       ...COMPANY_SETTINGS_MVP_DEFAULTS,
+      defaultCurrency: defaultCurrency || COMPANY_SETTINGS_MVP_DEFAULTS.defaultCurrency,
       allowedPaymentMethods,
     });
     if (manager) {

@@ -14,6 +14,7 @@ import { CompanyInvitation } from './entities/company-invitation.entity';
 import { User } from '../user/entities/user.entity';
 import { NotificationModule } from '../notification/notification.module';
 import { PaymentMethodsModule } from '../payment-method/payment-methods.module';
+import { SubscriptionModule } from '../subscription/subscription.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { PaymentMethodsModule } from '../payment-method/payment-methods.module';
     ]),
     forwardRef(() => NotificationModule),
     PaymentMethodsModule,
+    forwardRef(() => SubscriptionModule),
   ],
   controllers: [
     CompanyController,
@@ -36,4 +38,4 @@ import { PaymentMethodsModule } from '../payment-method/payment-methods.module';
   providers: [CompanyService, CompanySettingsService, CompanySettingsResolver],
   exports: [CompanyService, CompanySettingsService, CompanySettingsResolver],
 })
-export class CompanyModule {}
+export class CompanyModule { }

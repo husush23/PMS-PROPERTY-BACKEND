@@ -19,11 +19,17 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ContactModule } from './modules/contact/contact.module';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { PlanModule } from './modules/plan/plan.module';
+import { SubscriptionModule } from './modules/subscription/subscription.module';
+import { SubscriptionPaymentModule } from './modules/subscription-payment/subscription-payment.module';
 import appConfig from './config/app.config';
 import dbConfig from './config/db.config';
 import jwtConfig from './config/jwt.config';
 import mailConfig from './config/mail.config';
 import cacheConfig from './config/cache.config';
+
+import { APP_GUARD } from '@nestjs/core';
+import { SubscriptionGuard } from './modules/subscription/guards/subscription.guard';
 
 @Module({
   imports: [
@@ -51,8 +57,17 @@ import cacheConfig from './config/cache.config';
     ReportsModule,
     DashboardModule,
     ContactModule,
+    PlanModule,
+    SubscriptionModule,
+    SubscriptionPaymentModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: SubscriptionGuard,
+    },
+  ],
 })
 export class AppModule { }

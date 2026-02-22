@@ -13,6 +13,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { seedSuperAdmin } from './database/seeds/super-admin.seed';
 import { seedCashier } from './database/seeds/cashier.seed';
+import { seedPlans } from './database/seeds/plan.seed';
 import { DataSource } from 'typeorm';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -177,8 +178,10 @@ async function bootstrap() {
     console.log('Super admin seeded successfully');
     await seedCashier(dataSource);
     console.log('Cashier seeded successfully');
+    await seedPlans(dataSource);
+    console.log('Subscription plans seeded successfully');
   } catch (error) {
-    console.error('Error seeding super admin', error);
+    console.error('Error seeding data', error);
   }
 
   const port = configService.get<number>('app.port') ?? 8000;

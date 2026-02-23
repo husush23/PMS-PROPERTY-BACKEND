@@ -144,6 +144,57 @@ export class NotificationService {
     });
   }
 
+  async sendEmailVerificationEmail(
+    email: string,
+    token: string,
+    name: string,
+  ): Promise<void> {
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const verifyUrl = `${frontendUrl}/verify-email?token=${token}`;
+
+    console.log(`[NotificationService] Attempting to send verification email to: ${email}`);
+    try {
+      await this.mailerService.sendMail({
+        to: email,
+        subject: 'Verify Your Email Address',
+        html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Verify Your Email</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background-color: #f4f4f4; padding: 20px; border-radius: 5px;">
+            <h2 style="color: #333; margin-top: 0;">Verify Your Email Address</h2>
+            <p>Hello ${name},</p>
+            <p>Thanks for signing up! Please verify your email address to activate your account and start creating your company.</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${verifyUrl}"
+                 style="background-color: #007bff; color: #ffffff; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+                Verify Email Address
+              </a>
+            </div>
+            <p style="font-size: 12px; color: #666;">Or copy and paste this link into your browser:</p>
+            <p style="font-size: 12px; color: #666; word-break: break-all;">${verifyUrl}</p>
+            <p style="font-size: 12px; color: #666; margin-top: 20px;">
+              This link will expire in 24 hours. If you didn't create an account, you can safely ignore this email.
+            </p>
+          </div>
+        </body>
+        </html>
+      `,
+        text: `Hello ${name},\n\nThanks for signing up! Please verify your email address by visiting:\n${verifyUrl}\n\nThis link will expire in 24 hours.`,
+      });
+      console.log(`[NotificationService] Verification email sent successfully to: ${email}`);
+    } catch (error) {
+      console.error(`[NotificationService] Failed to send verification email to: ${email}`, error);
+      throw error;
+    }
+  }
+
   async sendContactEmail(
     name: string,
     email: string,

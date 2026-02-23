@@ -7,6 +7,10 @@ export const ERROR_MESSAGES = {
   TOKEN_EXPIRED: 'Your session has expired. Please log in again.',
   TOKEN_INVALID: 'Your session is invalid. Please log in again.',
   INVALID_RESET_TOKEN: 'The password reset token is invalid or has expired.',
+  EMAIL_NOT_VERIFIED:
+    'Please verify your email address before logging in. Check your inbox or request a new verification email.',
+  INVALID_VERIFICATION_TOKEN:
+    'The email verification link is invalid or has expired. Please request a new one.',
   USER_NOT_FOUND_AUTH: "We couldn't find an account with that email address.",
 
   // User

@@ -37,6 +37,12 @@ export class User {
   @Column({ type: 'timestamp', nullable: true })
   resetPasswordExpires: Date | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  emailVerificationToken: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  emailVerificationExpires: Date | null;
+
   @OneToMany(() => UserCompany, (userCompany) => userCompany.user)
   userCompanies: UserCompany[];
 

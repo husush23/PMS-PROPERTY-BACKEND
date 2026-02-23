@@ -77,7 +77,14 @@ export class AuthService {
   ): Promise<LoginResponseDto & { refresh_token: string }> {
     const user = await this.validateUser(loginDto.email, loginDto.password);
 
-    // Convert User entity to UserResponseDto
+    // Block login if email is not verified
+    if (!user.emailVerified) {
+      throw new BusinessException(
+        ErrorCode.EMAIL_NOT_VERIFIED,
+        ERROR_MESSAGES.EMAIL_NOT_VERIFIED,
+        HttpStatus.FORBIDDEN,
+      );
+    }
     const userResponse: UserResponseDto = {
       id: user.id,
       email: user.email,
@@ -275,10 +282,28 @@ export class AuthService {
       name: registerDto.name,
     });
 
-    // Generate refresh token
-    const refresh_token = this.generateRefreshToken(user.id, user.email);
+    console.log(`[AuthService] User created: ${user.email} (ID: ${user.id}). Generating verification token...`);
 
-    // Return token without companyId (user has no companies yet)
+    // Generate email verification token (expires in 24 hours)
+    const verificationToken = randomUUID();
+    const verificationExpires = new Date();
+    verificationExpires.setHours(verificationExpires.getHours() + 24);
+
+    // Save token to user
+    await this.userService.update(user.id, {
+      emailVerificationToken: verificationToken,
+      emailVerificationExpires: verificationExpires,
+    } as any);
+
+    // Send verification email
+    await this.notificationService.sendEmailVerificationEmail(
+      user.email,
+      verificationToken,
+      user.name || 'User',
+    );
+
+    // Generate tokens so frontend can show "check your inbox" screen
+    const refresh_token = this.generateRefreshToken(user.id, user.email);
     const access_token = this.jwtService.sign({
       sub: user.id,
       email: user.email,
@@ -291,6 +316,54 @@ export class AuthService {
       companies: [], // Empty - no companies yet
       requiresCompanySelection: false,
     };
+  }
+
+  async verifyEmail(token: string): Promise<void> {
+    const user = await this.userService.findByVerificationToken(token);
+
+    if (!user || !user.emailVerificationToken || !user.emailVerificationExpires) {
+      throw new BusinessException(
+        ErrorCode.INVALID_VERIFICATION_TOKEN,
+        ERROR_MESSAGES.INVALID_VERIFICATION_TOKEN,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    if (new Date() > user.emailVerificationExpires) {
+      throw new BusinessException(
+        ErrorCode.INVALID_VERIFICATION_TOKEN,
+        'Your email verification link has expired. Please request a new one.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    await this.userService.markEmailVerified(user.id);
+  }
+
+  async resendVerificationEmail(email: string): Promise<void> {
+    const user = await this.userService.findByEmail(email);
+
+    // Don't reveal whether the email exists
+    if (!user) return;
+
+    // Already verified — nothing to do
+    if (user.emailVerified) return;
+
+    // Generate a fresh token
+    const token = randomUUID();
+    const expires = new Date();
+    expires.setHours(expires.getHours() + 24);
+
+    await this.userService.update(user.id, {
+      emailVerificationToken: token,
+      emailVerificationExpires: expires,
+    } as any);
+
+    await this.notificationService.sendEmailVerificationEmail(
+      user.email,
+      token,
+      user.name || 'User',
+    );
   }
 
   async getCurrentUser(userId: string): Promise<UserResponseDto> {

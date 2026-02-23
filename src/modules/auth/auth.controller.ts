@@ -32,6 +32,8 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { UserResponseDto } from '../user/dto/user-response.dto';
 import {
   setAccessTokenCookie,
@@ -617,6 +619,45 @@ export class AuthController {
     return {
       success: true,
       message: 'Password has been reset successfully. You can now log in.',
+    };
+  }
+
+  @Public()
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify email address using the verification token from email' })
+  @ApiBody({ type: VerifyEmailDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Email verified successfully. The user can now log in.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or expired verification token',
+  })
+  async verifyEmail(@Body() verifyEmailDto: VerifyEmailDto) {
+    await this.authService.verifyEmail(verifyEmailDto.token);
+    return {
+      success: true,
+      message: 'Email verified successfully. You can now log in.',
+    };
+  }
+
+  @Public()
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Resend email verification link' })
+  @ApiBody({ type: ResendVerificationDto })
+  @ApiResponse({
+    status: 200,
+    description: 'If an unverified account with that email exists, a new verification email has been sent.',
+  })
+  async resendVerification(@Body() resendVerificationDto: ResendVerificationDto) {
+    await this.authService.resendVerificationEmail(resendVerificationDto.email);
+    return {
+      success: true,
+      message:
+        'If an account exists and is unverified, a new verification email has been sent.',
     };
   }
 }

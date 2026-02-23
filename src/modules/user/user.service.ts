@@ -110,6 +110,20 @@ export class UserService {
     return this.userRepository.findOne({ where: { resetPasswordToken: token } });
   }
 
+  async findByVerificationToken(token: string): Promise<User | null> {
+    return this.userRepository.findOne({
+      where: { emailVerificationToken: token },
+    });
+  }
+
+  async markEmailVerified(userId: string): Promise<void> {
+    await this.userRepository.update(userId, {
+      emailVerified: true,
+      emailVerificationToken: null,
+      emailVerificationExpires: null,
+    });
+  }
+
   async findByEmailForCompany(
     email: string,
     companyId: string,

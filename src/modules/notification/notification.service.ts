@@ -15,8 +15,7 @@ export class NotificationService {
     invitationToken: string,
     invitedBy: string,
   ): Promise<void> {
-    const frontendUrl =
-      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const frontendUrl = this.configService.get<string>('app.frontendUrl')!;
     const acceptInviteUrl = `${frontendUrl}/accept-invitation?token=${invitationToken}`;
 
     await this.mailerService.sendMail({
@@ -60,8 +59,7 @@ export class NotificationService {
     invitationToken: string,
     invitedBy: string,
   ): Promise<void> {
-    const frontendUrl =
-      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const frontendUrl = this.configService.get<string>('app.frontendUrl')!;
     const acceptInviteUrl = `${frontendUrl}/tenants/accept-invitation?token=${invitationToken}`;
 
     await this.mailerService.sendMail({
@@ -104,8 +102,7 @@ export class NotificationService {
     token: string,
     name: string,
   ): Promise<void> {
-    const frontendUrl =
-      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const frontendUrl = this.configService.get<string>('app.frontendUrl')!;
     const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
 
     await this.mailerService.sendMail({
@@ -149,8 +146,7 @@ export class NotificationService {
     token: string,
     name: string,
   ): Promise<void> {
-    const frontendUrl =
-      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const frontendUrl = this.configService.get<string>('app.frontendUrl')!;
     const verifyUrl = `${frontendUrl}/verify-email?token=${token}`;
 
     console.log(`[NotificationService] Attempting to send verification email to: ${email}`);

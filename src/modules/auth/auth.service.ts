@@ -78,13 +78,13 @@ export class AuthService {
     const user = await this.validateUser(loginDto.email, loginDto.password);
 
     // Block login if email is not verified
-    if (!user.emailVerified) {
-      throw new BusinessException(
-        ErrorCode.EMAIL_NOT_VERIFIED,
-        ERROR_MESSAGES.EMAIL_NOT_VERIFIED,
-        HttpStatus.FORBIDDEN,
-      );
-    }
+    // if (!user.emailVerified) {
+    //   throw new BusinessException(
+    //     ErrorCode.EMAIL_NOT_VERIFIED,
+    //     ERROR_MESSAGES.EMAIL_NOT_VERIFIED,
+    //     HttpStatus.FORBIDDEN,
+    //   );
+    // }
     const userResponse: UserResponseDto = {
       id: user.id,
       email: user.email,

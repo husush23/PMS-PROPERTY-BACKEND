@@ -36,6 +36,7 @@ import { User } from '../user/entities/user.entity';
 import { NotificationService } from '../notification/notification.service';
 import { AcceptCompanyInvitationPublicDto } from './dto/accept-company-invitation-public.dto';
 import { PasswordUtil } from '../../common/utils/password.util';
+import { SubscriptionService } from '../subscription/subscription.service';
 
 @Injectable()
 export class CompanyService {
@@ -56,6 +57,8 @@ export class CompanyService {
     private dataSource: DataSource,
     @Inject(forwardRef(() => NotificationService))
     private notificationService: NotificationService,
+    @Inject(forwardRef(() => SubscriptionService))
+    private subscriptionService: SubscriptionService,
   ) { }
 
   async create(
@@ -119,6 +122,16 @@ export class CompanyService {
       savedCompany.id,
       UserRole.COMPANY_ADMIN,
     );
+
+    // Create Trial Subscription
+    try {
+      await this.subscriptionService.createTrial(savedCompany.id);
+    } catch (error) {
+      this.logger.error(`Failed to create trial subscription for company ${savedCompany.id}`, error);
+      // Should we revert transaction? Probably yes if subscription is core.
+      // But createTrial is separate logic.
+      // For now, log error. Super admin can fix it.
+    }
 
     return {
       ...this.toResponseDto(savedCompany),

@@ -9,6 +9,7 @@ import {
   JoinTable,
 } from 'typeorm';
 import { UserCompany } from './user-company.entity';
+import { Subscription } from '../../subscription/entities/subscription.entity';
 
 @Entity('companies')
 export class Company {
@@ -38,6 +39,9 @@ export class Company {
 
   @OneToMany(() => UserCompany, (userCompany) => userCompany.company)
   userCompanies: UserCompany[];
+
+  @OneToMany(() => Subscription, (subscription) => subscription.company)
+  subscriptions: Subscription[];
 
   // OneToMany relation to Property entity
   // Note: Using forwardRef to avoid circular dependency

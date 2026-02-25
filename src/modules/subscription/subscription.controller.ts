@@ -11,21 +11,29 @@ export class SubscriptionController {
     constructor(private readonly subscriptionService: SubscriptionService) { }
 
     @Post('record-payment')
-    recordPayment(@Body() data: {
+    async recordPayment(@Body() data: {
         companyId: string;
         planType: PlanType;
         amount: number;
         referenceNumber?: string;
         proofImageUrl?: string;
     }, @AuthUser() user: any) {
-        return this.subscriptionService.recordSubscriptionPayment({
+        const result = await this.subscriptionService.recordSubscriptionPayment({
             ...data,
             recordedBy: user.id
         });
+        return {
+            success: true,
+            data: result
+        };
     }
 
     @Get()
-    findAll() {
-        return this.subscriptionService.findAll();
+    async findAll() {
+        const result = await this.subscriptionService.findAll();
+        return {
+            success: true,
+            data: result
+        };
     }
 }

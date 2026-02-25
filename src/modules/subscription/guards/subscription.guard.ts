@@ -2,6 +2,8 @@ import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@
 import { Reflector } from '@nestjs/core';
 import { SubscriptionService } from '../subscription.service';
 import { SubscriptionStatus } from '../entities/subscription.entity';
+import { SKIP_SUBSCRIPTION_KEY } from '../../../common/decorators/skip-subscription.decorator';
+import { IS_PUBLIC_KEY } from '../../../common/decorators/public.decorator';
 
 @Injectable()
 export class SubscriptionGuard implements CanActivate {
@@ -13,6 +15,20 @@ export class SubscriptionGuard implements CanActivate {
     async canActivate(context: ExecutionContext): Promise<boolean> {
         const request = context.switchToHttp().getRequest();
         const user = request.user;
+
+        // Bypass if marked with @SkipSubscription or @Public
+        const skipSubscription = this.reflector.getAllAndOverride<boolean>(SKIP_SUBSCRIPTION_KEY, [
+            context.getHandler(),
+            context.getClass(),
+        ]);
+        const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+            context.getHandler(),
+            context.getClass(),
+        ]);
+
+        if (skipSubscription || isPublic) {
+            return true;
+        }
 
         // Super admin bypasses
         if (user?.isSuperAdmin) {

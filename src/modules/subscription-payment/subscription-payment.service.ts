@@ -27,14 +27,11 @@ export class SubscriptionPaymentService {
     }
 
     async findByCompany(companyId: string) {
-        return await this.subscriptionPaymentRepository.find({
-            where: {
-                subscription: {
-                    companyId: companyId
-                }
-            },
-            relations: ['subscription', 'subscription.plan'],
-            order: { recordedAt: 'DESC' }
-        });
+        return await this.subscriptionPaymentRepository.createQueryBuilder('payment')
+            .innerJoinAndSelect('payment.subscription', 'subscription')
+            .leftJoinAndSelect('subscription.plan', 'plan')
+            .where('subscription.companyId = :companyId', { companyId })
+            .orderBy('payment.recordedAt', 'DESC')
+            .getMany();
     }
 }

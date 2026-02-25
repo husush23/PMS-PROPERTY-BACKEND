@@ -1,8 +1,8 @@
-import { Controller, Get, UseGuards, Request, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, UseGuards, ForbiddenException } from '@nestjs/common';
 import { SubscriptionPaymentService } from './subscription-payment.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { Public } from '../../common/decorators/public.decorator';
+import { SkipSubscription } from '../../common/decorators/skip-subscription.decorator';
 import { AuthUser } from '../../common/decorators/auth-user.decorator';
 
 @ApiTags('Subscription Payments')
@@ -11,7 +11,7 @@ import { AuthUser } from '../../common/decorators/auth-user.decorator';
 export class SubscriptionPaymentController {
     constructor(private readonly subscriptionPaymentService: SubscriptionPaymentService) { }
 
-    @Public()
+    @SkipSubscription()
     @Get('my-company')
     @ApiOperation({ summary: 'Get subscription payment history for the current company' })
     @ApiResponse({ status: 200, description: 'Return payment history' })
@@ -20,6 +20,10 @@ export class SubscriptionPaymentController {
         if (!companyId) {
             throw new ForbiddenException('Please select a company to view payment history');
         }
-        return this.subscriptionPaymentService.findByCompany(companyId);
+        const payments = await this.subscriptionPaymentService.findByCompany(companyId);
+        return {
+            success: true,
+            data: payments
+        };
     }
 }

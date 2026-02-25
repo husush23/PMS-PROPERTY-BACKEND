@@ -1,9 +1,11 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan } from 'typeorm';
-import { Subscription, SubscriptionStatus, BillingCycle } from './entities/subscription.entity';
+import { Repository } from 'typeorm';
+import { Subscription, SubscriptionStatus, PlanType } from './entities/subscription.entity';
 import { Plan } from '../plan/entities/plan.entity';
 import { Company } from '../company/entities/company.entity';
+import { SubscriptionPayment, PaymentStatus } from '../subscription-payment/entities/subscription-payment.entity';
+import { addMonths, addYears, isAfter, endOfDay } from 'date-fns';
 
 @Injectable()
 export class SubscriptionService {
@@ -14,115 +16,141 @@ export class SubscriptionService {
         private readonly planRepository: Repository<Plan>,
         @InjectRepository(Company)
         private readonly companyRepository: Repository<Company>,
+        @InjectRepository(SubscriptionPayment)
+        private readonly subPaymentRepository: Repository<SubscriptionPayment>,
     ) { }
 
-    async createTrial(companyId: string): Promise<Subscription> {
-        const defaultPlan = await this.planRepository.findOne({
-            where: { isActive: true },
-            order: { monthlyPrice: 'ASC' },
-        });
+    async recordSubscriptionPayment(data: {
+        companyId: string;
+        planType: PlanType;
+        amount: number;
+        referenceNumber?: string;
+        proofImageUrl?: string;
+        recordedBy: string;
+    }): Promise<Subscription> {
+        const { companyId, planType, amount, referenceNumber, proofImageUrl, recordedBy } = data;
 
-        if (!defaultPlan) {
-            throw new NotFoundException('No active plans available for trial');
-        }
-
-        const startDate = new Date();
-        const trialEndsAt = new Date(startDate);
-        trialEndsAt.setDate(startDate.getDate() + 30); // 30 days trial
-
-        const existingSubscription = await this.subscriptionRepository.findOne({
+        // 1. Fetch latest subscription (only one should be ACTIVE ideally)
+        let subscription = await this.subscriptionRepository.findOne({
             where: { companyId },
+            order: { endDate: 'DESC' }
         });
 
-        if (existingSubscription) {
-            return existingSubscription;
+        const now = new Date();
+        let startDate: Date;
+        let endDate: Date;
+
+        if (!subscription || subscription.status === SubscriptionStatus.EXPIRED || !isAfter(subscription.endDate, now)) {
+            // New or expired, start from today
+            startDate = now;
+            if (subscription && subscription.status === SubscriptionStatus.ACTIVE) {
+                subscription.status = SubscriptionStatus.EXPIRED;
+                await this.subscriptionRepository.save(subscription);
+            }
+        } else {
+            // Active, extend from current endDate
+            startDate = subscription.endDate;
         }
+
+        // Calculate new endDate
+        if (planType === PlanType.MONTHLY) {
+            endDate = addMonths(startDate, 1);
+        } else {
+            endDate = addYears(startDate, 1);
+        }
+
+        // 2. Update or create subscription
+        if (subscription && subscription.status !== SubscriptionStatus.EXPIRED) {
+            subscription.endDate = endDate;
+            subscription.status = SubscriptionStatus.ACTIVE;
+            subscription.planType = planType;
+        } else {
+            // Get a default plan if none associated (matching logic)
+            const defaultPlan = await this.planRepository.findOne({ where: { isActive: true } });
+            if (!defaultPlan) throw new InternalServerErrorException('No active plans found to associate.');
+
+            subscription = this.subscriptionRepository.create({
+                companyId,
+                planId: defaultPlan.id,
+                status: SubscriptionStatus.ACTIVE,
+                planType,
+                startDate: startDate === now ? startDate : now, // If new, start now
+                endDate,
+            });
+        }
+
+        const savedSubscription = await this.subscriptionRepository.save(subscription);
+
+        // 3. Record payment
+        const payment = this.subPaymentRepository.create({
+            subscriptionId: savedSubscription.id,
+            amount,
+            periodStart: startDate,
+            periodEnd: endDate,
+            referenceNumber,
+            proofImageUrl,
+            recordedBy,
+            recordedAt: now,
+            status: PaymentStatus.COMPLETED
+        });
+
+        await this.subPaymentRepository.save(payment);
+
+        return savedSubscription;
+    }
+
+    async checkSubscriptionStatus(companyId: string): Promise<boolean> {
+        const subscription = await this.subscriptionRepository.findOne({
+            where: { companyId },
+            order: { endDate: 'DESC' }
+        });
+
+        if (!subscription) return false;
+
+        const now = new Date();
+
+        // If status is ACTIVE or TRIAL, we check the endDate
+        if (subscription.status === SubscriptionStatus.ACTIVE || subscription.status === SubscriptionStatus.TRIAL) {
+            if (isAfter(endOfDay(subscription.endDate), now)) {
+                return true;
+            } else {
+                // Auto-update to EXPIRED if date has passed
+                subscription.status = SubscriptionStatus.EXPIRED;
+                await this.subscriptionRepository.save(subscription);
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    async createTrial(companyId: string): Promise<Subscription> {
+        // Check if company already has a subscription
+        const existing = await this.subscriptionRepository.findOne({ where: { companyId } });
+        if (existing) return existing;
+
+        const defaultPlan = await this.planRepository.findOne({ where: { isActive: true } });
+        if (!defaultPlan) throw new InternalServerErrorException('No active plans found for trial');
+
+        const now = new Date();
+        const trialEndDate = new Date();
+        trialEndDate.setDate(now.getDate() + 30);
 
         const subscription = this.subscriptionRepository.create({
             companyId,
             planId: defaultPlan.id,
             status: SubscriptionStatus.TRIAL,
-            billingCycle: BillingCycle.MONTHLY,
-            startDate: startDate,
-            endDate: trialEndsAt,
-            trialEndsAt: trialEndsAt,
-            autoRenew: true,
+            planType: PlanType.MONTHLY,
+            startDate: now,
+            endDate: trialEndDate,
+            trialEndsAt: trialEndDate,
         });
 
         return await this.subscriptionRepository.save(subscription);
     }
 
-    async assignSubscription(
-        companyId: string,
-        planId: string,
-        billingCycle: BillingCycle,
-        startDate?: Date,
-        endDate?: Date,
-        status?: SubscriptionStatus
-    ): Promise<Subscription> {
-        const plan = await this.planRepository.findOne({ where: { id: planId } });
-        if (!plan) throw new NotFoundException('Plan not found');
-
-        const company = await this.companyRepository.findOne({ where: { id: companyId } });
-        if (!company) throw new NotFoundException('Company not found');
-
-        let subscription = await this.subscriptionRepository.findOne({ where: { companyId } });
-
-        const now = new Date();
-        const effectiveStartDate = startDate ? new Date(startDate) : now;
-        let effectiveEndDate = endDate ? new Date(endDate) : new Date(effectiveStartDate);
-
-        if (!endDate) {
-            if (billingCycle === BillingCycle.MONTHLY) {
-                effectiveEndDate.setMonth(effectiveEndDate.getMonth() + 1);
-            } else {
-                effectiveEndDate.setFullYear(effectiveEndDate.getFullYear() + 1);
-            }
-        }
-
-        if (subscription) {
-            subscription.plan = plan;
-            subscription.billingCycle = billingCycle;
-            subscription.status = status || SubscriptionStatus.ACTIVE;
-            subscription.startDate = effectiveStartDate;
-            subscription.endDate = effectiveEndDate;
-        } else {
-            subscription = this.subscriptionRepository.create({
-                companyId,
-                planId,
-                status: status || SubscriptionStatus.ACTIVE,
-                billingCycle,
-                startDate: effectiveStartDate,
-                endDate: effectiveEndDate,
-                autoRenew: true,
-            });
-        }
-
-        return await this.subscriptionRepository.save(subscription);
-    }
-
-    async addManualDays(subscriptionId: string, days: number): Promise<Subscription> {
-        const subscription = await this.subscriptionRepository.findOne({ where: { id: subscriptionId } });
-        if (!subscription) throw new NotFoundException('Subscription not found');
-
-        const currentEndDate = new Date(subscription.endDate);
-        currentEndDate.setDate(currentEndDate.getDate() + days);
-        subscription.endDate = currentEndDate;
-
-        if (subscription.status === SubscriptionStatus.EXPIRED && currentEndDate > new Date()) {
-            subscription.status = SubscriptionStatus.ACTIVE;
-        }
-
-        return await this.subscriptionRepository.save(subscription);
-    }
-
-    async cancelSubscription(subscriptionId: string): Promise<Subscription> {
-        const subscription = await this.subscriptionRepository.findOne({ where: { id: subscriptionId } });
-        if (!subscription) throw new NotFoundException('Subscription not found');
-
-        subscription.status = SubscriptionStatus.CANCELLED;
-        subscription.autoRenew = false;
-        return await this.subscriptionRepository.save(subscription);
+    async updateSubscriptionStatus(id: string, status: SubscriptionStatus): Promise<void> {
+        await this.subscriptionRepository.update(id, { status });
     }
 
     async findAll(): Promise<Subscription[]> {
@@ -135,44 +163,13 @@ export class SubscriptionService {
         return sub;
     }
 
-    async getSubscriptionByCompanyId(companyId: string): Promise<Subscription> {
+    async getSubscriptionByCompanyId(companyId: string): Promise<Subscription | null> {
         const subscription = await this.subscriptionRepository.findOne({
             where: { companyId },
             relations: ['plan'],
+            order: { endDate: 'DESC' }
         });
-
-        if (!subscription) {
-            throw new NotFoundException('Subscription not found for this company');
-        }
 
         return subscription;
-    }
-
-    async checkSubscriptionStatus(companyId: string): Promise<boolean> {
-        const subscription = await this.subscriptionRepository.findOne({
-            where: { companyId },
-        });
-
-        if (!subscription) return false;
-
-        const now = new Date();
-
-        // If cancelled, check if end date is in future (still served)
-        if (subscription.status === SubscriptionStatus.CANCELLED) {
-            return subscription.endDate > now;
-        }
-
-        if (subscription.status === SubscriptionStatus.ACTIVE || subscription.status === SubscriptionStatus.TRIAL) {
-            if (subscription.endDate > now) {
-                return true;
-            }
-
-            // Grace period check (3 days)
-            const gracePeriodEnd = new Date(subscription.endDate);
-            gracePeriodEnd.setDate(gracePeriodEnd.getDate() + 3);
-            if (now <= gracePeriodEnd) return true;
-        }
-
-        return false;
     }
 }

@@ -24,14 +24,29 @@ export class SubscriptionPayment {
     @JoinColumn({ name: 'subscriptionId' })
     subscription: Subscription;
 
+    @Column({ type: 'timestamp' })
+    periodStart: Date;
+
+    @Column({ type: 'timestamp' })
+    periodEnd: Date;
+
     @Column('decimal', { precision: 10, scale: 2 })
     amount: number;
 
     @Column({ default: 'USD' })
     currency: string;
 
-    @Column({ type: 'timestamp' })
-    paymentDate: Date;
+    @Column({ nullable: true })
+    referenceNumber: string;
+
+    @Column({ nullable: true })
+    proofImageUrl: string;
+
+    @Column({ nullable: true })
+    recordedBy: string; // Admin ID
+
+    @CreateDateColumn()
+    recordedAt: Date;
 
     @Column({
         type: 'enum',

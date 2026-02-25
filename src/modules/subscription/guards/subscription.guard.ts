@@ -1,6 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { SubscriptionService } from '../subscription.service';
+import { SubscriptionStatus } from '../entities/subscription.entity';
 
 @Injectable()
 export class SubscriptionGuard implements CanActivate {
@@ -18,13 +19,12 @@ export class SubscriptionGuard implements CanActivate {
             return true;
         }
 
-        // If no company context (e.g. user creating company), allow?
-        // Usually routes that need subscription are under /company or require company context
         if (!user?.companyId) {
             return true;
         }
 
         const hasActiveSubscription = await this.subscriptionService.checkSubscriptionStatus(user.companyId);
+
         if (!hasActiveSubscription) {
             throw new ForbiddenException('Company subscription is expired or inactive.');
         }

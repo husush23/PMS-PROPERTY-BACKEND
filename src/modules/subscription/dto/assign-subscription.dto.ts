@@ -1,5 +1,5 @@
 import { IsString, IsEnum, IsNotEmpty, IsOptional, IsDateString } from 'class-validator';
-import { BillingCycle, SubscriptionStatus } from '../entities/subscription.entity';
+import { PlanType, SubscriptionStatus } from '../entities/subscription.entity';
 
 export class AssignSubscriptionDto {
     @IsString()
@@ -10,9 +10,9 @@ export class AssignSubscriptionDto {
     @IsNotEmpty()
     planId: string;
 
-    @IsEnum(BillingCycle)
+    @IsEnum(PlanType)
     @IsNotEmpty()
-    billingCycle: BillingCycle;
+    planType: PlanType;
 
     @IsOptional()
     @IsDateString()

@@ -142,7 +142,7 @@ export class CompanyService {
   async findAll(userId: string): Promise<CompanyResponseDto[]> {
     const userCompanies = await this.userCompanyRepository.find({
       where: { userId, isActive: true },
-      relations: ['company'],
+      relations: ['company', 'company.subscriptions', 'company.subscriptions.plan'],
     });
 
     return userCompanies.map((uc) => this.toResponseDto(uc.company));
@@ -153,7 +153,10 @@ export class CompanyService {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (user?.isSuperAdmin) {
       // Super admin can access any company
-      const company = await this.companyRepository.findOne({ where: { id } });
+      const company = await this.companyRepository.findOne({
+        where: { id },
+        relations: ['subscriptions', 'subscriptions.plan']
+      });
       if (!company) {
         throw new BusinessException(
           ErrorCode.COMPANY_NOT_FOUND,
@@ -168,7 +171,7 @@ export class CompanyService {
     // Verify user belongs to company
     const userCompany = await this.userCompanyRepository.findOne({
       where: { companyId: id, userId, isActive: true },
-      relations: ['company'],
+      relations: ['company', 'company.subscriptions', 'company.subscriptions.plan'],
     });
 
     if (!userCompany) {
@@ -228,7 +231,10 @@ export class CompanyService {
     }
 
     await this.companyRepository.update(id, updateCompanyDto);
-    const updated = await this.companyRepository.findOne({ where: { id } });
+    const updated = await this.companyRepository.findOne({
+      where: { id },
+      relations: ['subscriptions', 'subscriptions.plan']
+    });
     return this.toResponseDto(updated!);
   }
 
@@ -871,6 +877,10 @@ export class CompanyService {
   }
 
   private toResponseDto(company: Company): CompanyResponseDto {
+    const latestSub = company.subscriptions?.length > 0
+      ? company.subscriptions.sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime())[0]
+      : null;
+
     return {
       id: company.id,
       name: company.name,
@@ -882,6 +892,10 @@ export class CompanyService {
       isActive: company.isActive,
       createdAt: company.createdAt,
       updatedAt: company.updatedAt,
+      subscriptionStatus: latestSub?.status,
+      subscriptionEndsAt: latestSub?.endDate,
+      trialEndsAt: latestSub?.trialEndsAt,
+      plan: latestSub?.plan?.name
     };
   }
 }

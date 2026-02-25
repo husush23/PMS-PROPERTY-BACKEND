@@ -71,4 +71,16 @@ export class CompanyResponseDto {
     example: '123e4567-e89b-12d3-a456-426614174001',
   })
   settingsId?: string;
+
+  @ApiPropertyOptional({ description: 'Current subscription status' })
+  subscriptionStatus?: string;
+
+  @ApiPropertyOptional({ description: 'Trial end date' })
+  trialEndsAt?: Date;
+
+  @ApiPropertyOptional({ description: 'Subscription end date' })
+  subscriptionEndsAt?: Date;
+
+  @ApiPropertyOptional({ description: 'Current plan name' })
+  plan?: string;
 }

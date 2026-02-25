@@ -6,12 +6,10 @@ import { SubscriptionPayment } from '../../subscription-payment/entities/subscri
 export enum SubscriptionStatus {
     TRIAL = 'TRIAL',
     ACTIVE = 'ACTIVE',
-    PAST_DUE = 'PAST_DUE',
-    CANCELLED = 'CANCELLED',
     EXPIRED = 'EXPIRED',
 }
 
-export enum BillingCycle {
+export enum PlanType {
     MONTHLY = 'MONTHLY',
     YEARLY = 'YEARLY',
 }
@@ -44,10 +42,10 @@ export class Subscription {
 
     @Column({
         type: 'enum',
-        enum: BillingCycle,
-        default: BillingCycle.MONTHLY
+        enum: PlanType,
+        default: PlanType.MONTHLY
     })
-    billingCycle: BillingCycle;
+    planType: PlanType;
 
     @Column({ type: 'timestamp' })
     startDate: Date;

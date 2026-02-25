@@ -25,4 +25,16 @@ export class SubscriptionPaymentService {
             relations: ['subscription']
         });
     }
+
+    async findByCompany(companyId: string) {
+        return await this.subscriptionPaymentRepository.find({
+            where: {
+                subscription: {
+                    companyId: companyId
+                }
+            },
+            relations: ['subscription', 'subscription.plan'],
+            order: { recordedAt: 'DESC' }
+        });
+    }
 }

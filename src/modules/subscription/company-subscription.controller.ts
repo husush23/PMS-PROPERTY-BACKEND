@@ -4,14 +4,14 @@ import { SubscriptionService } from './subscription.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { AuthUser } from '../../common/decorators/auth-user.decorator';
 import { UserRole } from '../../shared/enums/user-role.enum';
-import { Public } from '../../common/decorators/public.decorator';
+import { SkipSubscription } from '../../common/decorators/skip-subscription.decorator';
 
 @ApiTags('companies')
 @Controller({ path: 'companies', version: '1' })
 export class CompanySubscriptionController {
     constructor(private readonly subscriptionService: SubscriptionService) { }
 
-    @Public()
+    @SkipSubscription()
     @Get(':companyId/subscription')
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth('JWT-auth')

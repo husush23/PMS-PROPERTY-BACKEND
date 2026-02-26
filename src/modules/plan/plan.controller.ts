@@ -4,6 +4,7 @@ import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SuperAdminGuard } from '../../common/guards/super-admin.guard';
+import { Public } from '../../common/decorators/public.decorator';
 
 @Controller('plans')
 export class PlanController {
@@ -11,29 +12,51 @@ export class PlanController {
 
     @Post()
     @UseGuards(JwtAuthGuard, SuperAdminGuard)
-    create(@Body() createPlanDto: CreatePlanDto) {
-        return this.planService.create(createPlanDto);
+    async create(@Body() createPlanDto: CreatePlanDto) {
+        const result = await this.planService.create(createPlanDto);
+        return {
+            success: true,
+            data: result
+        };
     }
 
+    @Public()
     @Get()
-    findAll() {
-        return this.planService.findAll();
+    async findAll() {
+        const result = await this.planService.findAll();
+        return {
+            success: true,
+            data: result
+        };
     }
 
+    @Public()
     @Get(':id')
-    findOne(@Param('id') id: string) {
-        return this.planService.findOne(id);
+    async findOne(@Param('id') id: string) {
+        const result = await this.planService.findOne(id);
+        return {
+            success: true,
+            data: result
+        };
     }
 
     @Patch(':id')
     @UseGuards(JwtAuthGuard, SuperAdminGuard)
-    update(@Param('id') id: string, @Body() updatePlanDto: UpdatePlanDto) {
-        return this.planService.update(id, updatePlanDto);
+    async update(@Param('id') id: string, @Body() updatePlanDto: UpdatePlanDto) {
+        const result = await this.planService.update(id, updatePlanDto);
+        return {
+            success: true,
+            data: result
+        };
     }
 
     @Delete(':id')
     @UseGuards(JwtAuthGuard, SuperAdminGuard)
-    remove(@Param('id') id: string) {
-        return this.planService.remove(id);
+    async remove(@Param('id') id: string) {
+        const result = await this.planService.remove(id);
+        return {
+            success: true,
+            data: result
+        };
     }
 }

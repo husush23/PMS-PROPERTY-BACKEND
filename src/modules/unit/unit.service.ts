@@ -15,6 +15,7 @@ import { Lease } from '../lease/entities/lease.entity';
 import { RentCycle } from '../rent-cycle/entities/rent-cycle.entity';
 import { Payment } from '../payment/entities/payment.entity';
 import { CompanySettingsService } from '../company/company-settings.service';
+import { UtilityMeter } from '../utility/entities/utility-meter.entity';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
 import { UnitResponseDto } from './dto/unit-response.dto';
@@ -31,6 +32,7 @@ import { UnitStatus } from '../../shared/enums/unit-status.enum';
 import { UnitType } from '../../shared/enums/unit-type.enum';
 import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { PaymentStatus } from '../../shared/enums/payment-status.enum';
+import { UtilityType } from '../../shared/enums/utility-type.enum';
 
 @Injectable()
 export class UnitService {
@@ -51,6 +53,8 @@ export class UnitService {
     private rentCycleRepository: Repository<RentCycle>,
     @InjectRepository(Payment)
     private paymentRepository: Repository<Payment>,
+    @InjectRepository(UtilityMeter)
+    private utilityMeterRepository: Repository<UtilityMeter>,
     private readonly companySettingsService: CompanySettingsService,
   ) {}
 
@@ -58,6 +62,19 @@ export class UnitService {
     createUnitDto: CreateUnitDto,
     userId: string,
   ): Promise<UnitResponseDto> {
+    const normalizedLastWaterReading =
+      createUnitDto.lastWaterReading ?? createUnitDto.lastReading;
+    const normalizedWaterMeterNumber =
+      createUnitDto.waterMeterNumber ?? createUnitDto.waterMeter;
+
+    const {
+      waterMeterNumber: _waterMeterNumber,
+      waterMeter: _waterMeter,
+      lastWaterReading: _lastWaterReading,
+      lastReading: _lastReading,
+      ...unitData
+    } = createUnitDto;
+
     // Verify property exists
     const property = await this.propertyRepository.findOne({
       where: { id: createUnitDto.propertyId, isActive: true },
@@ -125,12 +142,25 @@ export class UnitService {
 
     // Create unit
     const unit = this.unitRepository.create({
-      ...createUnitDto,
+      ...unitData,
       companyId,
       status: createUnitDto.status || UnitStatus.AVAILABLE,
+      lastWaterReading: normalizedLastWaterReading,
     });
 
     const savedUnit = await this.unitRepository.save(unit);
+
+    if (normalizedWaterMeterNumber) {
+      const meter = this.utilityMeterRepository.create({
+        propertyId: savedUnit.propertyId,
+        unitId: savedUnit.id,
+        type: UtilityType.WATER,
+        meterNumber: normalizedWaterMeterNumber,
+        isActive: true,
+      });
+      await this.utilityMeterRepository.save(meter);
+    }
+
     return this.toResponseDto(savedUnit);
   }
 

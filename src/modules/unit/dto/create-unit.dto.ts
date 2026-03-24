@@ -10,7 +10,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { UnitStatus } from '../../../shared/enums/unit-status.enum';
 import { UnitType } from '../../../shared/enums/unit-type.enum';
@@ -285,4 +285,64 @@ export class CreateUnitDto {
   @IsOptional()
   @IsString()
   accessCode?: string;
+
+  @ApiPropertyOptional({
+    description: 'Water meter number for this unit',
+    example: 'WM-1001',
+  })
+  @IsOptional()
+  @IsString()
+  waterMeterNumber?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Legacy alias from frontend. Maps to waterMeterNumber. Prefer waterMeterNumber.',
+    example: 'WM-1001',
+  })
+  @IsOptional()
+  @IsString()
+  waterMeter?: string;
+
+  @ApiPropertyOptional({
+    description: 'Initial/last water reading baseline',
+    example: 1250.5,
+  })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') {
+      return undefined;
+    }
+    return Number(value);
+  })
+  @IsNumber(
+    { allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 },
+    {
+      message:
+        'Last water reading must be a valid number with up to 2 decimal places',
+    },
+  )
+  @Min(0, { message: 'Last water reading must be a positive number' })
+  lastWaterReading?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Legacy alias from frontend. Maps to lastWaterReading. Prefer lastWaterReading.',
+    example: 1250.5,
+  })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') {
+      return undefined;
+    }
+    return Number(value);
+  })
+  @IsNumber(
+    { allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 },
+    {
+      message:
+        'Last reading must be a valid number with up to 2 decimal places',
+    },
+  )
+  @Min(0, { message: 'Last reading must be a positive number' })
+  lastReading?: number;
 }

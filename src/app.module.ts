@@ -22,6 +22,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { PlanModule } from './modules/plan/plan.module';
 import { SubscriptionModule } from './modules/subscription/subscription.module';
 import { SubscriptionPaymentModule } from './modules/subscription-payment/subscription-payment.module';
+import { UtilityModule } from './modules/utility/utility.module';
 import appConfig from './config/app.config';
 import dbConfig from './config/db.config';
 import jwtConfig from './config/jwt.config';
@@ -60,6 +61,7 @@ import { SubscriptionGuard } from './modules/subscription/guards/subscription.gu
     PlanModule,
     SubscriptionModule,
     SubscriptionPaymentModule,
+    UtilityModule,
   ],
   controllers: [AppController],
   providers: [

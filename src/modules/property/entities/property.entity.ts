@@ -92,6 +92,12 @@ export class Property {
   @Column({ default: true })
   isActive: boolean;
 
+  @Column({ default: false })
+  waterEnabled: boolean;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  waterRatePerM3: number | null;
+
   @ManyToOne(() => Company, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'companyId' })
   company: Company;

@@ -161,6 +161,19 @@ export class PropertyResponseDto {
   })
   isActive: boolean;
 
+  @ApiPropertyOptional({
+    description: 'Whether water billing is enabled for this property',
+    example: false,
+  })
+  waterEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Water rate per cubic meter',
+    example: 2.5,
+    nullable: true,
+  })
+  waterRatePerM3?: number | null;
+
   @ApiProperty({
     description: 'Property creation timestamp',
     example: '2024-01-01T00:00:00.000Z',

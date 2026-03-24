@@ -11,6 +11,7 @@ import { Lease } from '../lease/entities/lease.entity';
 import { RentCycle } from '../rent-cycle/entities/rent-cycle.entity';
 import { Payment } from '../payment/entities/payment.entity';
 import { CompanyModule } from '../company/company.module';
+import { UtilityMeter } from '../utility/entities/utility-meter.entity';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { CompanyModule } from '../company/company.module';
       Lease,
       RentCycle,
       Payment,
+      UtilityMeter,
     ]),
     CompanyModule,
   ],

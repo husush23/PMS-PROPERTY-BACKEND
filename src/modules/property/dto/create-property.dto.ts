@@ -10,8 +10,10 @@ import {
   IsLatitude,
   IsLongitude,
   MinLength,
+  IsBoolean,
+  IsNumber,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PropertyType } from '../../../shared/enums/property-type.enum';
 import { PropertyStatus } from '../../../shared/enums/property-status.enum';
@@ -197,4 +199,75 @@ export class CreatePropertyDto {
   @IsArray()
   @IsString({ each: true })
   images?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Enable water billing for this property',
+    example: false,
+  })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') {
+      return undefined;
+    }
+    if (typeof value === 'boolean') {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true') {
+        return true;
+      }
+      if (normalized === 'false') {
+        return false;
+      }
+    }
+    return value;
+  })
+  @IsBoolean()
+  waterEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Legacy alias from frontend. Maps to waterEnabled. Prefer sending waterEnabled.',
+    example: false,
+  })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') {
+      return undefined;
+    }
+    if (typeof value === 'boolean') {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true') {
+        return true;
+      }
+      if (normalized === 'false') {
+        return false;
+      }
+    }
+    return value;
+  })
+  @IsBoolean()
+  waterBillingEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Water rate per cubic meter',
+    example: 2.5,
+  })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') {
+      return undefined;
+    }
+    return Number(value);
+  })
+  @IsNumber(
+    { allowNaN: false, allowInfinity: false },
+    { message: 'Water rate per m3 must be a valid number' },
+  )
+  @Min(0, { message: 'Water rate per m3 must be a positive number' })
+  waterRatePerM3?: number;
 }

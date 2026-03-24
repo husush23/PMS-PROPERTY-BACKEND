@@ -56,6 +56,14 @@ export class PropertyService {
     createPropertyDto: CreatePropertyDto,
     userId: string,
   ): Promise<PropertyResponseDto> {
+    const normalizedCreateDto: CreatePropertyDto = {
+      ...createPropertyDto,
+      waterEnabled:
+        createPropertyDto.waterEnabled ?? createPropertyDto.waterBillingEnabled,
+    };
+    delete (normalizedCreateDto as { waterBillingEnabled?: boolean })
+      .waterBillingEnabled;
+
     // Check if user is super admin
     const user = await this.userRepository.findOne({ where: { id: userId } });
     const isSuperAdmin = user?.isSuperAdmin || false;
@@ -98,8 +106,8 @@ export class PropertyService {
 
     // Create property
     const property = this.propertyRepository.create({
-      ...createPropertyDto,
-      status: createPropertyDto.status || PropertyStatus.AVAILABLE,
+      ...normalizedCreateDto,
+      status: normalizedCreateDto.status || PropertyStatus.AVAILABLE,
     });
 
     const savedProperty = await this.propertyRepository.save(property);
@@ -416,6 +424,14 @@ export class PropertyService {
     updatePropertyDto: UpdatePropertyDto,
     userId: string,
   ): Promise<PropertyResponseDto> {
+    const normalizedUpdateDto: UpdatePropertyDto = {
+      ...updatePropertyDto,
+      waterEnabled:
+        updatePropertyDto.waterEnabled ?? updatePropertyDto.waterBillingEnabled,
+    };
+    delete (normalizedUpdateDto as { waterBillingEnabled?: boolean })
+      .waterBillingEnabled;
+
     // Check if user is super admin
     const user = await this.userRepository.findOne({ where: { id: userId } });
     const isSuperAdmin = user?.isSuperAdmin || false;
@@ -457,7 +473,7 @@ export class PropertyService {
     }
 
     // Update property
-    await this.propertyRepository.update(id, updatePropertyDto);
+    await this.propertyRepository.update(id, normalizedUpdateDto);
     const updatedProperty = await this.propertyRepository.findOne({
       where: { id },
     });
@@ -538,6 +554,11 @@ export class PropertyService {
       totalUnits: property.totalUnits,
       numberOfUnits, // Computed from Units relation (0 for now until Units module is implemented)
       images: property.images,
+      waterEnabled: property.waterEnabled,
+      waterRatePerM3:
+        property.waterRatePerM3 !== null && property.waterRatePerM3 !== undefined
+          ? Number(property.waterRatePerM3)
+          : null,
       isActive: property.isActive,
       createdAt: property.createdAt,
       updatedAt: property.updatedAt,

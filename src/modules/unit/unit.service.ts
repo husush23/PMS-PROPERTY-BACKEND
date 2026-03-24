@@ -5,7 +5,7 @@ import {
 } from '../../common/exceptions/business.exception';
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Unit } from './entities/unit.entity';
 import { Property } from '../property/entities/property.entity';
 import { Company } from '../company/entities/company.entity';
@@ -15,6 +15,7 @@ import { Lease } from '../lease/entities/lease.entity';
 import { RentCycle } from '../rent-cycle/entities/rent-cycle.entity';
 import { Payment } from '../payment/entities/payment.entity';
 import { CompanySettingsService } from '../company/company-settings.service';
+import { UtilityMeter } from '../utility/entities/utility-meter.entity';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
 import { UnitResponseDto } from './dto/unit-response.dto';
@@ -31,6 +32,7 @@ import { UnitStatus } from '../../shared/enums/unit-status.enum';
 import { UnitType } from '../../shared/enums/unit-type.enum';
 import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { PaymentStatus } from '../../shared/enums/payment-status.enum';
+import { UtilityType } from '../../shared/enums/utility-type.enum';
 
 @Injectable()
 export class UnitService {
@@ -51,6 +53,8 @@ export class UnitService {
     private rentCycleRepository: Repository<RentCycle>,
     @InjectRepository(Payment)
     private paymentRepository: Repository<Payment>,
+    @InjectRepository(UtilityMeter)
+    private utilityMeterRepository: Repository<UtilityMeter>,
     private readonly companySettingsService: CompanySettingsService,
   ) {}
 
@@ -58,6 +62,19 @@ export class UnitService {
     createUnitDto: CreateUnitDto,
     userId: string,
   ): Promise<UnitResponseDto> {
+    const normalizedLastWaterReading =
+      createUnitDto.lastWaterReading ?? createUnitDto.lastReading;
+    const normalizedWaterMeterNumber =
+      createUnitDto.waterMeterNumber ?? createUnitDto.waterMeter;
+
+    const {
+      waterMeterNumber: _waterMeterNumber,
+      waterMeter: _waterMeter,
+      lastWaterReading: _lastWaterReading,
+      lastReading: _lastReading,
+      ...unitData
+    } = createUnitDto;
+
     // Verify property exists
     const property = await this.propertyRepository.findOne({
       where: { id: createUnitDto.propertyId, isActive: true },
@@ -125,13 +142,30 @@ export class UnitService {
 
     // Create unit
     const unit = this.unitRepository.create({
-      ...createUnitDto,
+      ...unitData,
       companyId,
       status: createUnitDto.status || UnitStatus.AVAILABLE,
+      lastWaterReading: normalizedLastWaterReading,
     });
 
     const savedUnit = await this.unitRepository.save(unit);
-    return this.toResponseDto(savedUnit);
+
+    if (normalizedWaterMeterNumber) {
+      const meter = this.utilityMeterRepository.create({
+        propertyId: savedUnit.propertyId,
+        unitId: savedUnit.id,
+        type: UtilityType.WATER,
+        meterNumber: normalizedWaterMeterNumber,
+        isActive: true,
+      });
+      await this.utilityMeterRepository.save(meter);
+    }
+
+    const meters = await this.utilityMeterRepository.find({
+      where: { unitId: savedUnit.id },
+      order: { meterNumber: 'ASC' },
+    });
+    return this.toResponseDto(savedUnit, meters);
   }
 
   async findAll(
@@ -288,9 +322,16 @@ export class UnitService {
       }
     }
 
+    const waterMetersByUnit = await this.getWaterMetersForUnits(
+      units.map((u) => u.id),
+    );
+
     return {
       data: units.map((unit) => {
-        const base = this.toResponseDto(unit);
+        const base = this.toResponseDto(
+          unit,
+          waterMetersByUnit.get(unit.id) ?? [],
+        );
         const occ = occupancyMap.get(unit.id);
         return {
           ...base,
@@ -386,7 +427,12 @@ export class UnitService {
         )
       : null;
 
-    const base = this.toResponseDto(unit);
+    const waterMeters = await this.utilityMeterRepository.find({
+      where: { unitId: id },
+      order: { meterNumber: 'ASC' },
+    });
+
+    const base = this.toResponseDto(unit, waterMeters);
     return {
       ...base,
       propertyName,
@@ -557,7 +603,11 @@ export class UnitService {
       where: { id },
     });
 
-    return this.toResponseDto(updatedUnit!);
+    const waterMeters = await this.utilityMeterRepository.find({
+      where: { unitId: id },
+      order: { meterNumber: 'ASC' },
+    });
+    return this.toResponseDto(updatedUnit!, waterMeters);
   }
 
   async delete(id: string, userId: string): Promise<void> {
@@ -650,7 +700,13 @@ export class UnitService {
       order: { unitNumber: 'ASC' },
     });
 
-    return units.map((unit) => this.toResponseDto(unit));
+    const waterMetersByUnit = await this.getWaterMetersForUnits(
+      units.map((u) => u.id),
+    );
+
+    return units.map((unit) =>
+      this.toResponseDto(unit, waterMetersByUnit.get(unit.id) ?? []),
+    );
   }
 
   async createUnitsFromGroups(
@@ -773,7 +829,32 @@ export class UnitService {
     };
   }
 
-  private toResponseDto(unit: Unit): UnitResponseDto {
+  private async getWaterMetersForUnits(
+    unitIds: string[],
+  ): Promise<Map<string, UtilityMeter[]>> {
+    const map = new Map<string, UtilityMeter[]>();
+    if (unitIds.length === 0) {
+      return map;
+    }
+    const meters = await this.utilityMeterRepository.find({
+      where: { unitId: In(unitIds) },
+      order: { meterNumber: 'ASC' },
+    });
+    for (const m of meters) {
+      if (!m.unitId) {
+        continue;
+      }
+      const list = map.get(m.unitId) ?? [];
+      list.push(m);
+      map.set(m.unitId, list);
+    }
+    return map;
+  }
+
+  private toResponseDto(
+    unit: Unit,
+    waterMeters: UtilityMeter[] = [],
+  ): UnitResponseDto {
     return {
       id: unit.id,
       propertyId: unit.propertyId,
@@ -798,6 +879,16 @@ export class UnitService {
       furnished: unit.furnished,
       utilitiesIncluded: unit.utilitiesIncluded,
       utilityNotes: unit.utilityNotes,
+      lastWaterReading:
+        unit.lastWaterReading != null
+          ? Number(unit.lastWaterReading)
+          : null,
+      waterMeters: waterMeters.map((m) => ({
+        id: m.id,
+        meterNumber: m.meterNumber,
+        type: m.type,
+        isActive: m.isActive,
+      })),
       lateFeeAmount: unit.lateFeeAmount ? Number(unit.lateFeeAmount) : null,
       petDeposit: unit.petDeposit ? Number(unit.petDeposit) : null,
       petRent: unit.petRent ? Number(unit.petRent) : null,

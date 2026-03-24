@@ -5,7 +5,7 @@ import {
 } from '../../common/exceptions/business.exception';
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Unit } from './entities/unit.entity';
 import { Property } from '../property/entities/property.entity';
 import { Company } from '../company/entities/company.entity';
@@ -161,7 +161,11 @@ export class UnitService {
       await this.utilityMeterRepository.save(meter);
     }
 
-    return this.toResponseDto(savedUnit);
+    const meters = await this.utilityMeterRepository.find({
+      where: { unitId: savedUnit.id },
+      order: { meterNumber: 'ASC' },
+    });
+    return this.toResponseDto(savedUnit, meters);
   }
 
   async findAll(
@@ -318,9 +322,16 @@ export class UnitService {
       }
     }
 
+    const waterMetersByUnit = await this.getWaterMetersForUnits(
+      units.map((u) => u.id),
+    );
+
     return {
       data: units.map((unit) => {
-        const base = this.toResponseDto(unit);
+        const base = this.toResponseDto(
+          unit,
+          waterMetersByUnit.get(unit.id) ?? [],
+        );
         const occ = occupancyMap.get(unit.id);
         return {
           ...base,
@@ -416,7 +427,12 @@ export class UnitService {
         )
       : null;
 
-    const base = this.toResponseDto(unit);
+    const waterMeters = await this.utilityMeterRepository.find({
+      where: { unitId: id },
+      order: { meterNumber: 'ASC' },
+    });
+
+    const base = this.toResponseDto(unit, waterMeters);
     return {
       ...base,
       propertyName,
@@ -587,7 +603,11 @@ export class UnitService {
       where: { id },
     });
 
-    return this.toResponseDto(updatedUnit!);
+    const waterMeters = await this.utilityMeterRepository.find({
+      where: { unitId: id },
+      order: { meterNumber: 'ASC' },
+    });
+    return this.toResponseDto(updatedUnit!, waterMeters);
   }
 
   async delete(id: string, userId: string): Promise<void> {
@@ -680,7 +700,13 @@ export class UnitService {
       order: { unitNumber: 'ASC' },
     });
 
-    return units.map((unit) => this.toResponseDto(unit));
+    const waterMetersByUnit = await this.getWaterMetersForUnits(
+      units.map((u) => u.id),
+    );
+
+    return units.map((unit) =>
+      this.toResponseDto(unit, waterMetersByUnit.get(unit.id) ?? []),
+    );
   }
 
   async createUnitsFromGroups(
@@ -803,7 +829,32 @@ export class UnitService {
     };
   }
 
-  private toResponseDto(unit: Unit): UnitResponseDto {
+  private async getWaterMetersForUnits(
+    unitIds: string[],
+  ): Promise<Map<string, UtilityMeter[]>> {
+    const map = new Map<string, UtilityMeter[]>();
+    if (unitIds.length === 0) {
+      return map;
+    }
+    const meters = await this.utilityMeterRepository.find({
+      where: { unitId: In(unitIds) },
+      order: { meterNumber: 'ASC' },
+    });
+    for (const m of meters) {
+      if (!m.unitId) {
+        continue;
+      }
+      const list = map.get(m.unitId) ?? [];
+      list.push(m);
+      map.set(m.unitId, list);
+    }
+    return map;
+  }
+
+  private toResponseDto(
+    unit: Unit,
+    waterMeters: UtilityMeter[] = [],
+  ): UnitResponseDto {
     return {
       id: unit.id,
       propertyId: unit.propertyId,
@@ -828,6 +879,16 @@ export class UnitService {
       furnished: unit.furnished,
       utilitiesIncluded: unit.utilitiesIncluded,
       utilityNotes: unit.utilityNotes,
+      lastWaterReading:
+        unit.lastWaterReading != null
+          ? Number(unit.lastWaterReading)
+          : null,
+      waterMeters: waterMeters.map((m) => ({
+        id: m.id,
+        meterNumber: m.meterNumber,
+        type: m.type,
+        isActive: m.isActive,
+      })),
       lateFeeAmount: unit.lateFeeAmount ? Number(unit.lateFeeAmount) : null,
       petDeposit: unit.petDeposit ? Number(unit.petDeposit) : null,
       petRent: unit.petRent ? Number(unit.petRent) : null,

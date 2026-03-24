@@ -2,6 +2,34 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { UnitStatus } from '../../../shared/enums/unit-status.enum';
 import { UnitType } from '../../../shared/enums/unit-type.enum';
 import { LeaseType } from '../../../shared/enums/lease-type.enum';
+import { UtilityType } from '../../../shared/enums/utility-type.enum';
+
+export class UnitWaterMeterDto {
+  @ApiProperty({
+    description: 'Utility meter ID',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  id: string;
+
+  @ApiProperty({
+    description: 'Meter number / serial shown to staff and tenants',
+    example: 'WM-1001',
+  })
+  meterNumber: string;
+
+  @ApiProperty({
+    description: 'Utility type',
+    enum: UtilityType,
+    example: UtilityType.WATER,
+  })
+  type: UtilityType;
+
+  @ApiProperty({
+    description: 'Whether the meter is active for readings',
+    example: true,
+  })
+  isActive: boolean;
+}
 
 export class UnitResponseDto {
   @ApiProperty({
@@ -162,6 +190,19 @@ export class UnitResponseDto {
     nullable: true,
   })
   utilityNotes: string | null;
+
+  @ApiPropertyOptional({
+    description: 'Last recorded water meter reading (baseline) for this unit',
+    example: 1250.5,
+    nullable: true,
+  })
+  lastWaterReading: number | null;
+
+  @ApiPropertyOptional({
+    description: 'Utility meters linked to this unit (e.g. water)',
+    type: [UnitWaterMeterDto],
+  })
+  waterMeters: UnitWaterMeterDto[];
 
   @ApiPropertyOptional({
     description: 'Late fee amount',

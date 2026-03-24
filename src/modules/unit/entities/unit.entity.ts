@@ -104,6 +104,9 @@ export class Unit {
   utilityNotes: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  lastWaterReading: number | null;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   lateFeeAmount: number;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })

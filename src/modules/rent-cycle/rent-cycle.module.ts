@@ -10,6 +10,7 @@ import { Payment } from '../payment/entities/payment.entity';
 import { UserCompany } from '../company/entities/user-company.entity';
 import { User } from '../user/entities/user.entity';
 import { CompanyModule } from '../company/company.module';
+import { UtilityModule } from '../utility/utility.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { CompanyModule } from '../company/company.module';
       User,
     ]),
     CompanyModule,
+    UtilityModule,
   ],
   controllers: [RentCycleController],
   providers: [RentCycleService, RentCycleGenerationService],

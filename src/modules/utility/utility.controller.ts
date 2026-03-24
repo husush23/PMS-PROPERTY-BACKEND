@@ -15,6 +15,7 @@ import { UnitWaterHistoryQueryDto } from './dto/unit-water-history-query.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { UserRole } from '../../shared/enums/user-role.enum';
+import { AuthUser } from '../../common/decorators/auth-user.decorator';
 
 @Controller({ path: 'utilities', version: '1' })
 export class UtilityController {
@@ -23,15 +24,28 @@ export class UtilityController {
   @Post('water-reading')
   @UseGuards(RolesGuard)
   @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
-  async recordWaterReading(@Body() dto: RecordWaterReadingDto) {
-    return this.utilityService.recordWaterReading(dto.unitId, dto.currentReading);
+  async recordWaterReading(
+    @Body() dto: RecordWaterReadingDto,
+    @AuthUser() user: { id: string },
+  ) {
+    return this.utilityService.recordWaterReading(
+      dto.unitId,
+      dto.currentReading,
+      user.id,
+    );
   }
 
   @Post('attach-to-rent-cycle')
   @UseGuards(RolesGuard)
   @Roles(UserRole.COMPANY_ADMIN, UserRole.SUPER_ADMIN)
-  async attachUtilityToRentCycle(@Body() dto: AttachUtilityToRentCycleDto) {
-    return this.utilityService.attachUtilityToRentCycle(dto.rentCycleId);
+  async attachUtilityToRentCycle(
+    @Body() dto: AttachUtilityToRentCycleDto,
+    @AuthUser() user: { id: string },
+  ) {
+    return this.utilityService.attachUtilityToRentCycle(
+      dto.rentCycleId,
+      user.id,
+    );
   }
 
   @Get('unit/:unitId/history')
@@ -40,7 +54,13 @@ export class UtilityController {
   async getUnitWaterHistory(
     @Param('unitId', new ParseUUIDPipe()) unitId: string,
     @Query() query: UnitWaterHistoryQueryDto,
+    @AuthUser() user: { id: string },
   ) {
-    return this.utilityService.getUnitWaterHistory(unitId, query.page, query.limit);
+    return this.utilityService.getUnitWaterHistory(
+      unitId,
+      query.page,
+      query.limit,
+      user.id,
+    );
   }
 }

@@ -25,6 +25,7 @@ import {
   calculateNextDueDate,
   getPeriodsSinceStart,
 } from '../../common/utils/rent-due-date.util';
+import { UtilityService } from '../utility/utility.service';
 
 /**
  * TENANT TRUTH SOURCE RULE:
@@ -54,6 +55,7 @@ export class RentCycleService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private companySettingsResolver: CompanySettingsResolver,
+    private readonly utilityService: UtilityService,
   ) {}
 
   async create(
@@ -220,6 +222,13 @@ export class RentCycleService {
     );
 
     await this.lineItemRepository.save(lineItems);
+
+    if (!savedCycle.isDeposit) {
+      await this.utilityService.attachUtilityToRentCycle(
+        savedCycle.id,
+        requesterUserId,
+      );
+    }
 
     // Reload with relations
     const cycleWithRelations = await this.rentCycleRepository.findOne({

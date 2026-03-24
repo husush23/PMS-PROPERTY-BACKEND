@@ -19,6 +19,12 @@ import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { Payment } from '../payment/entities/payment.entity';
 import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 import { RentCycleStatus } from '../../shared/enums/rent-cycle-status.enum';
+import { User } from '../user/entities/user.entity';
+import { UserCompany } from '../company/entities/user-company.entity';
+import {
+  UnitWaterHistoryResponseDto,
+  WaterReadingResponseDto,
+} from './dto/utility-response.dto';
 
 @Injectable()
 export class UtilityService {
@@ -33,18 +39,21 @@ export class UtilityService {
     private readonly utilityReadingRepository: Repository<UtilityReading>,
     @InjectRepository(RentCycle)
     private readonly rentCycleRepository: Repository<RentCycle>,
-    @InjectRepository(RentCycleLineItem)
-    private readonly rentCycleLineItemRepository: Repository<RentCycleLineItem>,
     @InjectRepository(Lease)
     private readonly leaseRepository: Repository<Lease>,
     @InjectRepository(Payment)
     private readonly paymentRepository: Repository<Payment>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+    @InjectRepository(UserCompany)
+    private readonly userCompanyRepository: Repository<UserCompany>,
   ) {}
 
   async recordWaterReading(
     unitId: string,
     currentReading: number,
-  ): Promise<UtilityReading> {
+    requesterUserId: string,
+  ): Promise<WaterReadingResponseDto> {
     const unit = await this.unitRepository.findOne({
       where: { id: unitId, isActive: true },
     });
@@ -58,6 +67,8 @@ export class UtilityService {
       );
     }
 
+    await this.assertUserCanAccessCompany(requesterUserId, unit.companyId);
+
     const meter = await this.utilityMeterRepository.findOne({
       where: {
         unitId: unit.id,
@@ -68,8 +79,8 @@ export class UtilityService {
 
     if (!meter) {
       throw new BusinessException(
-        ErrorCode.BAD_REQUEST,
-        'No active WATER meter found for this unit.',
+        ErrorCode.WATER_METER_NOT_FOUND,
+        ERROR_MESSAGES.WATER_METER_NOT_FOUND,
         HttpStatus.BAD_REQUEST,
         { unitId },
       );
@@ -90,8 +101,8 @@ export class UtilityService {
 
     if (!property.waterEnabled) {
       throw new BusinessException(
-        ErrorCode.BAD_REQUEST,
-        'Water utility is disabled for this property.',
+        ErrorCode.WATER_DISABLED_FOR_PROPERTY,
+        ERROR_MESSAGES.WATER_DISABLED_FOR_PROPERTY,
         HttpStatus.BAD_REQUEST,
         { propertyId: property.id },
       );
@@ -99,8 +110,8 @@ export class UtilityService {
 
     if (unit.utilitiesIncluded === true) {
       throw new BusinessException(
-        ErrorCode.BAD_REQUEST,
-        'Utilities are included for this unit. Water billing is skipped.',
+        ErrorCode.WATER_UTILITIES_INCLUDED,
+        ERROR_MESSAGES.WATER_UTILITIES_INCLUDED,
         HttpStatus.BAD_REQUEST,
         { unitId: unit.id },
       );
@@ -118,8 +129,8 @@ export class UtilityService {
 
     if (!activeLease) {
       throw new BusinessException(
-        ErrorCode.BAD_REQUEST,
-        'Cannot record reading: lease is inactive for this unit.',
+        ErrorCode.WATER_LEASE_INACTIVE_FOR_READING,
+        ERROR_MESSAGES.WATER_LEASE_INACTIVE_FOR_READING,
         HttpStatus.BAD_REQUEST,
         { unitId: unit.id },
       );
@@ -127,8 +138,8 @@ export class UtilityService {
 
     if (!activeLease.tenant || !activeLease.tenant.isActive) {
       throw new BusinessException(
-        ErrorCode.BAD_REQUEST,
-        'Cannot record reading: no active tenant for this unit.',
+        ErrorCode.WATER_NO_ACTIVE_TENANT,
+        ERROR_MESSAGES.WATER_NO_ACTIVE_TENANT,
         HttpStatus.BAD_REQUEST,
         { unitId: unit.id, leaseId: activeLease.id },
       );
@@ -147,8 +158,8 @@ export class UtilityService {
 
     if (previousReading === null) {
       throw new BusinessException(
-        ErrorCode.BAD_REQUEST,
-        'Missing initial reading. Please set unit.lastWaterReading or create an initial reading first.',
+        ErrorCode.WATER_MISSING_INITIAL_READING,
+        ERROR_MESSAGES.WATER_MISSING_INITIAL_READING,
         HttpStatus.BAD_REQUEST,
         { unitId: unit.id, meterId: meter.id },
       );
@@ -156,8 +167,8 @@ export class UtilityService {
 
     if (currentReading < previousReading) {
       throw new BusinessException(
-        ErrorCode.BAD_REQUEST,
-        'Invalid reading. Current reading must be greater than or equal to previous reading.',
+        ErrorCode.WATER_INVALID_READING,
+        ERROR_MESSAGES.WATER_INVALID_READING,
         HttpStatus.BAD_REQUEST,
         { currentReading, previousReading },
       );
@@ -165,8 +176,8 @@ export class UtilityService {
 
     if (property.waterRatePerM3 === null || property.waterRatePerM3 === undefined) {
       throw new BusinessException(
-        ErrorCode.BAD_REQUEST,
-        'Water rate per m3 is not configured for this property.',
+        ErrorCode.WATER_RATE_NOT_CONFIGURED,
+        ERROR_MESSAGES.WATER_RATE_NOT_CONFIGURED,
         HttpStatus.BAD_REQUEST,
         { propertyId: property.id },
       );
@@ -200,8 +211,8 @@ export class UtilityService {
         (error as any).driverError?.code === '23505'
       ) {
         throw new BusinessException(
-          ErrorCode.BAD_REQUEST,
-          'A reading already exists for this meter on the same date.',
+          ErrorCode.WATER_DUPLICATE_READING_SAME_DATE,
+          ERROR_MESSAGES.WATER_DUPLICATE_READING_SAME_DATE,
           HttpStatus.BAD_REQUEST,
           { meterId: meter.id, readingDate },
         );
@@ -212,11 +223,15 @@ export class UtilityService {
     unit.lastWaterReading = currentReading;
     await this.unitRepository.save(unit);
 
-    return createdReading;
+    return this.toWaterReadingDto(createdReading);
   }
 
+  /**
+   * @param requesterUserId When omitted (e.g. invoice generation), company access is not checked.
+   */
   async attachUtilityToRentCycle(
     rentCycleId: string,
+    requesterUserId?: string,
   ): Promise<{ totalUtilityAdded: number; readingsProcessed: number }> {
     const rentCycle = await this.rentCycleRepository.findOne({
       where: { id: rentCycleId },
@@ -225,11 +240,19 @@ export class UtilityService {
 
     if (!rentCycle) {
       throw new BusinessException(
-        ErrorCode.NOT_FOUND,
-        'Rent cycle not found.',
+        ErrorCode.RENT_CYCLE_NOT_FOUND,
+        ERROR_MESSAGES.RENT_CYCLE_NOT_FOUND,
         HttpStatus.NOT_FOUND,
         { rentCycleId },
       );
+    }
+
+    if (requesterUserId) {
+      await this.assertUserCanAccessCompany(requesterUserId, rentCycle.companyId);
+    }
+
+    if (rentCycle.isDeposit) {
+      return { totalUtilityAdded: 0, readingsProcessed: 0 };
     }
 
     const lease = await this.leaseRepository.findOne({
@@ -253,14 +276,13 @@ export class UtilityService {
     const cycleStatus = await this.getRentCycleStatus(rentCycle.id);
     if (!this.isOpenStatus(cycleStatus)) {
       throw new BusinessException(
-        ErrorCode.BAD_REQUEST,
-        'Cannot attach utility readings: rent cycle is closed.',
+        ErrorCode.UTILITY_RENT_CYCLE_CLOSED,
+        ERROR_MESSAGES.UTILITY_RENT_CYCLE_CLOSED,
         HttpStatus.BAD_REQUEST,
         { rentCycleId: rentCycle.id, status: cycleStatus },
       );
     }
     return this.utilityReadingRepository.manager.transaction(async (manager) => {
-      // Lock candidate rows first to prevent concurrent double-billing.
       const lockedReadings = await manager
         .createQueryBuilder(UtilityReading, 'reading')
         .innerJoinAndSelect('reading.meter', 'meter')
@@ -324,20 +346,25 @@ export class UtilityService {
     unitId: string,
     page: number = 1,
     limit: number = 20,
-  ): Promise<{
-    data: UtilityReading[];
-    pagination: {
-      total: number;
-      page: number;
-      limit: number;
-      totalPages: number;
-    };
-    totals: {
-      totalUsage: number;
-      totalBilledAmount: number;
-      totalUnpaidAmount: number;
-    };
-  }> {
+    requesterUserId?: string,
+  ): Promise<UnitWaterHistoryResponseDto> {
+    const unit = await this.unitRepository.findOne({
+      where: { id: unitId, isActive: true },
+    });
+
+    if (!unit) {
+      throw new BusinessException(
+        ErrorCode.UNIT_NOT_FOUND,
+        ERROR_MESSAGES.UNIT_NOT_FOUND,
+        HttpStatus.NOT_FOUND,
+        { unitId },
+      );
+    }
+
+    if (requesterUserId) {
+      await this.assertUserCanAccessCompany(requesterUserId, unit.companyId);
+    }
+
     const safePage = Math.max(1, Number(page) || 1);
     const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
     const skip = (safePage - 1) * safeLimit;
@@ -350,7 +377,7 @@ export class UtilityService {
       .orderBy('reading.readingDate', 'DESC')
       .addOrderBy('reading.createdAt', 'DESC');
 
-    const [data, total] = await readingsQb.skip(skip).take(safeLimit).getManyAndCount();
+    const [rows, total] = await readingsQb.skip(skip).take(safeLimit).getManyAndCount();
 
     const totalsRaw = await this.utilityReadingRepository
       .createQueryBuilder('reading')
@@ -392,7 +419,7 @@ export class UtilityService {
     const totalUnpaidAmount = unbilledAmount + billedUnpaidAmount;
 
     return {
-      data,
+      data: rows.map((r) => this.toWaterReadingDto(r)),
       pagination: {
         total,
         page: safePage,
@@ -405,6 +432,50 @@ export class UtilityService {
         totalUnpaidAmount,
       },
     };
+  }
+
+  private toWaterReadingDto(reading: UtilityReading): WaterReadingResponseDto {
+    const d =
+      reading.readingDate instanceof Date
+        ? reading.readingDate
+        : new Date(reading.readingDate as unknown as string);
+    const readingDate = d.toISOString().slice(0, 10);
+
+    return {
+      id: reading.id,
+      meterId: reading.meterId,
+      readingDate,
+      previousReading: Number(reading.previousReading),
+      currentReading: Number(reading.currentReading),
+      usage: Number(reading.usage),
+      rateUsed: Number(reading.rateUsed),
+      totalAmount: Number(reading.totalAmount),
+      isBilled: reading.isBilled,
+      rentCycleId: reading.rentCycleId,
+      createdAt: reading.createdAt,
+      updatedAt: reading.updatedAt,
+    };
+  }
+
+  private async assertUserCanAccessCompany(
+    userId: string,
+    companyId: string,
+  ): Promise<void> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (user?.isSuperAdmin) {
+      return;
+    }
+    const membership = await this.userCompanyRepository.findOne({
+      where: { userId, companyId, isActive: true },
+    });
+    if (!membership) {
+      throw new BusinessException(
+        ErrorCode.UTILITY_ACCESS_DENIED,
+        ERROR_MESSAGES.UTILITY_ACCESS_DENIED,
+        HttpStatus.FORBIDDEN,
+        { companyId },
+      );
+    }
   }
 
   private async getRentCycleStatus(rentCycleId: string): Promise<RentCycleStatus> {

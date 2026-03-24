@@ -119,6 +119,34 @@ export const ERROR_MESSAGES = {
   CANNOT_CREATE_PAYMENT_FOR_INACTIVE_LEASE:
     'Payments can only be created for active leases. Please activate the lease first.',
 
+  // Rent cycle
+  RENT_CYCLE_NOT_FOUND:
+    "The rent cycle you're looking for doesn't exist or you don't have access to it.",
+
+  // Water / utility
+  WATER_METER_NOT_FOUND:
+    'No active water meter is linked to this unit. Add a water meter before recording readings.',
+  WATER_DISABLED_FOR_PROPERTY:
+    'Water billing is turned off for this property. Enable it in property settings before recording readings.',
+  WATER_UTILITIES_INCLUDED:
+    'Utilities are included in rent for this unit, so water usage is not billed separately.',
+  WATER_LEASE_INACTIVE_FOR_READING:
+    'Cannot record a water reading because this unit does not have an active lease.',
+  WATER_NO_ACTIVE_TENANT:
+    'Cannot record a water reading because there is no active tenant on the lease.',
+  WATER_MISSING_INITIAL_READING:
+    'Set an initial water reading on the unit (or add a first reading) before recording new readings.',
+  WATER_INVALID_READING:
+    'The new reading must be greater than or equal to the previous reading.',
+  WATER_RATE_NOT_CONFIGURED:
+    'Water price per cubic meter is not set for this property. Configure it in property settings.',
+  WATER_DUPLICATE_READING_SAME_DATE:
+    'A water reading for this meter has already been recorded for this calendar day.',
+  UTILITY_RENT_CYCLE_CLOSED:
+    'Utility charges cannot be added to this invoice because it is not open for billing.',
+  UTILITY_ACCESS_DENIED:
+    "You don't have access to this property or unit for utility actions.",
+
   // General
   INTERNAL_SERVER_ERROR:
     'Something went wrong on our end. Please try again later.',

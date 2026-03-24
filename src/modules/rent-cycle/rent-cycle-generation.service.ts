@@ -22,6 +22,7 @@ import {
   calculateNextDueDate,
   getPeriodsSinceStart,
 } from '../../common/utils/rent-due-date.util';
+import { UtilityService } from '../utility/utility.service';
 
 @Injectable()
 export class RentCycleGenerationService {
@@ -39,6 +40,7 @@ export class RentCycleGenerationService {
     @InjectDataSource()
     private dataSource: DataSource,
     private companySettingsResolver: CompanySettingsResolver,
+    private readonly utilityService: UtilityService,
   ) {}
 
   /**
@@ -132,6 +134,7 @@ export class RentCycleGenerationService {
       );
 
       await this.lineItemRepository.save(savedLineItems);
+      await this.attachUtilityReadingsForNewCycle(savedCycle);
     }
 
     if (created) {
@@ -409,6 +412,7 @@ export class RentCycleGenerationService {
       );
 
       await this.lineItemRepository.save(savedLineItems);
+      await this.attachUtilityReadingsForNewCycle(savedCycle);
       if (companySettings) {
         await this.applyCreditToInvoice(savedCycle, lease, companySettings);
       }
@@ -464,12 +468,29 @@ export class RentCycleGenerationService {
       );
 
       await this.lineItemRepository.save(savedLineItems);
+      await this.attachUtilityReadingsForNewCycle(savedCycle);
       if (companySettings) {
         await this.applyCreditToInvoice(savedCycle, lease, companySettings);
       }
     }
 
     return savedCycle;
+  }
+
+  /** Run after rent line items exist; before credit so totals include water. */
+  private async attachUtilityReadingsForNewCycle(savedCycle: RentCycle): Promise<void> {
+    if (savedCycle.isDeposit) {
+      return;
+    }
+    try {
+      await this.utilityService.attachUtilityToRentCycle(savedCycle.id);
+    } catch (err) {
+      this.logger.warn(
+        `Utility attach failed for rent cycle ${savedCycle.id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   private async createRentCycleWithRetry(data: {

@@ -200,6 +200,8 @@ export const ERROR_MESSAGES = {
     'Utility charges cannot be added to deposit invoices',
   UTILITY_ACCESS_DENIED:
     "You don't have access to this property or unit for utility actions.",
+  UTILITY_CYCLE_RESOLUTION_FAILED:
+    'Failed to resolve utility invoice after creation attempt',
 
   // General
   INTERNAL_SERVER_ERROR:

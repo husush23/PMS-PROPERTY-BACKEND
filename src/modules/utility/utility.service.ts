@@ -1,6 +1,6 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Not, QueryFailedError, Repository } from 'typeorm';
+import { EntityManager, Not, QueryFailedError, Repository } from 'typeorm';
 import {
   BusinessException,
   ErrorCode,
@@ -58,6 +58,8 @@ function formatWaterUsageMonthLabel(
 
 @Injectable()
 export class UtilityService {
+  private readonly logger = new Logger(UtilityService.name);
+
   constructor(
     @InjectRepository(Unit)
     private readonly unitRepository: Repository<Unit>,
@@ -262,6 +264,7 @@ export class UtilityService {
   async attachUtilityToRentCycle(
     rentCycleId: string,
     requesterUserId?: string,
+    requestId?: string,
   ): Promise<{ totalUtilityAdded: number; readingsProcessed: number }> {
     const rentCycle = await this.rentCycleRepository.findOne({
       where: { id: rentCycleId },
@@ -364,53 +367,11 @@ export class UtilityService {
       let targetCycleId: string;
 
       if (shouldAttachToPaidCycle) {
-        let utilityCycle = await manager.findOne(RentCycle, {
-          where: {
-            leaseId: rentCycle.leaseId,
-            period: rentCycle.period,
-            category: RentCycleCategory.UTILITY,
-            isVoid: false,
-          },
-        });
-
-        if (!utilityCycle) {
-          const invoiceNumber = await generateNextInvoiceNumber(
-            manager.getRepository(RentCycle),
-            rentCycle.companyId,
-            rentCycle.period,
-            RentCycleCategory.UTILITY,
-          );
-          utilityCycle = manager.create(RentCycle, {
-            leaseId: rentCycle.leaseId,
-            companyId: rentCycle.companyId,
-            tenantId: rentCycle.tenantId,
-            invoiceNumber,
-            period: rentCycle.period,
-            dueDate: rentCycle.dueDate,
-            periodStartDate: rentCycle.periodStartDate,
-            periodEndDate: rentCycle.periodEndDate,
-            totalAmountDue: 0,
-            isDeposit: false,
-            isVoid: false,
-            category: RentCycleCategory.UTILITY,
-          });
-
-          try {
-            utilityCycle = await manager.save(utilityCycle);
-          } catch (err) {
-            utilityCycle = await manager.findOne(RentCycle, {
-              where: {
-                leaseId: rentCycle.leaseId,
-                period: rentCycle.period,
-                category: RentCycleCategory.UTILITY,
-                isVoid: false,
-              },
-            });
-            if (!utilityCycle) {
-              throw err;
-            }
-          }
-        }
+        const utilityCycle = await this.resolveUtilityCycleForPeriod(
+          manager,
+          rentCycle,
+          requestId,
+        );
 
         targetCycleId = utilityCycle.id;
       } else {
@@ -431,15 +392,25 @@ export class UtilityService {
         return { totalUtilityAdded: 0, readingsProcessed: 0 };
       }
 
-      // Line items use the same readings we locked (valid UUID strings). Raw RETURNING
-      // rows are not used — pg driver shape for `id` was not always a string, which
-      // produced utilityReadingId "" and DB errors.
-      const totalUtilityAdded = lockedReadings.reduce(
+      const claimedReadings =
+        affectedRows === lockedReadings.length
+          ? lockedReadings
+          : await manager.find(UtilityReading, {
+              where: {
+                meterId: lockedReadings[0].meterId,
+                isBilled: true,
+                rentCycleId: targetCycleId,
+              },
+              order: { readingDate: 'ASC', createdAt: 'ASC' },
+              take: affectedRows,
+            });
+
+      const totalUtilityAdded = claimedReadings.reduce(
         (sum, r) => sum + Number(r.totalAmount),
         0,
       );
 
-      const lineItems = lockedReadings.map((reading) =>
+      const lineItems = claimedReadings.map((reading) =>
         manager.create(RentCycleLineItem, {
           rentCycleId: targetCycleId,
           type: RentCycleLineItemType.UTILITY,
@@ -472,7 +443,7 @@ export class UtilityService {
 
       return {
         totalUtilityAdded,
-        readingsProcessed: lockedReadings.length,
+        readingsProcessed: claimedReadings.length,
       };
     });
   }
@@ -681,5 +652,145 @@ export class UtilityService {
 
   private isOpenStatus(status: RentCycleStatus): boolean {
     return [RentCycleStatus.DUE, RentCycleStatus.OVERDUE, RentCycleStatus.PARTIAL].includes(status);
+  }
+
+  private async resolveUtilityCycleForPeriod(
+    manager: EntityManager,
+    rentCycle: RentCycle,
+    requestId?: string,
+  ): Promise<RentCycle> {
+    const logRequestId = requestId ?? '-';
+
+    const findUtilityCycleByUniqueKey = () =>
+      manager.findOne(RentCycle, {
+        where: {
+          leaseId: rentCycle.leaseId,
+          period: rentCycle.period,
+          category: RentCycleCategory.UTILITY,
+        },
+      });
+
+    const normalizeResolvedCycle = async (cycle: RentCycle): Promise<RentCycle> => {
+      if (!cycle.isVoid) {
+        return cycle;
+      }
+
+      this.logger.warn(
+        `Reviving voided utility cycle leaseId=${rentCycle.leaseId} period=${rentCycle.period} cycleId=${cycle.id} requestId=${logRequestId}`,
+      );
+      await manager.update(
+        RentCycle,
+        { id: cycle.id },
+        { isVoid: false, voidReason: '' },
+      );
+
+      const revived = await findUtilityCycleByUniqueKey();
+      if (revived && !revived.isVoid) {
+        return revived;
+      }
+
+      // If revival didn't reflect immediately, keep behavior deterministic.
+      throw new BusinessException(
+        ErrorCode.UTILITY_CYCLE_RESOLUTION_FAILED,
+        ERROR_MESSAGES.UTILITY_CYCLE_RESOLUTION_FAILED,
+        HttpStatus.CONFLICT,
+        {
+          leaseId: rentCycle.leaseId,
+          period: rentCycle.period,
+          category: RentCycleCategory.UTILITY,
+          reason: 'VOID_REVIVAL_FAILED',
+        },
+      );
+    };
+
+    const existingCycle = await findUtilityCycleByUniqueKey();
+    if (existingCycle) {
+      return normalizeResolvedCycle(existingCycle);
+    }
+
+    this.logger.log(
+      `Starting utility cycle resolve leaseId=${rentCycle.leaseId} period=${rentCycle.period} companyId=${rentCycle.companyId} tenantId=${rentCycle.tenantId} requestId=${logRequestId}`,
+    );
+
+    // Lockless get-or-create: insert with ON CONFLICT DO NOTHING on the business key,
+    // then re-fetch by the same unique key. This is concurrency-safe and does not
+    // poison the transaction.
+    const invoiceNumber = await generateNextInvoiceNumber(
+      manager.getRepository(RentCycle),
+      rentCycle.companyId,
+      rentCycle.period,
+      RentCycleCategory.UTILITY,
+    );
+
+    this.logger.log(
+      `Utility cycle insert (lockless) leaseId=${rentCycle.leaseId} period=${rentCycle.period} invoiceNumber=${invoiceNumber} requestId=${logRequestId}`,
+    );
+
+    const insertResult = (await manager.query(
+      `INSERT INTO "rent_cycles"
+       ("leaseId","companyId","tenantId","invoiceNumber","period","dueDate","periodStartDate","periodEndDate","totalAmountDue","isDeposit","isVoid","category")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT ("leaseId","period","category") DO NOTHING
+       RETURNING "id"`,
+      [
+        rentCycle.leaseId,
+        rentCycle.companyId,
+        rentCycle.tenantId,
+        invoiceNumber,
+        rentCycle.period,
+        new Date(),
+        rentCycle.periodStartDate,
+        rentCycle.periodEndDate,
+        0,
+        false,
+        false,
+        RentCycleCategory.UTILITY,
+      ],
+    )) as Array<{ id?: string }>;
+
+    const insertedId = insertResult?.[0]?.id;
+    this.logger.log(
+      `Utility cycle insert result inserted=${insertedId ? 'true' : 'false'} insertedId=${insertedId ?? '-'} leaseId=${rentCycle.leaseId} period=${rentCycle.period} requestId=${logRequestId}`,
+    );
+
+    const resolvedAfterInsert = await findUtilityCycleByUniqueKey();
+    if (resolvedAfterInsert) {
+      const normalized = await normalizeResolvedCycle(resolvedAfterInsert);
+      this.logger.log(
+        `Utility cycle re-fetch succeeded leaseId=${rentCycle.leaseId} period=${rentCycle.period} cycleId=${normalized.id} requestId=${logRequestId}`,
+      );
+      return normalized;
+    }
+
+    const resolvedCycle = await findUtilityCycleByUniqueKey();
+    if (resolvedCycle) {
+      const normalized = await normalizeResolvedCycle(resolvedCycle);
+      this.logger.log(
+        `Utility cycle re-fetch succeeded leaseId=${rentCycle.leaseId} period=${rentCycle.period} cycleId=${normalized.id} requestId=${logRequestId}`,
+      );
+      return normalized;
+    }
+
+    this.logger.error(
+      `Utility cycle re-fetch failed leaseId=${rentCycle.leaseId} period=${rentCycle.period} requestId=${logRequestId}`,
+    );
+    throw new BusinessException(
+      ErrorCode.UTILITY_CYCLE_RESOLUTION_FAILED,
+      ERROR_MESSAGES.UTILITY_CYCLE_RESOLUTION_FAILED,
+      HttpStatus.CONFLICT,
+      {
+        leaseId: rentCycle.leaseId,
+        period: rentCycle.period,
+        category: RentCycleCategory.UTILITY,
+      },
+    );
+  }
+
+  private isUniqueConstraintViolation(error: unknown): boolean {
+    return (
+      error instanceof QueryFailedError &&
+      (error as QueryFailedError & { driverError?: { code?: string } }).driverError
+        ?.code === '23505'
+    );
   }
 }

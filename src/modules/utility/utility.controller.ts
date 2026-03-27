@@ -6,9 +6,11 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Request } from 'express';
 import { UtilityService } from './utility.service';
 import { RecordWaterReadingDto } from './dto/record-water-reading.dto';
 import { AttachUtilityToRentCycleDto } from './dto/attach-utility-to-rent-cycle.dto';
@@ -43,10 +45,12 @@ export class UtilityController {
   async attachUtilityToRentCycle(
     @Body() dto: AttachUtilityToRentCycleDto,
     @AuthUser() user: { id: string },
+    @Req() req: Request & { requestId?: string },
   ) {
     return this.utilityService.attachUtilityToRentCycle(
       dto.rentCycleId,
       user.id,
+      req.requestId,
     );
   }
 

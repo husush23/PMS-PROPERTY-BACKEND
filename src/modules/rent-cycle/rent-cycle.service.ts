@@ -25,6 +25,12 @@ import {
   calculateNextDueDate,
   getPeriodsSinceStart,
 } from '../../common/utils/rent-due-date.util';
+import { UtilityService } from '../utility/utility.service';
+import { RentCycleCategory } from '../../shared/enums/rent-cycle-category.enum';
+import {
+  buildInvoiceNumberPrefix,
+  generateNextInvoiceNumber,
+} from './utils/invoice-number.util';
 
 /**
  * TENANT TRUTH SOURCE RULE:
@@ -54,6 +60,7 @@ export class RentCycleService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private companySettingsResolver: CompanySettingsResolver,
+    private readonly utilityService: UtilityService,
   ) {}
 
   async create(
@@ -83,13 +90,14 @@ export class RentCycleService {
       where: {
         leaseId: createDto.leaseId,
         period: createDto.period,
+        category: RentCycleCategory.RENT,
       },
     });
 
     if (existing) {
       throw new BusinessException(
-        ErrorCode.BAD_REQUEST,
-        'Rent cycle already exists for this lease and period',
+        ErrorCode.RENT_CYCLE_ALREADY_EXISTS_FOR_PERIOD,
+        ERROR_MESSAGES.RENT_CYCLE_ALREADY_EXISTS_FOR_PERIOD,
         HttpStatus.BAD_REQUEST,
         { leaseId: createDto.leaseId, period: createDto.period },
       );
@@ -101,33 +109,31 @@ export class RentCycleService {
       0,
     );
 
-    // Generate invoice number - now checks globally for uniqueness
+    // Structured INV-...-RENT-###; uniqueness per (companyId, invoiceNumber)
     let invoiceNumber = await this.generateInvoiceNumber(
       lease.companyId,
       createDto.period,
     );
 
-    // Double-check if this invoice number already exists (race condition protection)
     const existingWithNumber = await this.rentCycleRepository.findOne({
-      where: { invoiceNumber },
+      where: { companyId: lease.companyId, invoiceNumber },
     });
 
     if (existingWithNumber) {
-      // If it exists, generate a new one with a higher sequence
-      // This handles the rare race condition where two requests generate the same number
-      const [year, month] = createDto.period.split('-');
-      const prefix = `INV-${year}-${month}-`;
-      
-      // Get all existing invoice numbers for this period
+      const prefix = buildInvoiceNumberPrefix(
+        createDto.period,
+        RentCycleCategory.RENT,
+      );
+
       const allExisting = await this.rentCycleRepository
         .createQueryBuilder('cycle')
-        .where('cycle.invoiceNumber LIKE :prefix', {
+        .where('cycle.companyId = :companyId', { companyId: lease.companyId })
+        .andWhere('cycle.invoiceNumber LIKE :prefix', {
           prefix: `${prefix}%`,
         })
         .select('cycle.invoiceNumber', 'invoiceNumber')
         .getRawMany();
 
-      // Extract all sequence numbers
       const usedSequences = allExisting
         .map((inv) => {
           const parts = inv.invoiceNumber.split('-');
@@ -137,19 +143,17 @@ export class RentCycleService {
         .filter((seq) => seq > 0)
         .sort((a, b) => b - a);
 
-      // Use the highest sequence + 1
       const nextSequence = usedSequences.length > 0 ? usedSequences[0] + 1 : 1;
       invoiceNumber = `${prefix}${nextSequence.toString().padStart(3, '0')}`;
-      
-      // Final check - if this also exists, something is very wrong
+
       const finalCheck = await this.rentCycleRepository.findOne({
-        where: { invoiceNumber },
+        where: { companyId: lease.companyId, invoiceNumber },
       });
-      
+
       if (finalCheck) {
         throw new BusinessException(
-          ErrorCode.INTERNAL_SERVER_ERROR,
-          'Unable to generate unique invoice number. Please contact support.',
+          ErrorCode.INVOICE_NUMBER_GENERATION_FAILED,
+          ERROR_MESSAGES.INVOICE_NUMBER_GENERATION_FAILED,
           HttpStatus.INTERNAL_SERVER_ERROR,
           { period: createDto.period },
         );
@@ -159,8 +163,8 @@ export class RentCycleService {
     // Safety check: invoiceNumber should always be assigned at this point
     if (!invoiceNumber) {
       throw new BusinessException(
-        ErrorCode.INTERNAL_SERVER_ERROR,
-        'Failed to generate invoice number',
+        ErrorCode.INVOICE_NUMBER_GENERATION_FAILED_FALLBACK,
+        ERROR_MESSAGES.INVOICE_NUMBER_GENERATION_FAILED_FALLBACK,
         HttpStatus.INTERNAL_SERVER_ERROR,
         { period: createDto.period },
       );
@@ -177,6 +181,7 @@ export class RentCycleService {
         ? new Date(createDto.dueDate)
         : this.calculateDueDateFromPeriod(lease, createDto.period),
       totalAmountDue,
+      category: RentCycleCategory.RENT,
     });
 
     let savedCycle: RentCycle;
@@ -194,8 +199,8 @@ export class RentCycleService {
           error.message.includes('UQ_rent_cycles_invoice_number'))
       ) {
         throw new BusinessException(
-          ErrorCode.BAD_REQUEST,
-          'An invoice with this number already exists. This may happen if multiple invoices are being created simultaneously. Please try again.',
+          ErrorCode.INVOICE_NUMBER_CONFLICT_RETRY,
+          ERROR_MESSAGES.INVOICE_NUMBER_CONFLICT_RETRY,
           HttpStatus.BAD_REQUEST,
           {
             invoiceNumber,
@@ -220,6 +225,13 @@ export class RentCycleService {
     );
 
     await this.lineItemRepository.save(lineItems);
+
+    if (!savedCycle.isDeposit) {
+      await this.utilityService.attachUtilityToRentCycle(
+        savedCycle.id,
+        requesterUserId,
+      );
+    }
 
     // Reload with relations
     const cycleWithRelations = await this.rentCycleRepository.findOne({
@@ -428,8 +440,8 @@ export class RentCycleService {
 
     if (!cycle) {
       throw new BusinessException(
-        ErrorCode.PAYMENT_NOT_FOUND,
-        'Rent cycle not found',
+        ErrorCode.RENT_CYCLE_NOT_FOUND,
+        ERROR_MESSAGES.RENT_CYCLE_NOT_FOUND,
         HttpStatus.NOT_FOUND,
         { rentCycleId: id },
       );
@@ -479,8 +491,8 @@ export class RentCycleService {
         // Tenants can only see invoices for their own leases
         if (lease.tenantId !== requesterUserId) {
           throw new BusinessException(
-            ErrorCode.INSUFFICIENT_PERMISSIONS,
-            'You can only view invoices for your own leases.',
+            ErrorCode.CAN_ONLY_VIEW_INVOICES_FOR_OWN_LEASES,
+            ERROR_MESSAGES.CAN_ONLY_VIEW_INVOICES_FOR_OWN_LEASES,
             HttpStatus.FORBIDDEN,
           );
         }
@@ -657,8 +669,8 @@ export class RentCycleService {
 
     if (!cycle) {
       throw new BusinessException(
-        ErrorCode.PAYMENT_NOT_FOUND,
-        'Rent cycle not found',
+        ErrorCode.RENT_CYCLE_NOT_FOUND,
+        ERROR_MESSAGES.RENT_CYCLE_NOT_FOUND,
         HttpStatus.NOT_FOUND,
         { rentCycleId },
       );
@@ -670,8 +682,8 @@ export class RentCycleService {
     );
     if (!this.companySettingsResolver.isLateFeeEnabled(companySettings)) {
       throw new BusinessException(
-        ErrorCode.BAD_REQUEST,
-        'Late fees are disabled for this company.',
+        ErrorCode.LATE_FEES_DISABLED_FOR_COMPANY,
+        ERROR_MESSAGES.LATE_FEES_DISABLED_FOR_COMPANY,
         HttpStatus.BAD_REQUEST,
         { rentCycleId },
       );
@@ -682,8 +694,8 @@ export class RentCycleService {
 
     if (hasLateFee) {
       throw new BusinessException(
-        ErrorCode.BAD_REQUEST,
-        'Late fee already applied to this rent cycle',
+        ErrorCode.LATE_FEE_ALREADY_APPLIED,
+        ERROR_MESSAGES.LATE_FEE_ALREADY_APPLIED,
         HttpStatus.BAD_REQUEST,
         { rentCycleId },
       );
@@ -758,8 +770,8 @@ export class RentCycleService {
 
     if (!cycle) {
       throw new BusinessException(
-        ErrorCode.PAYMENT_NOT_FOUND,
-        'Rent cycle not found',
+        ErrorCode.RENT_CYCLE_NOT_FOUND,
+        ERROR_MESSAGES.RENT_CYCLE_NOT_FOUND,
         HttpStatus.NOT_FOUND,
         { rentCycleId },
       );
@@ -771,8 +783,8 @@ export class RentCycleService {
     // Check if already voided
     if (cycle.isVoid) {
       throw new BusinessException(
-        ErrorCode.BAD_REQUEST,
-        'Invoice is already voided',
+        ErrorCode.INVOICE_ALREADY_VOIDED,
+        ERROR_MESSAGES.INVOICE_ALREADY_VOIDED,
         HttpStatus.BAD_REQUEST,
         { rentCycleId },
       );
@@ -789,8 +801,8 @@ export class RentCycleService {
       );
       if (activePayments.length > 0) {
         throw new BusinessException(
-          ErrorCode.BAD_REQUEST,
-          'Cannot void invoice with active payments. Refund payments first.',
+          ErrorCode.CANNOT_VOID_INVOICE_WITH_ACTIVE_PAYMENTS,
+          ERROR_MESSAGES.CANNOT_VOID_INVOICE_WITH_ACTIVE_PAYMENTS,
           HttpStatus.BAD_REQUEST,
           { rentCycleId, activePaymentsCount: activePayments.length },
         );
@@ -879,6 +891,7 @@ export class RentCycleService {
         leaseId: lease.id,
         period: period,
         isDeposit: true,
+        category: RentCycleCategory.DEPOSIT,
       },
       relations: ['lineItems'],
     });
@@ -894,29 +907,12 @@ export class RentCycleService {
       }
     }
 
-    // Generate invoice number for deposit
-    const year = new Date().getFullYear();
-    const month = String(new Date().getMonth() + 1).padStart(2, '0');
-    const prefix = `DEP-${year}-${month}-`;
-
-    const existingInvoices = await this.rentCycleRepository
-      .createQueryBuilder('cycle')
-      .where('cycle.invoiceNumber LIKE :prefix', {
-        prefix: `${prefix}%`,
-      })
-      .orderBy('cycle.invoiceNumber', 'DESC')
-      .getOne();
-
-    let sequence = 1;
-    if (existingInvoices) {
-      const lastSequence = parseInt(
-        existingInvoices.invoiceNumber.split('-').pop() || '0',
-        10,
-      );
-      sequence = lastSequence + 1;
-    }
-
-    const invoiceNumber = `${prefix}${sequence.toString().padStart(3, '0')}`;
+    const invoiceNumber = await generateNextInvoiceNumber(
+      this.rentCycleRepository,
+      lease.companyId,
+      period,
+      RentCycleCategory.DEPOSIT,
+    );
 
     // For deposits, period boundaries are the lease start date (one-time charge)
     const depositDueDate = new Date(lease.startDate);
@@ -935,6 +931,7 @@ export class RentCycleService {
       periodEndDate: periodEndDate,
       totalAmountDue: amount,
       isDeposit: true, // Mark as deposit invoice
+      category: RentCycleCategory.DEPOSIT,
     });
 
     const savedCycle = await this.rentCycleRepository.save(depositCycle);
@@ -960,6 +957,21 @@ export class RentCycleService {
     const amounts = this.calculateAmounts(rentCycle);
     const status = this.calculateStatus(rentCycle);
 
+    const lineItems = rentCycle.lineItems || [];
+    const invoiceRentTotal = lineItems
+      .filter((item) => item.type === RentCycleLineItemType.RENT)
+      .reduce((sum, item) => sum + Number(item.amount), 0);
+    const invoiceUtilityTotal = lineItems
+      .filter((item) => item.type === RentCycleLineItemType.UTILITY)
+      .reduce((sum, item) => sum + Number(item.amount), 0);
+    const invoiceOtherTotal = lineItems
+      .filter(
+        (item) =>
+          item.type !== RentCycleLineItemType.RENT &&
+          item.type !== RentCycleLineItemType.UTILITY,
+      )
+      .reduce((sum, item) => sum + Number(item.amount), 0);
+
     return {
       id: rentCycle.id,
       leaseId: rentCycle.leaseId,
@@ -969,10 +981,16 @@ export class RentCycleService {
       tenantName: (rentCycle.lease as any)?.tenant?.name,
       invoiceNumber: rentCycle.invoiceNumber,
       period: rentCycle.period,
+      category: rentCycle.category,
       dueDate: rentCycle.dueDate,
       periodStartDate: rentCycle.periodStartDate || null,
       periodEndDate: rentCycle.periodEndDate || null,
       totalAmountDue: amounts.totalAmountDue,
+      invoiceRentTotal,
+      invoiceUtilityTotal,
+      rentTotal: invoiceRentTotal,
+      utilityTotal: invoiceUtilityTotal,
+      otherTotal: invoiceOtherTotal,
       amountPaid: amounts.amountPaid,
       balance: amounts.balance,
       status,
@@ -982,6 +1000,7 @@ export class RentCycleService {
         amount: Number(item.amount),
         description: item.description,
         isLateFee: item.isLateFee,
+        utilityReadingId: item.utilityReadingId ?? null,
       })),
       paymentsCount: rentCycle.payments?.length || 0,
       isDeposit: rentCycle.isDeposit || false,
@@ -1012,6 +1031,10 @@ export class RentCycleService {
     // This handles cases where payments were created before rent cycles existed
     // or payments were created without rentCycleId
     if (payments.length === 0) {
+      // Legacy unlinked payments (leaseId + period) should only apply to RENT invoices.
+      if (cycle.category !== RentCycleCategory.RENT) {
+        return payments;
+      }
       payments = await this.paymentRepository.find({
         where: {
           leaseId: cycle.leaseId,
@@ -1030,43 +1053,12 @@ export class RentCycleService {
     companyId: string,
     period: string,
   ): Promise<string> {
-    // Format: INV-YYYY-MM-{sequence}
-    const [year, month] = period.split('-');
-    const prefix = `INV-${year}-${month}-`;
-
-    // Find ALL existing invoice numbers for this period (globally, not just company)
-    // This ensures uniqueness across the entire system
-    const existingInvoices = await this.rentCycleRepository
-      .createQueryBuilder('cycle')
-      .where('cycle.invoiceNumber LIKE :prefix', {
-        prefix: `${prefix}%`,
-      })
-      .select('cycle.invoiceNumber', 'invoiceNumber')
-      .orderBy('cycle.invoiceNumber', 'DESC')
-      .getRawMany();
-
-    // Extract sequence numbers and find the next available one
-    const usedSequences = existingInvoices
-      .map((inv) => {
-        const parts = inv.invoiceNumber.split('-');
-        const seq = parseInt(parts[parts.length - 1] || '0', 10);
-        return isNaN(seq) ? 0 : seq;
-      })
-      .filter((seq) => seq > 0)
-      .sort((a, b) => b - a); // Sort descending
-
-    // Find the next available sequence number
-    let sequence = 1;
-    if (usedSequences.length > 0) {
-      // Start from the highest sequence + 1
-      sequence = usedSequences[0] + 1;
-      
-      // Check if there are any gaps we can use (optimization)
-      // But for simplicity, we'll just use highest + 1
-      // This ensures we always get a unique number
-    }
-
-    return `${prefix}${sequence.toString().padStart(3, '0')}`;
+    return generateNextInvoiceNumber(
+      this.rentCycleRepository,
+      companyId,
+      period,
+      RentCycleCategory.RENT,
+    );
   }
 
   private async validateCompanyAccess(
@@ -1112,8 +1104,8 @@ export class RentCycleService {
       // Tenants can only access their own invoices
       if (rentCycle.tenantId !== requesterUserId) {
         throw new BusinessException(
-          ErrorCode.INSUFFICIENT_PERMISSIONS,
-          'You can only view your own invoices.',
+          ErrorCode.CAN_ONLY_VIEW_OWN_INVOICES,
+          ERROR_MESSAGES.CAN_ONLY_VIEW_OWN_INVOICES,
           HttpStatus.FORBIDDEN,
         );
       }
@@ -1204,8 +1196,8 @@ export class RentCycleService {
     }
 
     throw new BusinessException(
-      ErrorCode.BAD_REQUEST,
-      'Invalid billing period format for due date calculation.',
+      ErrorCode.INVALID_BILLING_PERIOD_FORMAT,
+      ERROR_MESSAGES.INVALID_BILLING_PERIOD_FORMAT,
       HttpStatus.BAD_REQUEST,
       { period, paymentFrequency },
     );

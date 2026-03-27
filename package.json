@@ -22,7 +22,9 @@
     "migration:create": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:create",
     "migration:run": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run -d src/database/data-source.ts",
     "migration:revert": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:revert -d src/database/data-source.ts",
-    "migration:show": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:show -d src/database/data-source.ts"
+    "migration:show": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:show -d src/database/data-source.ts",
+    "openapi:export": "npm run build && node dist/tools/export-openapi.js",
+    "openapi:types": "npx --yes openapi-typescript@7 openapi/openapi.json -o openapi/openapi.d.ts"
   },
   "dependencies": {
     "@nestjs-modules/mailer": "^2.0.2",

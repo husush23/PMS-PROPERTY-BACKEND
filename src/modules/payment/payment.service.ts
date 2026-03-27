@@ -6,7 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import {
   BusinessException,
   ErrorCode,
@@ -40,6 +40,8 @@ import { AccountingEntryDirection } from '../accounting/enums/accounting-entry-d
 import { AccountingReferenceType } from '../accounting/enums/accounting-reference-type.enum';
 import { PaymentMethodEntity } from '../payment-method/entities/payment-method.entity';
 import { CompanySettingsResolver } from '../company/company-settings-resolver.service';
+import { RentCycleCategory } from '../../shared/enums/rent-cycle-category.enum';
+import { RentCycleLineItemType } from '../../shared/enums/rent-cycle-line-item-type.enum';
 
 @Injectable()
 export class PaymentService {
@@ -94,7 +96,7 @@ export class PaymentService {
     if (lease.status !== LeaseStatus.ACTIVE) {
       throw new BusinessException(
         ErrorCode.LEASE_NOT_ACTIVE,
-        ERROR_MESSAGES.CANNOT_CREATE_PAYMENT_FOR_INACTIVE_LEASE,
+        ERROR_MESSAGES.LEASE_NOT_ACTIVE,
         HttpStatus.BAD_REQUEST,
         {
           leaseId: createDto.leaseId,
@@ -145,8 +147,8 @@ export class PaymentService {
         )
       ) {
         throw new BusinessException(
-          ErrorCode.INSUFFICIENT_PERMISSIONS,
-          'Only company administrators, managers, landlords, and cashiers can create payments.',
+          ErrorCode.PAYMENT_CREATE_ROLE_REQUIRED,
+          ERROR_MESSAGES.PAYMENT_CREATE_ROLE_REQUIRED,
           HttpStatus.FORBIDDEN,
           {
             requiredRoles: [
@@ -180,8 +182,8 @@ export class PaymentService {
     today.setHours(23, 59, 59, 999); // End of today
     if (paymentDate > today) {
       throw new BusinessException(
-        ErrorCode.VALIDATION_ERROR,
-        'Payment date cannot be in the future.',
+        ErrorCode.PAYMENT_DATE_IN_FUTURE,
+        ERROR_MESSAGES.PAYMENT_DATE_IN_FUTURE,
         HttpStatus.BAD_REQUEST,
         { paymentDate: createDto.paymentDate },
       );
@@ -258,8 +260,8 @@ export class PaymentService {
       if (rentCycle) {
         if (rentCycle.isVoid) {
           throw new BusinessException(
-            ErrorCode.VALIDATION_ERROR,
-            'Cannot make payment on voided invoice',
+            ErrorCode.PAYMENT_VOID_INVOICE,
+            ERROR_MESSAGES.PAYMENT_VOID_INVOICE,
             HttpStatus.BAD_REQUEST,
             { rentCycleId, isVoid: true },
           );
@@ -274,24 +276,56 @@ export class PaymentService {
          * Validation: If payment type is RENT and invoice is deposit, reject
          * Validation: If payment type is DEPOSIT and invoice is NOT deposit, reject
          */
-        if (rentCycle.isDeposit) {
-          // Deposit invoice - only accept deposit payments
+        const cycleCategory =
+          rentCycle.category ||
+          (rentCycle.isDeposit ? RentCycleCategory.DEPOSIT : RentCycleCategory.RENT);
+
+        // Category safeguards:
+        // - DEPOSIT invoices accept only DEPOSIT payments
+        // - UTILITY invoices accept only UTILITY payments
+        // - RENT invoices reject DEPOSIT and UTILITY payments
+        if (cycleCategory === RentCycleCategory.DEPOSIT || rentCycle.isDeposit) {
           if (createDto.paymentType !== PaymentType.DEPOSIT) {
             throw new BusinessException(
-              ErrorCode.VALIDATION_ERROR,
-              'Cannot apply non-deposit payment to deposit invoice. Deposit invoices only accept deposit payments.',
+              ErrorCode.PAYMENT_NON_DEPOSIT_ON_DEPOSIT_INVOICE,
+              ERROR_MESSAGES.PAYMENT_NON_DEPOSIT_ON_DEPOSIT_INVOICE,
               HttpStatus.BAD_REQUEST,
-              { rentCycleId, paymentType: createDto.paymentType, isDeposit: true },
+              {
+                rentCycleId,
+                paymentType: createDto.paymentType,
+                category: cycleCategory,
+              },
+            );
+          }
+        } else if (cycleCategory === RentCycleCategory.UTILITY) {
+          if (createDto.paymentType !== PaymentType.UTILITY) {
+            throw new BusinessException(
+              ErrorCode.PAYMENT_NON_UTILITY_ON_UTILITY_INVOICE,
+              ERROR_MESSAGES.PAYMENT_NON_UTILITY_ON_UTILITY_INVOICE,
+              HttpStatus.BAD_REQUEST,
+              {
+                rentCycleId,
+                paymentType: createDto.paymentType,
+                category: cycleCategory,
+              },
             );
           }
         } else {
-          // Rent invoice - do not accept deposit payments
+          // RENT (and anything else treated as rent for now)
           if (createDto.paymentType === PaymentType.DEPOSIT) {
             throw new BusinessException(
-              ErrorCode.VALIDATION_ERROR,
-              'Cannot apply deposit payment to rent invoice. Deposit payments must be applied to deposit invoices only.',
+              ErrorCode.PAYMENT_DEPOSIT_ON_RENT_INVOICE,
+              ERROR_MESSAGES.PAYMENT_DEPOSIT_ON_RENT_INVOICE,
               HttpStatus.BAD_REQUEST,
-              { rentCycleId, paymentType: createDto.paymentType, isDeposit: false },
+              { rentCycleId, paymentType: createDto.paymentType, category: cycleCategory },
+            );
+          }
+          if (createDto.paymentType === PaymentType.UTILITY) {
+            throw new BusinessException(
+              ErrorCode.PAYMENT_UTILITY_ON_RENT_INVOICE,
+              ERROR_MESSAGES.PAYMENT_UTILITY_ON_RENT_INVOICE,
+              HttpStatus.BAD_REQUEST,
+              { rentCycleId, paymentType: createDto.paymentType, category: cycleCategory },
             );
           }
         }
@@ -302,26 +336,34 @@ export class PaymentService {
         }
       } else {
         throw new BusinessException(
-          ErrorCode.VALIDATION_ERROR,
-          'Rent cycle not found or does not belong to this lease',
+          ErrorCode.RENT_CYCLE_NOT_FOUND_OR_LEASE_MISMATCH,
+          ERROR_MESSAGES.RENT_CYCLE_NOT_FOUND_OR_LEASE_MISMATCH,
           HttpStatus.BAD_REQUEST,
           { rentCycleId, leaseId: createDto.leaseId },
         );
       }
     } else if (createDto.period) {
       // Try to find existing RentCycle for this lease + period
+      const desiredCategory =
+        createDto.paymentType === PaymentType.DEPOSIT
+          ? RentCycleCategory.DEPOSIT
+          : createDto.paymentType === PaymentType.UTILITY
+            ? RentCycleCategory.UTILITY
+            : RentCycleCategory.RENT;
+
       rentCycle = await this.rentCycleRepository.findOne({
         where: {
           leaseId: createDto.leaseId,
           period: createDto.period,
+          category: desiredCategory,
         },
       });
 
       if (rentCycle) {
         if (rentCycle.isVoid) {
           throw new BusinessException(
-            ErrorCode.VALIDATION_ERROR,
-            'Cannot make payment on voided invoice',
+            ErrorCode.PAYMENT_VOID_INVOICE,
+            ERROR_MESSAGES.PAYMENT_VOID_INVOICE,
             HttpStatus.BAD_REQUEST,
             { rentCycleId: rentCycle.id, isVoid: true },
           );
@@ -681,8 +723,23 @@ export class PaymentService {
 
     const payments = await queryBuilder.getMany();
 
+    const rentCycleIds = Array.from(
+      new Set(payments.map((p) => p.rentCycleId).filter(Boolean)),
+    );
+
+    const rentUtilityOtherTotalsByRentCycleId =
+      await this.getRentUtilityOtherInvoiceTotalsForRentCycleIds(
+        rentCycleIds as string[],
+      );
+
     const data = await Promise.all(
-      payments.map((payment) => this.toResponseDto(payment, requesterUserId)),
+      payments.map((payment) =>
+        this.toResponseDto(
+          payment,
+          requesterUserId,
+          rentUtilityOtherTotalsByRentCycleId,
+        ),
+      ),
     );
 
     return {
@@ -771,8 +828,8 @@ export class PaymentService {
         ![UserRole.COMPANY_ADMIN, UserRole.MANAGER].includes(requester.role)
       ) {
         throw new BusinessException(
-          ErrorCode.INSUFFICIENT_PERMISSIONS,
-          'Only company administrators and managers can update payments.',
+          ErrorCode.PAYMENT_UPDATE_ROLE_REQUIRED,
+          ERROR_MESSAGES.PAYMENT_UPDATE_ROLE_REQUIRED,
           HttpStatus.FORBIDDEN,
           { requiredRoles: [UserRole.COMPANY_ADMIN, UserRole.MANAGER] },
         );
@@ -890,8 +947,8 @@ export class PaymentService {
         )
       ) {
         throw new BusinessException(
-          ErrorCode.INSUFFICIENT_PERMISSIONS,
-          'Only company administrators, managers, and landlords can record payments.',
+          ErrorCode.PAYMENT_RECORD_ROLE_REQUIRED,
+          ERROR_MESSAGES.PAYMENT_RECORD_ROLE_REQUIRED,
           HttpStatus.FORBIDDEN,
           {
             requiredRoles: [
@@ -907,8 +964,8 @@ export class PaymentService {
     // Validate amount
     if (amount <= 0) {
       throw new BusinessException(
-        ErrorCode.VALIDATION_ERROR,
-        'Payment amount must be greater than 0.',
+        ErrorCode.PAYMENT_AMOUNT_MUST_BE_POSITIVE,
+        ERROR_MESSAGES.PAYMENT_AMOUNT_MUST_BE_POSITIVE,
         HttpStatus.BAD_REQUEST,
         { amount },
       );
@@ -917,7 +974,7 @@ export class PaymentService {
     // Validate payment is not already fully paid
     if (Number(payment.balance) <= 0) {
       throw new BusinessException(
-        ErrorCode.VALIDATION_ERROR,
+        ErrorCode.PAYMENT_ALREADY_FULLY_PAID,
         ERROR_MESSAGES.PAYMENT_ALREADY_FULLY_PAID,
         HttpStatus.BAD_REQUEST,
         {
@@ -934,8 +991,8 @@ export class PaymentService {
 
     if (newAmountPaid > amountDue) {
       throw new BusinessException(
-        ErrorCode.VALIDATION_ERROR,
-        `Payment amount exceeds amount due. Amount due: ${amountDue}, Current paid: ${payment.amountPaid}, Attempting to add: ${amount}`,
+        ErrorCode.PAYMENT_AMOUNT_EXCEEDS_DUE,
+        ERROR_MESSAGES.PAYMENT_AMOUNT_EXCEEDS_DUE,
         HttpStatus.BAD_REQUEST,
         { amountDue, currentPaid: payment.amountPaid, amount },
       );
@@ -1005,8 +1062,8 @@ export class PaymentService {
         ![UserRole.COMPANY_ADMIN, UserRole.MANAGER].includes(requester.role)
       ) {
         throw new BusinessException(
-          ErrorCode.INSUFFICIENT_PERMISSIONS,
-          'Only company administrators and managers can reverse payments.',
+          ErrorCode.PAYMENT_REVERSE_ROLE_REQUIRED,
+          ERROR_MESSAGES.PAYMENT_REVERSE_ROLE_REQUIRED,
           HttpStatus.FORBIDDEN,
           { requiredRoles: [UserRole.COMPANY_ADMIN, UserRole.MANAGER] },
         );
@@ -1100,8 +1157,8 @@ export class PaymentService {
         ![UserRole.COMPANY_ADMIN, UserRole.MANAGER].includes(requester.role)
       ) {
         throw new BusinessException(
-          ErrorCode.INSUFFICIENT_PERMISSIONS,
-          'Only company administrators and managers can mark payments as failed.',
+          ErrorCode.PAYMENT_MARK_FAILED_ROLE_REQUIRED,
+          ERROR_MESSAGES.PAYMENT_MARK_FAILED_ROLE_REQUIRED,
           HttpStatus.FORBIDDEN,
           { requiredRoles: [UserRole.COMPANY_ADMIN, UserRole.MANAGER] },
         );
@@ -1111,8 +1168,8 @@ export class PaymentService {
     // Only PENDING payments can be marked as failed
     if (payment.status !== PaymentStatus.PENDING) {
       throw new BusinessException(
-        ErrorCode.INVALID_PAYMENT_STATUS_TRANSITION,
-        'Only pending payments can be marked as failed.',
+        ErrorCode.PAYMENT_MARK_FAILED_PENDING_ONLY,
+        ERROR_MESSAGES.PAYMENT_MARK_FAILED_PENDING_ONLY,
         HttpStatus.BAD_REQUEST,
         { paymentId: id, currentStatus: payment.status },
       );
@@ -1164,8 +1221,8 @@ export class PaymentService {
         ![UserRole.COMPANY_ADMIN, UserRole.MANAGER].includes(requester.role)
       ) {
         throw new BusinessException(
-          ErrorCode.INSUFFICIENT_PERMISSIONS,
-          'Only company administrators and managers can delete payments.',
+          ErrorCode.PAYMENT_DELETE_ROLE_REQUIRED,
+          ERROR_MESSAGES.PAYMENT_DELETE_ROLE_REQUIRED,
           HttpStatus.FORBIDDEN,
           { requiredRoles: [UserRole.COMPANY_ADMIN, UserRole.MANAGER] },
         );
@@ -1312,8 +1369,8 @@ export class PaymentService {
   ): Promise<PaymentResponseDto[]> {
     if (!tenantId && !leaseId) {
       throw new BusinessException(
-        ErrorCode.VALIDATION_ERROR,
-        'Either tenantId or leaseId must be provided.',
+        ErrorCode.PAYMENT_TENANT_OR_LEASE_REQUIRED,
+        ERROR_MESSAGES.PAYMENT_TENANT_OR_LEASE_REQUIRED,
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -1373,8 +1430,23 @@ export class PaymentService {
 
     const payments = await queryBuilder.getMany();
 
+    const rentCycleIds = Array.from(
+      new Set(payments.map((p) => p.rentCycleId).filter(Boolean)),
+    );
+
+    const rentUtilityOtherTotalsByRentCycleId =
+      await this.getRentUtilityOtherInvoiceTotalsForRentCycleIds(
+        rentCycleIds as string[],
+      );
+
     return Promise.all(
-      payments.map((payment) => this.toResponseDto(payment, requesterUserId)),
+      payments.map((payment) =>
+        this.toResponseDto(
+          payment,
+          requesterUserId,
+          rentUtilityOtherTotalsByRentCycleId,
+        ),
+      ),
     );
   }
 
@@ -1401,8 +1473,8 @@ export class PaymentService {
       // Tenants can only access their own payments
       if (payment.tenantId !== requesterUserId) {
         throw new BusinessException(
-          ErrorCode.INSUFFICIENT_PERMISSIONS,
-          'You can only view your own payments.',
+          ErrorCode.PAYMENT_VIEW_OWN_ONLY,
+          ERROR_MESSAGES.PAYMENT_VIEW_OWN_ONLY,
           HttpStatus.FORBIDDEN,
         );
       }
@@ -1517,8 +1589,8 @@ export class PaymentService {
 
       if (!method) {
         throw new BusinessException(
-          ErrorCode.VALIDATION_ERROR,
-          'Payment method not found.',
+          ErrorCode.PAYMENT_METHOD_NOT_FOUND,
+          ERROR_MESSAGES.PAYMENT_METHOD_NOT_FOUND,
           HttpStatus.BAD_REQUEST,
           { paymentMethodId },
         );
@@ -1526,8 +1598,8 @@ export class PaymentService {
 
       if (!method.isGlobal && method.companyId !== companyId) {
         throw new BusinessException(
-          ErrorCode.INSUFFICIENT_PERMISSIONS,
-          'Payment method does not belong to this company.',
+          ErrorCode.PAYMENT_METHOD_COMPANY_MISMATCH,
+          ERROR_MESSAGES.PAYMENT_METHOD_COMPANY_MISMATCH,
           HttpStatus.FORBIDDEN,
           { paymentMethodId },
         );
@@ -1547,8 +1619,8 @@ export class PaymentService {
     }
 
     throw new BusinessException(
-      ErrorCode.VALIDATION_ERROR,
-      'Payment method is required.',
+      ErrorCode.PAYMENT_METHOD_REQUIRED,
+      ERROR_MESSAGES.PAYMENT_METHOD_REQUIRED,
       HttpStatus.BAD_REQUEST,
     );
   }
@@ -1562,9 +1634,142 @@ export class PaymentService {
     return (PaymentMethod as Record<string, PaymentMethod>)[normalized] ?? PaymentMethod.OTHER;
   }
 
+  private async getRentUtilityOtherInvoiceTotalsForRentCycleIds(
+    rentCycleIds: string[],
+  ): Promise<
+    Map<
+      string,
+      {
+        invoiceRentTotal: number;
+        invoiceUtilityTotal: number;
+        invoiceOtherTotal: number;
+        invoiceTotalForSplit: number;
+      }
+    >
+  > {
+    const uniqueIds = Array.from(new Set(rentCycleIds)).filter(Boolean);
+    const map = new Map<
+      string,
+      {
+        invoiceRentTotal: number;
+        invoiceUtilityTotal: number;
+        invoiceOtherTotal: number;
+        invoiceTotalForSplit: number;
+      }
+    >();
+
+    if (uniqueIds.length === 0) {
+      return map;
+    }
+
+    const cycles = await this.rentCycleRepository.find({
+      where: { id: In(uniqueIds) },
+      relations: ['lineItems'],
+    });
+
+    for (const cycle of cycles) {
+      const lineItems = cycle.lineItems || [];
+      const invoiceRentTotal = lineItems
+        .filter((li) => li.type === RentCycleLineItemType.RENT)
+        .reduce((sum, li) => sum + Number(li.amount), 0);
+      const invoiceUtilityTotal = lineItems
+        .filter((li) => li.type === RentCycleLineItemType.UTILITY)
+        .reduce((sum, li) => sum + Number(li.amount), 0);
+      const invoiceOtherTotal = lineItems
+        .filter(
+          (li) =>
+            li.type !== RentCycleLineItemType.RENT &&
+            li.type !== RentCycleLineItemType.UTILITY,
+        )
+        .reduce((sum, li) => sum + Number(li.amount), 0);
+
+      const invoiceTotalForSplit =
+        invoiceRentTotal + invoiceUtilityTotal + invoiceOtherTotal;
+
+      map.set(cycle.id, {
+        invoiceRentTotal,
+        invoiceUtilityTotal,
+        invoiceOtherTotal,
+        invoiceTotalForSplit,
+      });
+    }
+
+    return map;
+  }
+
+  private allocateRentUtilityOtherPaid(params: {
+    amountPaid: number;
+    invoiceRentTotal: number;
+    invoiceUtilityTotal: number;
+    invoiceOtherTotal: number;
+    invoiceTotalForSplit: number;
+  }): {
+    rentPaid: number;
+    utilityPaid: number;
+    otherPaid: number;
+    rentPortion: number;
+    utilityPortion: number;
+  } {
+    const {
+      amountPaid,
+      invoiceRentTotal,
+      invoiceUtilityTotal,
+      invoiceTotalForSplit,
+    } = params;
+
+    if (invoiceTotalForSplit <= 0 || amountPaid <= 0) {
+      return {
+        rentPaid: 0,
+        utilityPaid: 0,
+        otherPaid: 0,
+        rentPortion: 0,
+        utilityPortion: 0,
+      };
+    }
+
+    const rentPortion = invoiceRentTotal / invoiceTotalForSplit;
+    const utilityPortion = invoiceUtilityTotal / invoiceTotalForSplit;
+
+    // Allocate then use the remainder to keep totals consistent.
+    const rentPaid = amountPaid * rentPortion;
+    const utilityPaid = amountPaid * utilityPortion;
+    const otherPaid = amountPaid - rentPaid - utilityPaid;
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+
+    const rentPaidRounded = round2(rentPaid);
+    const utilityPaidRounded = round2(utilityPaid);
+    let otherPaidRounded = round2(otherPaid);
+
+    // Final adjustment to keep sum consistent after rounding.
+    const allocatedSum =
+      rentPaidRounded + utilityPaidRounded + otherPaidRounded;
+    const remainder = round2(amountPaid - allocatedSum);
+    if (remainder !== 0) {
+      otherPaidRounded = round2(otherPaidRounded + remainder);
+    }
+
+    return {
+      rentPaid: rentPaidRounded,
+      utilityPaid: utilityPaidRounded,
+      otherPaid: otherPaidRounded,
+      rentPortion: round2(rentPortion),
+      utilityPortion: round2(utilityPortion),
+    };
+  }
+
   private async toResponseDto(
     payment: Payment,
     requesterUserId?: string,
+    rentUtilityOtherTotalsByRentCycleId?: Map<
+      string,
+      {
+        invoiceRentTotal: number;
+        invoiceUtilityTotal: number;
+        invoiceOtherTotal: number;
+        invoiceTotalForSplit: number;
+      }
+    >,
   ): Promise<PaymentResponseDto> {
     // Load relations if not already loaded
     if (!payment.lease) {
@@ -1614,6 +1819,44 @@ export class PaymentService {
       payment.tenantId,
     );
 
+    const rentCycleId = payment.rentCycleId ?? null;
+    let splitFields:
+      | {
+          invoiceRentTotal: number;
+          invoiceUtilityTotal: number;
+          otherPaid: number;
+          rentPaid: number;
+          utilityPaid: number;
+          rentPortion: number;
+          utilityPortion: number;
+        }
+      | undefined;
+
+    if (rentCycleId) {
+      let totals = rentUtilityOtherTotalsByRentCycleId?.get(rentCycleId);
+      if (!totals) {
+        totals = (
+          await this.getRentUtilityOtherInvoiceTotalsForRentCycleIds([
+            rentCycleId,
+          ])
+        ).get(rentCycleId);
+      }
+
+      if (totals) {
+        splitFields = {
+          invoiceRentTotal: totals.invoiceRentTotal,
+          invoiceUtilityTotal: totals.invoiceUtilityTotal,
+          ...this.allocateRentUtilityOtherPaid({
+            amountPaid: Number(payment.amountPaid ?? 0),
+            invoiceRentTotal: totals.invoiceRentTotal,
+            invoiceUtilityTotal: totals.invoiceUtilityTotal,
+            invoiceOtherTotal: totals.invoiceOtherTotal,
+            invoiceTotalForSplit: totals.invoiceTotalForSplit,
+          }),
+        };
+      }
+    }
+
     const response: PaymentResponseDto = {
       id: payment.id,
       companyId: payment.companyId,
@@ -1652,6 +1895,13 @@ export class PaymentService {
       leaseBalance,
       lastPaymentDate,
       isOverdue: this.calculateIsOverdue(payment),
+      invoiceRentTotal: splitFields?.invoiceRentTotal ?? 0,
+      invoiceUtilityTotal: splitFields?.invoiceUtilityTotal ?? 0,
+      rentPaid: splitFields?.rentPaid ?? 0,
+      utilityPaid: splitFields?.utilityPaid ?? 0,
+      otherPaid: splitFields?.otherPaid ?? 0,
+      rentPortion: splitFields?.rentPortion ?? 0,
+      utilityPortion: splitFields?.utilityPortion ?? 0,
     };
 
     return response;

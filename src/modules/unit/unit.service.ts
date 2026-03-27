@@ -5,7 +5,7 @@ import {
 } from '../../common/exceptions/business.exception';
 import { ERROR_MESSAGES } from '../../common/constants/error-messages.constant';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, QueryDeepPartialEntity, Repository } from 'typeorm';
 import { Unit } from './entities/unit.entity';
 import { Property } from '../property/entities/property.entity';
 import { Company } from '../company/entities/company.entity';
@@ -597,8 +597,54 @@ export class UnitService {
       }
     }
 
-    // Update unit
-    await this.unitRepository.update(id, updateUnitDto);
+    const {
+      waterMeterNumber: wmNum,
+      waterMeter: wmAlias,
+      lastWaterReading: lwr,
+      lastReading: lr,
+      ...unitPayload
+    } = updateUnitDto;
+
+    const normalizedLastWaterReading =
+      lwr !== undefined || lr !== undefined ? lwr ?? lr : undefined;
+    const normalizedWaterMeterNumber =
+      wmNum !== undefined || wmAlias !== undefined ? wmNum ?? wmAlias : undefined;
+
+    const updatePayload: Record<string, unknown> = { ...unitPayload };
+    if (normalizedLastWaterReading !== undefined) {
+      updatePayload.lastWaterReading = normalizedLastWaterReading;
+    }
+
+    await this.unitRepository.update(
+      id,
+      updatePayload as QueryDeepPartialEntity<Unit>,
+    );
+
+    if (
+      normalizedWaterMeterNumber !== undefined &&
+      String(normalizedWaterMeterNumber).trim() !== ''
+    ) {
+      const meterNumber = String(normalizedWaterMeterNumber).trim();
+      const existingMeter = await this.utilityMeterRepository.findOne({
+        where: { unitId: id, type: UtilityType.WATER },
+      });
+      if (existingMeter) {
+        await this.utilityMeterRepository.update(existingMeter.id, {
+          meterNumber,
+        });
+      } else {
+        await this.utilityMeterRepository.save(
+          this.utilityMeterRepository.create({
+            propertyId: unit.propertyId,
+            unitId: id,
+            type: UtilityType.WATER,
+            meterNumber,
+            isActive: true,
+          }),
+        );
+      }
+    }
+
     const updatedUnit = await this.unitRepository.findOne({
       where: { id },
     });

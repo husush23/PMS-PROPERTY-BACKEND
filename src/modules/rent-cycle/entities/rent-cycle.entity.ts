@@ -13,6 +13,7 @@ import {
 import { Lease } from '../../lease/entities/lease.entity';
 import { Payment } from '../../payment/entities/payment.entity';
 import { RentCycleLineItem } from './rent-cycle-line-item.entity';
+import { RentCycleCategory } from '../../../shared/enums/rent-cycle-category.enum';
 
 @Entity('rent_cycles')
 @Index(['leaseId'])
@@ -22,7 +23,7 @@ import { RentCycleLineItem } from './rent-cycle-line-item.entity';
 @Index(['dueDate'])
 @Index(['companyId', 'tenantId'])
 @Index(['leaseId', 'dueDate'])
-@Unique(['leaseId', 'period'])
+@Unique(['leaseId', 'period', 'category'])
 @Unique(['companyId', 'invoiceNumber'])
 export class RentCycle {
   @PrimaryGeneratedColumn('uuid')
@@ -38,7 +39,7 @@ export class RentCycle {
   tenantId: string;
 
   @Column()
-  invoiceNumber: string; // Auto-generated: "INV-YYYY-MM-{sequence}"
+  invoiceNumber: string; // Auto-generated: INV-YYYY-MM-{category}-{sequence}
 
   @Column()
   period: string; // Format: "YYYY-MM"
@@ -54,6 +55,13 @@ export class RentCycle {
 
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   totalAmountDue: number; // Calculated from line items
+
+  @Column({
+    type: 'enum',
+    enum: RentCycleCategory,
+    default: RentCycleCategory.RENT,
+  })
+  category: RentCycleCategory;
 
   @Column({ default: false })
   isDeposit: boolean; // True if this is a deposit invoice (separate from rent invoices)

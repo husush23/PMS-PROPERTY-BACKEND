@@ -18,10 +18,13 @@ import { AccountingEntryDirection } from '../accounting/enums/accounting-entry-d
 import { AccountingReferenceType } from '../accounting/enums/accounting-reference-type.enum';
 import { CompanySettingsResolver } from '../company/company-settings-resolver.service';
 import { CompanySettings } from '../company/entities/company-settings.entity';
+import { RentCycleCategory } from '../../shared/enums/rent-cycle-category.enum';
+import { generateNextInvoiceNumber } from './utils/invoice-number.util';
 import {
   calculateNextDueDate,
   getPeriodsSinceStart,
 } from '../../common/utils/rent-due-date.util';
+import { UtilityService } from '../utility/utility.service';
 
 @Injectable()
 export class RentCycleGenerationService {
@@ -39,6 +42,7 @@ export class RentCycleGenerationService {
     @InjectDataSource()
     private dataSource: DataSource,
     private companySettingsResolver: CompanySettingsResolver,
+    private readonly utilityService: UtilityService,
   ) {}
 
   /**
@@ -75,6 +79,7 @@ export class RentCycleGenerationService {
       where: {
         leaseId: lease.id,
         period: period,
+        category: RentCycleCategory.RENT,
       },
     });
 
@@ -132,6 +137,7 @@ export class RentCycleGenerationService {
       );
 
       await this.lineItemRepository.save(savedLineItems);
+      await this.attachUtilityReadingsForNewCycle(savedCycle);
     }
 
     if (created) {
@@ -229,7 +235,11 @@ export class RentCycleGenerationService {
             paymentFrequency,
           );
           const finalInvoice = await this.rentCycleRepository.findOne({
-            where: { leaseId: lease.id, period: finalPeriod },
+            where: {
+              leaseId: lease.id,
+              period: finalPeriod,
+              category: RentCycleCategory.RENT,
+            },
           });
 
           if (!finalInvoice && nextDueDate <= leaseEndDate) {
@@ -288,6 +298,7 @@ export class RentCycleGenerationService {
             where: {
               leaseId: lease.id,
               period: period,
+              category: RentCycleCategory.RENT,
             },
           });
 
@@ -409,6 +420,7 @@ export class RentCycleGenerationService {
       );
 
       await this.lineItemRepository.save(savedLineItems);
+      await this.attachUtilityReadingsForNewCycle(savedCycle);
       if (companySettings) {
         await this.applyCreditToInvoice(savedCycle, lease, companySettings);
       }
@@ -464,12 +476,29 @@ export class RentCycleGenerationService {
       );
 
       await this.lineItemRepository.save(savedLineItems);
+      await this.attachUtilityReadingsForNewCycle(savedCycle);
       if (companySettings) {
         await this.applyCreditToInvoice(savedCycle, lease, companySettings);
       }
     }
 
     return savedCycle;
+  }
+
+  /** Run after rent line items exist; before credit so totals include water. */
+  private async attachUtilityReadingsForNewCycle(savedCycle: RentCycle): Promise<void> {
+    if (savedCycle.isDeposit) {
+      return;
+    }
+    try {
+      await this.utilityService.attachUtilityToRentCycle(savedCycle.id);
+    } catch (err) {
+      this.logger.warn(
+        `Utility attach failed for rent cycle ${savedCycle.id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   private async createRentCycleWithRetry(data: {
@@ -494,6 +523,7 @@ export class RentCycleGenerationService {
         const rentCycle = this.rentCycleRepository.create({
           ...data,
           invoiceNumber,
+          category: RentCycleCategory.RENT,
         });
         const savedCycle = await this.rentCycleRepository.save(rentCycle);
         await this.createRentIncomeEntry(savedCycle);
@@ -509,9 +539,13 @@ export class RentCycleGenerationService {
           };
           if (driverError?.code === '23505') {
             const constraint = driverError.constraint;
-            if (constraint === 'UQ_rent_cycles_lease_period') {
+            if (constraint === 'UQ_rent_cycles_lease_period_category') {
               const existing = await this.rentCycleRepository.findOne({
-                where: { leaseId: data.leaseId, period: data.period },
+                where: {
+                  leaseId: data.leaseId,
+                  period: data.period,
+                  category: RentCycleCategory.RENT,
+                },
               });
               if (existing) {
                 return { cycle: existing, created: false };
@@ -966,49 +1000,18 @@ export class RentCycleGenerationService {
   }
 
   /**
-   * Generate invoice number
-   * Supports different period formats: YYYY-MM, YYYY-WW, YYYY-QX, YYYY
+   * Generate invoice number (structured: INV-...-{category}-{sequence})
    */
   private async generateInvoiceNumber(
     companyId: string,
     period: string,
   ): Promise<string> {
-    // Extract year and create prefix based on period format
-    let prefix: string;
-    if (period.includes('-Q')) {
-      // Quarterly: YYYY-QX
-      prefix = `INV-${period}-`;
-    } else if (period.includes('-W')) {
-      // Weekly/Biweekly: YYYY-WW or YYYY-WW-BX
-      prefix = `INV-${period}-`;
-    } else if (period.match(/^\d{4}$/)) {
-      // Yearly: YYYY
-      prefix = `INV-${period}-`;
-    } else {
-      // Monthly: YYYY-MM (default)
-      const [year, month] = period.split('-');
-      prefix = `INV-${year}-${month}-`;
-    }
-
-    const existing = await this.rentCycleRepository
-      .createQueryBuilder('cycle')
-      .where('cycle.companyId = :companyId', { companyId })
-      .andWhere('cycle.invoiceNumber LIKE :prefix', {
-        prefix: `${prefix}%`,
-      })
-      .orderBy('cycle.invoiceNumber', 'DESC')
-      .getOne();
-
-    let sequence = 1;
-    if (existing) {
-      const lastSequence = parseInt(
-        existing.invoiceNumber.split('-').pop() || '0',
-        10,
-      );
-      sequence = lastSequence + 1;
-    }
-
-    return `${prefix}${sequence.toString().padStart(3, '0')}`;
+    return generateNextInvoiceNumber(
+      this.rentCycleRepository,
+      companyId,
+      period,
+      RentCycleCategory.RENT,
+    );
   }
 }
 

@@ -133,11 +133,11 @@ describe('RentCycleGenerationService Integration', () => {
       });
       mockRentCycleRepository.create.mockReturnValue({
         id: 'cycle-1',
-        invoiceNumber: 'INV-2024-01-001',
+        invoiceNumber: 'INV-2024-01-RENT-001',
       });
       mockRentCycleRepository.save.mockResolvedValue({
         id: 'cycle-1',
-        invoiceNumber: 'INV-2024-01-001',
+        invoiceNumber: 'INV-2024-01-RENT-001',
       });
       mockLineItemRepository.create.mockReturnValue({ id: 'item-1' });
       mockLineItemRepository.save.mockResolvedValue([{ id: 'item-1' }]);
@@ -178,11 +178,11 @@ describe('RentCycleGenerationService Integration', () => {
       });
       mockRentCycleRepository.create.mockReturnValue({
         id: 'cycle-2',
-        invoiceNumber: 'INV-2024-01-001',
+        invoiceNumber: 'INV-2024-01-RENT-001',
       });
       mockRentCycleRepository.save.mockResolvedValue({
         id: 'cycle-2',
-        invoiceNumber: 'INV-2024-01-001',
+        invoiceNumber: 'INV-2024-01-RENT-001',
       });
       mockLineItemRepository.create.mockImplementation((item) => item);
       mockLineItemRepository.save.mockResolvedValue([{ id: 'item-1' }]);
@@ -234,11 +234,11 @@ describe('RentCycleGenerationService Integration', () => {
       });
       mockRentCycleRepository.create.mockReturnValue({
         id: 'cycle-3',
-        invoiceNumber: 'INV-2024-12-001',
+        invoiceNumber: 'INV-2024-12-RENT-001',
       });
       mockRentCycleRepository.save.mockResolvedValue({
         id: 'cycle-3',
-        invoiceNumber: 'INV-2024-12-001',
+        invoiceNumber: 'INV-2024-12-RENT-001',
       });
       mockLineItemRepository.create.mockImplementation((item) => item);
       mockLineItemRepository.save.mockResolvedValue([{ id: 'item-1' }]);
@@ -303,8 +303,8 @@ describe('RentCycleGenerationService Integration', () => {
       mockRentCycleRepository.save.mockImplementation(async (cycle) => {
         saveAttempts += 1;
         if (
-          cycle.invoiceNumber === 'INV-2024-01-001' &&
-          lastInvoiceNumber === 'INV-2024-01-001'
+          cycle.invoiceNumber === 'INV-2024-01-RENT-001' &&
+          lastInvoiceNumber === 'INV-2024-01-RENT-001'
         ) {
           throw new QueryFailedError('', [], {
             code: '23505',
@@ -327,8 +327,8 @@ describe('RentCycleGenerationService Integration', () => {
       expect(cycle1.invoiceNumber).toBeDefined();
       expect(cycle2.invoiceNumber).toBeDefined();
       expect(cycle1.invoiceNumber).not.toEqual(cycle2.invoiceNumber);
-      expect(cycle1.invoiceNumber).toBe('INV-2024-01-001');
-      expect(cycle2.invoiceNumber).toBe('INV-2024-01-002');
+      expect(cycle1.invoiceNumber).toBe('INV-2024-01-RENT-001');
+      expect(cycle2.invoiceNumber).toBe('INV-2024-01-RENT-002');
       expect(mockLineItemRepository.save).toHaveBeenCalledTimes(2);
     });
   });

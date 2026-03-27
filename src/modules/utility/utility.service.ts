@@ -19,12 +19,42 @@ import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { Payment } from '../payment/entities/payment.entity';
 import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 import { RentCycleStatus } from '../../shared/enums/rent-cycle-status.enum';
+import { RentCycleCategory } from '../../shared/enums/rent-cycle-category.enum';
+import { generateNextInvoiceNumber } from '../rent-cycle/utils/invoice-number.util';
 import { User } from '../user/entities/user.entity';
 import { UserCompany } from '../company/entities/user-company.entity';
 import {
   UnitWaterHistoryResponseDto,
   WaterReadingResponseDto,
 } from './dto/utility-response.dto';
+
+/**
+ * Line item text uses the reading month. Raw UPDATE … RETURNING rows may expose
+ * `readingDate` under different casing or omit it; locked entities are authoritative.
+ */
+function formatWaterUsageMonthLabel(
+  lockedReading: UtilityReading | undefined,
+  rawRow: Record<string, unknown>,
+  formatter: Intl.DateTimeFormat,
+): string {
+  const candidates: unknown[] = [
+    lockedReading?.readingDate,
+    rawRow.readingDate,
+    rawRow.readingdate,
+  ];
+  for (const c of candidates) {
+    if (c == null || c === '') continue;
+    if (c instanceof Date) {
+      if (!Number.isNaN(c.getTime())) return formatter.format(c);
+      continue;
+    }
+    if (typeof c === 'string' || typeof c === 'number') {
+      const d = new Date(c);
+      if (!Number.isNaN(d.getTime())) return formatter.format(d);
+    }
+  }
+  return 'the billing period';
+}
 
 @Injectable()
 export class UtilityService {
@@ -167,8 +197,8 @@ export class UtilityService {
 
     if (currentReading < previousReading) {
       throw new BusinessException(
-        ErrorCode.WATER_INVALID_READING,
-        ERROR_MESSAGES.WATER_INVALID_READING,
+        ErrorCode.INVALID_METER_READING,
+        ERROR_MESSAGES.INVALID_METER_READING,
         HttpStatus.BAD_REQUEST,
         { currentReading, previousReading },
       );
@@ -247,17 +277,27 @@ export class UtilityService {
       );
     }
 
-    if (requesterUserId) {
-      await this.assertUserCanAccessCompany(requesterUserId, rentCycle.companyId);
+    // Strict rule: utility line items must never be attached to deposit rent cycles.
+    // This must happen before any further DB operations (e.g. access checks / lease reads).
+    if (rentCycle.isDeposit || rentCycle.category === RentCycleCategory.DEPOSIT) {
+      throw new BusinessException(
+        ErrorCode.UTILITY_NOT_ALLOWED_ON_DEPOSIT,
+        ERROR_MESSAGES.UTILITY_NOT_ALLOWED_ON_DEPOSIT,
+        HttpStatus.BAD_REQUEST,
+        { rentCycleId: rentCycle.id },
+      );
     }
 
-    if (rentCycle.isDeposit) {
-      return { totalUtilityAdded: 0, readingsProcessed: 0 };
+    if (requesterUserId) {
+      await this.assertUserCanAccessCompany(
+        requesterUserId,
+        rentCycle.companyId,
+      );
     }
 
     const lease = await this.leaseRepository.findOne({
-      where: { id: rentCycle.leaseId, isActive: true },
-      relations: ['unit'],
+      where: { id: rentCycle.leaseId },
+      relations: ['unit', 'tenant'],
     });
 
     if (!lease || !lease.unit) {
@@ -269,19 +309,38 @@ export class UtilityService {
       );
     }
 
+    // Prevent utility billing for inactive leases or inactive/missing tenants.
+    if (
+      lease.isActive !== true ||
+      !lease.tenant ||
+      lease.tenant.isActive !== true
+    ) {
+      throw new BusinessException(
+        ErrorCode.LEASE_NOT_ACTIVE,
+        ERROR_MESSAGES.LEASE_NOT_ACTIVE,
+        HttpStatus.BAD_REQUEST,
+        {
+          leaseId: lease.id,
+          tenantId: lease.tenant?.id,
+        },
+      );
+    }
+
     if (lease.utilitiesIncluded === true || lease.unit.utilitiesIncluded === true) {
       return { totalUtilityAdded: 0, readingsProcessed: 0 };
     }
 
     const cycleStatus = await this.getRentCycleStatus(rentCycle.id);
-    if (!this.isOpenStatus(cycleStatus)) {
+    const shouldAttachToPaidCycle = cycleStatus === RentCycleStatus.PAID;
+    if (!shouldAttachToPaidCycle && !this.isOpenStatus(cycleStatus)) {
       throw new BusinessException(
-        ErrorCode.UTILITY_RENT_CYCLE_CLOSED,
-        ERROR_MESSAGES.UTILITY_RENT_CYCLE_CLOSED,
+        ErrorCode.RENT_CYCLE_CLOSED,
+        ERROR_MESSAGES.RENT_CYCLE_CLOSED,
         HttpStatus.BAD_REQUEST,
         { rentCycleId: rentCycle.id, status: cycleStatus },
       );
     }
+
     return this.utilityReadingRepository.manager.transaction(async (manager) => {
       const lockedReadings = await manager
         .createQueryBuilder(UtilityReading, 'reading')
@@ -302,38 +361,114 @@ export class UtilityService {
         year: 'numeric',
       });
 
+      let targetCycleId: string;
+
+      if (shouldAttachToPaidCycle) {
+        let utilityCycle = await manager.findOne(RentCycle, {
+          where: {
+            leaseId: rentCycle.leaseId,
+            period: rentCycle.period,
+            category: RentCycleCategory.UTILITY,
+            isVoid: false,
+          },
+        });
+
+        if (!utilityCycle) {
+          const invoiceNumber = await generateNextInvoiceNumber(
+            manager.getRepository(RentCycle),
+            rentCycle.companyId,
+            rentCycle.period,
+            RentCycleCategory.UTILITY,
+          );
+          utilityCycle = manager.create(RentCycle, {
+            leaseId: rentCycle.leaseId,
+            companyId: rentCycle.companyId,
+            tenantId: rentCycle.tenantId,
+            invoiceNumber,
+            period: rentCycle.period,
+            dueDate: rentCycle.dueDate,
+            periodStartDate: rentCycle.periodStartDate,
+            periodEndDate: rentCycle.periodEndDate,
+            totalAmountDue: 0,
+            isDeposit: false,
+            isVoid: false,
+            category: RentCycleCategory.UTILITY,
+          });
+
+          try {
+            utilityCycle = await manager.save(utilityCycle);
+          } catch (err) {
+            utilityCycle = await manager.findOne(RentCycle, {
+              where: {
+                leaseId: rentCycle.leaseId,
+                period: rentCycle.period,
+                category: RentCycleCategory.UTILITY,
+                isVoid: false,
+              },
+            });
+            if (!utilityCycle) {
+              throw err;
+            }
+          }
+        }
+
+        targetCycleId = utilityCycle.id;
+      } else {
+        targetCycleId = rentCycle.id;
+      }
+
+      const readingIds = lockedReadings.map((r) => r.id);
+
+      // Postgres driver returns [rows, rowCount] for UPDATE (see TypeORM PostgresQueryRunner).
+      const updateRaw = (await manager.query(
+        `UPDATE "utility_readings"
+         SET "isBilled" = true, "rentCycleId" = $1, "updatedAt" = CURRENT_TIMESTAMP
+         WHERE id = ANY($2::uuid[]) AND "isBilled" = false`,
+        [targetCycleId, readingIds],
+      )) as [unknown[], number];
+      const affectedRows = updateRaw[1] ?? 0;
+      if (affectedRows === 0) {
+        return { totalUtilityAdded: 0, readingsProcessed: 0 };
+      }
+
+      // Line items use the same readings we locked (valid UUID strings). Raw RETURNING
+      // rows are not used — pg driver shape for `id` was not always a string, which
+      // produced utilityReadingId "" and DB errors.
       const totalUtilityAdded = lockedReadings.reduce(
-        (sum, reading) => sum + Number(reading.totalAmount),
+        (sum, r) => sum + Number(r.totalAmount),
         0,
       );
 
       const lineItems = lockedReadings.map((reading) =>
         manager.create(RentCycleLineItem, {
-          rentCycleId: rentCycle.id,
+          rentCycleId: targetCycleId,
           type: RentCycleLineItemType.UTILITY,
           amount: Number(reading.totalAmount),
-          description: `Water usage for ${monthYearFormatter.format(new Date(reading.readingDate))}`,
+          description: `Water usage for ${formatWaterUsageMonthLabel(
+            reading,
+            {},
+            monthYearFormatter,
+          )}`,
           isLateFee: false,
+          utilityReadingId: reading.id,
         }),
       );
+
       await manager.save(RentCycleLineItem, lineItems);
 
-      await manager
-        .createQueryBuilder()
-        .update(UtilityReading)
-        .set({
-          isBilled: true,
-          rentCycleId: rentCycle.id,
-        })
-        .whereInIds(lockedReadings.map((r) => r.id))
-        .andWhere('isBilled = :isBilled', { isBilled: false })
-        .execute();
+      const cycleRow = await manager.findOneBy(RentCycle, { id: targetCycleId });
+      if (!cycleRow) {
+        throw new BusinessException(
+          ErrorCode.RENT_CYCLE_NOT_FOUND,
+          ERROR_MESSAGES.RENT_CYCLE_NOT_FOUND,
+          HttpStatus.NOT_FOUND,
+          { rentCycleId: targetCycleId },
+        );
+      }
 
-      await manager.update(
-        RentCycle,
-        { id: rentCycle.id },
-        { totalAmountDue: Number(rentCycle.totalAmountDue) + totalUtilityAdded },
-      );
+      await manager.update(RentCycle, { id: targetCycleId }, {
+        totalAmountDue: Number(cycleRow.totalAmountDue) + totalUtilityAdded,
+      });
 
       return {
         totalUtilityAdded,
@@ -500,8 +635,8 @@ export class UtilityService {
     });
 
     const amountPaid = payments
-      .filter((p) => p.amount > 0)
-      .reduce((sum, p) => sum + Number(p.amount), 0);
+      .filter((p) => Number(p.amountPaid || 0) > 0)
+      .reduce((sum, p) => sum + Number(p.amountPaid || 0), 0);
 
     const totalAmountDue = Number(rentCycle.totalAmountDue);
     const balance = totalAmountDue - amountPaid;

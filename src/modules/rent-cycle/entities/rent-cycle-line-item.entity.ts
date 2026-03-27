@@ -7,6 +7,7 @@ import {
   Index,
 } from 'typeorm';
 import { RentCycle } from './rent-cycle.entity';
+import { UtilityReading } from '../../utility/entities/utility-reading.entity';
 import { RentCycleLineItemType } from '../../../shared/enums/rent-cycle-line-item-type.enum';
 
 @Entity('rent_cycle_line_items')
@@ -17,6 +18,9 @@ export class RentCycleLineItem {
 
   @Column('uuid')
   rentCycleId: string;
+
+  @Column('uuid', { nullable: true })
+  utilityReadingId: string | null;
 
   @Column({
     type: 'enum',
@@ -39,5 +43,9 @@ export class RentCycleLineItem {
   })
   @JoinColumn({ name: 'rentCycleId' })
   rentCycle: RentCycle;
+
+  @ManyToOne(() => UtilityReading, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'utilityReadingId' })
+  utilityReading: UtilityReading | null;
 }
 

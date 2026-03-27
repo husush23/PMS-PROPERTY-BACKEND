@@ -210,4 +210,48 @@ default: 'USD',
     example: '2024-01-15',
   })
   lastPaymentDate?: Date;
+
+  @ApiPropertyOptional({
+    description:
+      'Total rent portion of the invoice derived from rent-cycle line items',
+    example: 45000,
+  })
+  invoiceRentTotal: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Total utility portion of the invoice derived from rent-cycle line items',
+    example: 5000,
+  })
+  invoiceUtilityTotal: number;
+
+  @ApiPropertyOptional({
+    description: 'Allocated rent amount paid (proportional split)',
+    example: 45000,
+  })
+  rentPaid: number;
+
+  @ApiPropertyOptional({
+    description: 'Allocated utility amount paid (proportional split)',
+    example: 5000,
+  })
+  utilityPaid: number;
+
+  @ApiPropertyOptional({
+    description: 'Allocated other amount paid (proportional split)',
+    example: 1000,
+  })
+  otherPaid: number;
+
+  @ApiPropertyOptional({
+    description: 'Rent share of the invoice used for proportional allocation',
+    example: 0.9,
+  })
+  rentPortion: number;
+
+  @ApiPropertyOptional({
+    description: 'Utility share of the invoice used for proportional allocation',
+    example: 0.1,
+  })
+  utilityPortion: number;
 }

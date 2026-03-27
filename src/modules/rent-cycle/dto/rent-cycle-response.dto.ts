@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RentCycleStatus } from '../../../shared/enums/rent-cycle-status.enum';
 import { RentCycleLineItemType } from '../../../shared/enums/rent-cycle-line-item-type.enum';
+import { RentCycleCategory } from '../../../shared/enums/rent-cycle-category.enum';
 
 export class RentCycleLineItemResponseDto {
   @ApiProperty()
@@ -17,6 +18,13 @@ export class RentCycleLineItemResponseDto {
 
   @ApiProperty()
   isLateFee: boolean;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'For UTILITY line items created after utility-dedup migration: links to the billed UtilityReading. Omitted or null for legacy rows or non-utility lines.',
+  })
+  utilityReadingId?: string | null;
 }
 
 export class RentCycleResponseDto {
@@ -38,11 +46,18 @@ export class RentCycleResponseDto {
   @ApiPropertyOptional()
   tenantName?: string;
 
-  @ApiProperty()
+  @ApiProperty({
+    description:
+      'Structured invoice number: INV-{period}-{RENT|UTILITY|DEPOSIT}-{seq}. Utility bills use a separate cycle with category UTILITY (not a -U suffix). Legacy data may differ.',
+    example: 'INV-2024-01-RENT-001',
+  })
   invoiceNumber: string;
 
   @ApiProperty()
   period: string;
+
+  @ApiProperty({ enum: RentCycleCategory })
+  category: RentCycleCategory;
 
   @ApiProperty()
   dueDate: Date;
@@ -55,6 +70,41 @@ export class RentCycleResponseDto {
 
   @ApiProperty()
   totalAmountDue: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Total rent-only amount derived from line items (type=RENT)',
+    example: 45000,
+  })
+  invoiceRentTotal: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Total utility-only amount derived from line items (type=UTILITY)',
+    example: 5000,
+  })
+  invoiceUtilityTotal: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Total rent-portion of the invoice (derived from rent-cycle line items)',
+    example: 45000,
+  })
+  rentTotal: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Total utility-portion of the invoice (derived from rent-cycle line items)',
+    example: 5000,
+  })
+  utilityTotal: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Total other-portion of the invoice (sum of all line-item types except RENT and UTILITY)',
+    example: 2500,
+  })
+  otherTotal: number;
 
   @ApiProperty()
   amountPaid: number; // Calculated from payments

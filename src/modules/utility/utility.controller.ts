@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { UtilityService } from './utility.service';
 import { RecordWaterReadingDto } from './dto/record-water-reading.dto';
 import { AttachUtilityToRentCycleDto } from './dto/attach-utility-to-rent-cycle.dto';
@@ -17,6 +18,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { AuthUser } from '../../common/decorators/auth-user.decorator';
 
+@ApiTags('utilities')
 @Controller({ path: 'utilities', version: '1' })
 export class UtilityController {
   constructor(private readonly utilityService: UtilityService) {}

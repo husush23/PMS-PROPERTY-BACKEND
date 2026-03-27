@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { NestFactory, Reflector } from '@nestjs/core';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
@@ -17,6 +17,7 @@ import { seedPlans } from './database/seeds/plan.seed';
 import { DataSource } from 'typeorm';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { createOpenApiDocument } from './openapi/swagger-document';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -135,41 +136,8 @@ async function bootstrap() {
     new HttpExceptionFilter(),
   );
 
-  // Swagger/OpenAPI documentation
-  const config = new DocumentBuilder()
-    .setTitle('PMS Backend API')
-    .setDescription(
-      'Property Management System Backend API Documentation\n\n' +
-      '**Authentication**: This API uses HTTP-only cookies for authentication. ' +
-      'Access tokens and refresh tokens are automatically set as cookies when you login, register, or refresh tokens. ' +
-      'Cookies are sent automatically with each request. ' +
-      'Use the `/auth/refresh` endpoint to refresh your access token when it expires. ' +
-      'Use the `/auth/logout` endpoint to clear authentication cookies.\n\n' +
-      '**Important**: Ensure your client sends credentials (cookies) with requests by setting `withCredentials: true` (axios) or `credentials: "include"` (fetch).',
-    )
-    .setVersion('1.0')
-    .addCookieAuth('access_token')
-    .addTag('auth', 'Authentication endpoints')
-    .addTag('users', 'User management endpoints')
-    .addTag('admin', 'Super admin / system endpoints')
-    .addTag('companies', 'Company and membership management')
-    .addTag('settings', 'Company settings and bootstrap')
-    .addTag('properties', 'Property management endpoints')
-    .addTag('units', 'Unit management endpoints')
-    .addTag('leases', 'Lease management endpoints')
-    .addTag('tenants', 'Tenant management endpoints')
-    .addTag('payments', 'Payment management endpoints')
-    .addTag('payment-methods', 'Payment method configuration')
-    .addTag('rent-cycles', 'Rent cycle and billing periods')
-    .addTag('expenses', 'Expense management')
-    .addTag('accounting', 'Accounting summary and reports')
-    .addTag('reports', 'Financial and occupancy reports')
-    .addTag('dashboard', 'Dashboard summary for landlord/admin')
-    .addTag('maintenance', 'Maintenance request endpoints')
-    .addTag('documents', 'Document management endpoints')
-    .build();
-
-  const document = SwaggerModule.createDocument(app, config);
+  // Swagger/OpenAPI documentation (shared with `npm run openapi:export`)
+  const document = createOpenApiDocument(app);
   SwaggerModule.setup(`${apiPrefix}/docs`, app, document);
 
   try {

@@ -78,6 +78,10 @@ export const ERROR_MESSAGES = {
     'This tenant invitation has already been accepted.',
   CAN_ONLY_VIEW_OWN_TENANT_DATA:
     'You can only view your own tenant information.',
+  CAN_ONLY_VIEW_INVOICES_FOR_OWN_LEASES:
+    'You can only view invoices for your own leases.',
+  CAN_ONLY_VIEW_OWN_INVOICES:
+    'You can only view your own invoices.',
 
   // Lease
   LEASE_NOT_FOUND:
@@ -112,6 +116,40 @@ export const ERROR_MESSAGES = {
     'Completed or refunded payments cannot be deleted. Use reversal instead.',
   CANNOT_REVERSE_PAYMENT:
     'This payment cannot be reversed. Only paid payments can be reversed.',
+  PAYMENT_CREATE_ROLE_REQUIRED:
+    'Only company administrators, managers, landlords, and cashiers can create payments.',
+  PAYMENT_DATE_IN_FUTURE: 'Payment date cannot be in the future.',
+  PAYMENT_VOID_INVOICE: 'Cannot make payment on voided invoice',
+  PAYMENT_NON_DEPOSIT_ON_DEPOSIT_INVOICE:
+    'Cannot apply non-deposit payment to deposit invoice. Deposit invoices only accept deposit payments.',
+  PAYMENT_NON_UTILITY_ON_UTILITY_INVOICE:
+    'Cannot apply non-utility payment to utility invoice. Utility invoices only accept utility payments.',
+  PAYMENT_DEPOSIT_ON_RENT_INVOICE:
+    'Cannot apply deposit payment to rent invoice. Deposit payments must be applied to deposit invoices only.',
+  PAYMENT_UTILITY_ON_RENT_INVOICE:
+    'Cannot apply utility payment to rent invoice. Utility payments must be applied to utility invoices only.',
+  RENT_CYCLE_NOT_FOUND_OR_LEASE_MISMATCH:
+    'Rent cycle not found or does not belong to this lease',
+  PAYMENT_UPDATE_ROLE_REQUIRED:
+    'Only company administrators and managers can update payments.',
+  PAYMENT_RECORD_ROLE_REQUIRED:
+    'Only company administrators, managers, and landlords can record payments.',
+  PAYMENT_AMOUNT_MUST_BE_POSITIVE: 'Payment amount must be greater than 0.',
+  PAYMENT_REVERSE_ROLE_REQUIRED:
+    'Only company administrators and managers can reverse payments.',
+  PAYMENT_MARK_FAILED_ROLE_REQUIRED:
+    'Only company administrators and managers can mark payments as failed.',
+  PAYMENT_DELETE_ROLE_REQUIRED:
+    'Only company administrators and managers can delete payments.',
+  PAYMENT_MARK_FAILED_PENDING_ONLY:
+    'Only pending payments can be marked as failed.',
+  PAYMENT_TENANT_OR_LEASE_REQUIRED:
+    'Either tenantId or leaseId must be provided.',
+  PAYMENT_VIEW_OWN_ONLY: 'You can only view your own payments.',
+  PAYMENT_METHOD_NOT_FOUND: 'Payment method not found.',
+  PAYMENT_METHOD_COMPANY_MISMATCH:
+    'Payment method does not belong to this company.',
+  PAYMENT_METHOD_REQUIRED: 'Payment method is required.',
   PAYMENT_ALREADY_FULLY_PAID:
     'This payment is already fully paid. No additional payments can be recorded.',
   PAYMENT_AMOUNT_EXCEEDS_DUE:
@@ -122,6 +160,22 @@ export const ERROR_MESSAGES = {
   // Rent cycle
   RENT_CYCLE_NOT_FOUND:
     "The rent cycle you're looking for doesn't exist or you don't have access to it.",
+  RENT_CYCLE_ALREADY_EXISTS_FOR_PERIOD:
+    'Rent cycle already exists for this lease and period',
+  INVOICE_NUMBER_GENERATION_FAILED:
+    'Unable to generate unique invoice number. Please contact support.',
+  INVOICE_NUMBER_GENERATION_FAILED_FALLBACK: 'Failed to generate invoice number',
+  INVOICE_NUMBER_CONFLICT_RETRY:
+    'An invoice with this number already exists. This may happen if multiple invoices are being created simultaneously. Please try again.',
+  LATE_FEES_DISABLED_FOR_COMPANY: 'Late fees are disabled for this company.',
+  LATE_FEE_ALREADY_APPLIED: 'Late fee already applied to this rent cycle',
+  INVOICE_ALREADY_VOIDED: 'Invoice is already voided',
+  CANNOT_VOID_INVOICE_WITH_ACTIVE_PAYMENTS:
+    'Cannot void invoice with active payments. Refund payments first.',
+  INVALID_BILLING_PERIOD_FORMAT:
+    'Invalid billing period format for due date calculation.',
+  RENT_CYCLE_CLOSED:
+    'Utility charges cannot be added to this invoice because it is not open for billing.',
 
   // Water / utility
   WATER_METER_NOT_FOUND:
@@ -136,14 +190,14 @@ export const ERROR_MESSAGES = {
     'Cannot record a water reading because there is no active tenant on the lease.',
   WATER_MISSING_INITIAL_READING:
     'Set an initial water reading on the unit (or add a first reading) before recording new readings.',
-  WATER_INVALID_READING:
+  INVALID_METER_READING:
     'The new reading must be greater than or equal to the previous reading.',
   WATER_RATE_NOT_CONFIGURED:
     'Water price per cubic meter is not set for this property. Configure it in property settings.',
   WATER_DUPLICATE_READING_SAME_DATE:
     'A water reading for this meter has already been recorded for this calendar day.',
-  UTILITY_RENT_CYCLE_CLOSED:
-    'Utility charges cannot be added to this invoice because it is not open for billing.',
+  UTILITY_NOT_ALLOWED_ON_DEPOSIT:
+    'Utility charges cannot be added to deposit invoices',
   UTILITY_ACCESS_DENIED:
     "You don't have access to this property or unit for utility actions.",
 

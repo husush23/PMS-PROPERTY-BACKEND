@@ -16,9 +16,15 @@ import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 import { PaymentFrequency } from '../../shared/enums/payment-frequency.enum';
 import { RentCycleLineItemType } from '../../shared/enums/rent-cycle-line-item-type.enum';
 import {
-  getPeriodsSinceStart,
-  calculateNextDueDate,
-} from '../../common/utils/rent-due-date.util';
+  calculateProratedMonthlyRentAmount,
+  endOfUtcCalendarMonth,
+  getLeaseBillingStart,
+  getNextScheduledDueOnOrAfter,
+  getScheduledMonthlyDueDate,
+  isMidMonthProratedFirstCycle,
+  proratedDayCountForFirstMonth,
+  toUtcDateOnly,
+} from '../../common/utils/rent-proration.util';
 import {
   TenantDashboardResponseDto,
   TenantDashboardCurrentRentDto,
@@ -204,39 +210,57 @@ export class TenantDashboardService {
   }
 
   private buildNextRent(lease: Lease): TenantDashboardNextRentDto {
-    const today = new Date();
-    const billingStart = lease.billingStartDate
-      ? new Date(lease.billingStartDate)
-      : new Date(lease.startDate);
-    const anchorDay = lease.billingAnchorDay ?? billingStart.getDate();
-    const frequency = (lease.paymentFrequency as PaymentFrequency) ?? PaymentFrequency.MONTHLY;
+    const billingStart = getLeaseBillingStart(lease);
+    const anchorDay =
+      lease.billingAnchorDay ?? billingStart.getUTCDate();
+    const frequency =
+      (lease.paymentFrequency as PaymentFrequency) ?? PaymentFrequency.MONTHLY;
 
-    const periodsSinceStart = getPeriodsSinceStart(
-      billingStart,
-      today,
-      frequency,
-    );
-    const todayStr = today.toISOString().slice(0, 10);
-    let nextDueDate = calculateNextDueDate({
+    const nextDueDate = getNextScheduledDueOnOrAfter({
       billingStartDate: billingStart,
       billingAnchorDay: anchorDay,
+      proratedFirstMonth: lease.proratedFirstMonth ?? false,
       paymentFrequency: frequency,
-      cyclesAhead: periodsSinceStart,
+      asOf: new Date(),
     });
-    if (nextDueDate.toISOString().slice(0, 10) < todayStr) {
-      nextDueDate = calculateNextDueDate({
-        billingStartDate: billingStart,
-        billingAnchorDay: anchorDay,
-        paymentFrequency: frequency,
-        cyclesAhead: periodsSinceStart + 1,
-      });
+
+    let amount = Number(lease.monthlyRent ?? 0);
+    let prorationDays: number | null = null;
+    let prorationSummary: string | null = null;
+    let nextFullRentDueDate: string | null = null;
+    let nextFullRentSummary: string | null = null;
+
+    const proratedMid = isMidMonthProratedFirstCycle(lease);
+    if (frequency === PaymentFrequency.MONTHLY && proratedMid) {
+      const firstDue = endOfUtcCalendarMonth(billingStart);
+      if (
+        toUtcDateOnly(nextDueDate).getTime() ===
+        toUtcDateOnly(firstDue).getTime()
+      ) {
+        amount = calculateProratedMonthlyRentAmount(amount, billingStart);
+        prorationDays = proratedDayCountForFirstMonth(billingStart);
+        prorationSummary = `Prorated rent for ${prorationDays} days`;
+        const secondDue = getScheduledMonthlyDueDate({
+          billingStartDate: billingStart,
+          billingAnchorDay: anchorDay,
+          scheduleIndex: 1,
+          proratedMidMonth: true,
+        });
+        nextFullRentDueDate = toUtcDateOnly(secondDue)
+          .toISOString()
+          .slice(0, 10);
+        nextFullRentSummary = `Next full rent due on ${nextFullRentDueDate}`;
+      }
     }
 
-    const amount = Number(lease.monthlyRent ?? 0);
     return {
-      dueDate: nextDueDate.toISOString().slice(0, 10),
+      dueDate: toUtcDateOnly(nextDueDate).toISOString().slice(0, 10),
       amount,
       frequency,
+      prorationDays,
+      prorationSummary,
+      nextFullRentDueDate,
+      nextFullRentSummary,
     };
   }
 

@@ -10358,6 +10358,26 @@
               "YEARLY"
             ],
             "example": "MONTHLY"
+          },
+          "prorationDays": {
+            "type": "number",
+            "nullable": true,
+            "description": "When the next charge is prorated (mid-month move-in), number of days in that partial period"
+          },
+          "prorationSummary": {
+            "type": "string",
+            "nullable": true,
+            "description": "Human-readable proration line, e.g. Prorated rent for 17 days"
+          },
+          "nextFullRentDueDate": {
+            "type": "string",
+            "nullable": true,
+            "description": "When next charge is prorated, YYYY-MM-DD of the first full monthly rent after that"
+          },
+          "nextFullRentSummary": {
+            "type": "string",
+            "nullable": true,
+            "description": "Human-readable hint for first full rent date"
           }
         },
         "required": [

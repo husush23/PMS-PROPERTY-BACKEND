@@ -24,6 +24,15 @@ import {
   calculateNextDueDate,
   getPeriodsSinceStart,
 } from '../../common/utils/rent-due-date.util';
+import {
+  calculateProratedMonthlyRentAmount,
+  endOfUtcCalendarMonth,
+  getLeaseBillingStart,
+  isMidMonthProratedFirstCycle,
+  periodKeyUtcMonth,
+  proratedDayCountForFirstMonth,
+  toUtcDateOnly,
+} from '../../common/utils/rent-proration.util';
 import { UtilityService } from '../utility/utility.service';
 
 @Injectable()
@@ -58,21 +67,27 @@ export class RentCycleGenerationService {
     }
 
     // Ensure dates are Date objects (they come as strings from DB)
-    const billingStart = lease.billingStartDate 
-      ? new Date(lease.billingStartDate) 
-      : new Date(lease.startDate);
+    const billingStart = getLeaseBillingStart(lease);
     const billingAnchorDay =
       lease.billingAnchorDay || this.getDayOfMonth(billingStart);
     const paymentFrequency =
       lease.paymentFrequency || PaymentFrequency.MONTHLY;
-    const dueDate = calculateNextDueDate({
-      billingStartDate: billingStart,
-      billingAnchorDay,
-      paymentFrequency,
-      cyclesAhead: 0,
-    });
 
-    const period = this.getPeriodForDate(dueDate, paymentFrequency);
+    const useEomFirstCycle =
+      isMidMonthProratedFirstCycle(lease);
+
+    const dueDate = useEomFirstCycle
+      ? endOfUtcCalendarMonth(billingStart)
+      : calculateNextDueDate({
+          billingStartDate: billingStart,
+          billingAnchorDay,
+          paymentFrequency,
+          cyclesAhead: 0,
+        });
+
+    const period = useEomFirstCycle
+      ? periodKeyUtcMonth(billingStart)
+      : this.getPeriodForDate(dueDate, paymentFrequency);
 
     // Check if cycle already exists
     const existing = await this.rentCycleRepository.findOne({
@@ -87,32 +102,30 @@ export class RentCycleGenerationService {
       return existing;
     }
 
-    // Calculate line items (first period, check for proration)
-    const lineItems = this.calculateLineItems(lease, true, paymentFrequency);
+    // Calculate explicit period boundaries before line items (proration uses calendar month when useEomFirstCycle)
+    const periodStartDate = toUtcDateOnly(billingStart);
+    const leaseEndUtc = toUtcDateOnly(new Date(lease.endDate));
+    const todayUtc = toUtcDateOnly(new Date());
 
-    // Calculate explicit period boundaries
-    // INVOICE GENERATION CUTOFF RULE: No invoice generated if periodStartDate > leaseEndDate
-    const periodStartDate = new Date(billingStart); // Period starts at billing start date
-    periodStartDate.setHours(0, 0, 0, 0);
-    const leaseEndDate = new Date(lease.endDate);
-    leaseEndDate.setHours(0, 0, 0, 0);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
     // Explicit cutoff validation: periodStartDate must be <= leaseEndDate
-    if (periodStartDate > leaseEndDate) {
+    if (periodStartDate > leaseEndUtc) {
       throw new Error(
-        `Cannot generate first invoice: period start date ${periodStartDate.toISOString()} is after lease end date ${leaseEndDate.toISOString()}`,
+        `Cannot generate first invoice: period start date ${periodStartDate.toISOString()} is after lease end date ${leaseEndUtc.toISOString()}`,
       );
     }
     // Invoice generation only when period has started
-    if (periodStartDate > today) {
+    if (periodStartDate > todayUtc) {
       throw new Error(
         `Cannot generate first invoice before period start date ${periodStartDate.toISOString()}`,
       );
     }
-    
-    const periodEndDate = this.calculatePeriodEnd(periodStartDate, paymentFrequency);
+
+    const periodEndDate = useEomFirstCycle
+      ? endOfUtcCalendarMonth(billingStart)
+      : this.calculatePeriodEnd(periodStartDate, paymentFrequency);
+
+    // Calculate line items (first period, check for proration)
+    const lineItems = this.calculateLineItems(lease, true, paymentFrequency);
 
     const { cycle: savedCycle, created } = await this.createRentCycleWithRetry({
       leaseId: lease.id,
@@ -734,29 +747,50 @@ export class RentCycleGenerationService {
     // Base rent (with proration if first period or partial period)
     if (lease.monthlyRent) {
       let rentAmount = Number(lease.monthlyRent);
+      let rentDescription: string;
 
-      // Apply proration for first period if enabled (only for monthly frequency)
       if (
         isFirstPeriod &&
         lease.proratedFirstMonth &&
         paymentFrequency === PaymentFrequency.MONTHLY
       ) {
-        rentAmount = this.calculateProratedAmount(lease);
+        const billingStart = getLeaseBillingStart(lease);
+        rentAmount = calculateProratedMonthlyRentAmount(
+          rentAmount,
+          billingStart,
+        );
+        rentDescription = isMidMonthProratedFirstCycle(lease)
+          ? `Prorated rent for ${proratedDayCountForFirstMonth(billingStart)} days`
+          : 'Monthly rent';
       } else {
-        // Adjust for payment frequency (after proration if applicable)
         if (paymentFrequency === PaymentFrequency.WEEKLY) {
-          rentAmount = rentAmount / 4; // Approximate weekly amount
+          rentAmount = rentAmount / 4;
         } else if (paymentFrequency === PaymentFrequency.BIWEEKLY) {
-          rentAmount = rentAmount / 2; // Biweekly amount
+          rentAmount = rentAmount / 2;
         } else if (paymentFrequency === PaymentFrequency.QUARTERLY) {
-          rentAmount = rentAmount * 3; // Quarterly amount
+          rentAmount = rentAmount * 3;
         } else if (paymentFrequency === PaymentFrequency.YEARLY) {
-          rentAmount = rentAmount * 12; // Yearly amount
+          rentAmount = rentAmount * 12;
         }
+        rentDescription =
+          paymentFrequency === PaymentFrequency.WEEKLY
+            ? 'Weekly rent'
+            : paymentFrequency === PaymentFrequency.BIWEEKLY
+              ? 'Biweekly rent'
+              : paymentFrequency === PaymentFrequency.QUARTERLY
+                ? 'Quarterly rent'
+                : paymentFrequency === PaymentFrequency.YEARLY
+                  ? 'Yearly rent'
+                  : 'Monthly rent';
       }
 
-      // Apply partial period adjustment if period is shorter than full period
-      if (periodStart && periodEnd) {
+      const skipRentPartialForCalendarProration =
+        isFirstPeriod &&
+        lease.proratedFirstMonth &&
+        paymentFrequency === PaymentFrequency.MONTHLY &&
+        isMidMonthProratedFirstCycle(lease);
+
+      if (!skipRentPartialForCalendarProration && periodStart && periodEnd) {
         const fullPeriodEnd = this.calculatePeriodEnd(
           periodStart,
           paymentFrequency,
@@ -768,28 +802,14 @@ export class RentCycleGenerationService {
             fullPeriodEnd,
             periodEnd,
           );
+          rentDescription = 'Partial period rent';
         }
       }
-
-      const description =
-        isFirstPeriod && lease.proratedFirstMonth
-          ? 'Prorated rent'
-          : periodStart && periodEnd
-            ? 'Partial period rent'
-            : paymentFrequency === PaymentFrequency.WEEKLY
-              ? 'Weekly rent'
-              : paymentFrequency === PaymentFrequency.BIWEEKLY
-                ? 'Biweekly rent'
-                : paymentFrequency === PaymentFrequency.QUARTERLY
-                  ? 'Quarterly rent'
-                  : paymentFrequency === PaymentFrequency.YEARLY
-                    ? 'Yearly rent'
-                    : 'Monthly rent';
 
       lineItems.push({
         type: RentCycleLineItemType.RENT,
         amount: Math.round(rentAmount * 100) / 100,
-        description,
+        description: rentDescription,
       });
     }
 
@@ -806,6 +826,18 @@ export class RentCycleGenerationService {
         petRentAmount = petRentAmount * 3;
       } else if (paymentFrequency === PaymentFrequency.YEARLY) {
         petRentAmount = petRentAmount * 12;
+      }
+
+      if (
+        isFirstPeriod &&
+        lease.proratedFirstMonth &&
+        paymentFrequency === PaymentFrequency.MONTHLY &&
+        isMidMonthProratedFirstCycle(lease)
+      ) {
+        petRentAmount = calculateProratedMonthlyRentAmount(
+          petRentAmount,
+          getLeaseBillingStart(lease),
+        );
       }
 
       // Apply partial period adjustment if needed
@@ -846,6 +878,18 @@ export class RentCycleGenerationService {
         utilityAmount = utilityAmount * 12;
       }
 
+      if (
+        isFirstPeriod &&
+        lease.proratedFirstMonth &&
+        paymentFrequency === PaymentFrequency.MONTHLY &&
+        isMidMonthProratedFirstCycle(lease)
+      ) {
+        utilityAmount = calculateProratedMonthlyRentAmount(
+          utilityAmount,
+          getLeaseBillingStart(lease),
+        );
+      }
+
       // Apply partial period adjustment if needed
       if (periodStart && periodEnd) {
         const fullPeriodEnd = this.calculatePeriodEnd(
@@ -872,29 +916,11 @@ export class RentCycleGenerationService {
     return lineItems;
   }
 
-  /**
-   * Calculate prorated amount for first month
-   */
   private calculateProratedAmount(lease: Lease): number {
-    const startDate = new Date(lease.startDate);
-    const billingStart = lease.billingStartDate
-      ? new Date(lease.billingStartDate)
-      : startDate;
-
-    // Get last day of first month
-    const lastDayOfMonth = new Date(
-      billingStart.getFullYear(),
-      billingStart.getMonth() + 1,
-      0,
+    return calculateProratedMonthlyRentAmount(
+      Number(lease.monthlyRent),
+      getLeaseBillingStart(lease),
     );
-
-    const daysInMonth = lastDayOfMonth.getDate();
-    const daysToCharge = lastDayOfMonth.getDate() - billingStart.getDate() + 1;
-
-    const monthlyRent = Number(lease.monthlyRent);
-    const proratedAmount = (monthlyRent / daysInMonth) * daysToCharge;
-
-    return Math.round(proratedAmount * 100) / 100; // Round to 2 decimal places
   }
 
   /**

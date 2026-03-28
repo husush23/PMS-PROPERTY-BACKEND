@@ -18,6 +18,14 @@ import {
   calculateNextDueDate,
   getPeriodsSinceStart,
 } from '../../common/utils/rent-due-date.util';
+import {
+  calculateProratedMonthlyRentAmount,
+  endOfUtcCalendarMonth,
+  getLeaseBillingStart,
+  isMidMonthProratedFirstCycle,
+  periodKeyUtcMonth,
+  proratedDayCountForFirstMonth,
+} from '../../common/utils/rent-proration.util';
 
 @Injectable()
 export class RentGenerationService {
@@ -73,22 +81,27 @@ export class RentGenerationService {
       return existingPayment;
     }
 
-    // Calculate due date and amount
-    const billingStart = lease.billingStartDate || lease.startDate;
+    // Calculate due date and amount (rent cycles are authoritative; keep parity for legacy payments)
+    const billingStart = getLeaseBillingStart(lease);
     const billingAnchorDay =
       lease.billingAnchorDay || billingStart.getUTCDate();
     const paymentFrequency =
       lease.paymentFrequency || PaymentFrequency.MONTHLY;
-    const dueDate = calculateNextDueDate({
-      billingStartDate: billingStart,
-      billingAnchorDay,
-      paymentFrequency,
-      cyclesAhead: 0,
-    });
+    const dueDate = isMidMonthProratedFirstCycle(lease)
+      ? endOfUtcCalendarMonth(billingStart)
+      : calculateNextDueDate({
+          billingStartDate: billingStart,
+          billingAnchorDay,
+          paymentFrequency,
+          cyclesAhead: 0,
+        });
 
     let amountDue = Number(lease.monthlyRent);
     if (lease.proratedFirstMonth) {
-      amountDue = this.calculateProratedAmount(lease);
+      amountDue = calculateProratedMonthlyRentAmount(
+        amountDue,
+        billingStart,
+      );
     }
 
     // Add pet rent if applicable
@@ -122,8 +135,8 @@ export class RentGenerationService {
       period: period,
       isPartial: false,
       recordedBy: lease.createdBy || lease.tenantId, // System or lease creator
-      notes: lease.proratedFirstMonth
-        ? 'First month prorated rent'
+      notes: isMidMonthProratedFirstCycle(lease)
+        ? `First month prorated rent (${proratedDayCountForFirstMonth(billingStart)} days)`
         : 'First month rent',
     });
 
@@ -245,38 +258,10 @@ export class RentGenerationService {
   }
 
   /**
-   * Calculate prorated amount for first month
-   */
-  private calculateProratedAmount(lease: Lease): number {
-    const startDate = new Date(lease.startDate);
-    const billingStart = lease.billingStartDate
-      ? new Date(lease.billingStartDate)
-      : startDate;
-
-    // Get last day of first month
-    const lastDayOfMonth = new Date(
-      billingStart.getFullYear(),
-      billingStart.getMonth() + 1,
-      0,
-    );
-
-    const daysInMonth = lastDayOfMonth.getDate();
-    const daysToCharge = lastDayOfMonth.getDate() - billingStart.getDate() + 1;
-
-    const monthlyRent = Number(lease.monthlyRent);
-    const proratedAmount = (monthlyRent / daysInMonth) * daysToCharge;
-
-    return Math.round(proratedAmount * 100) / 100; // Round to 2 decimal places
-  }
-
-  /**
    * Get first period string (YYYY-MM)
    */
   private getFirstPeriod(lease: Lease): string {
-    const billingStart = lease.billingStartDate
-      ? new Date(lease.billingStartDate)
-      : new Date(lease.startDate);
-    return `${billingStart.getFullYear()}-${String(billingStart.getMonth() + 1).padStart(2, '0')}`;
+    return periodKeyUtcMonth(getLeaseBillingStart(lease));
   }
 
   /**

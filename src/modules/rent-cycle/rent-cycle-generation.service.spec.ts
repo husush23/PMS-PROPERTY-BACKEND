@@ -9,7 +9,11 @@ import { Payment } from '../payment/entities/payment.entity';
 import { PaymentFrequency } from '../../shared/enums/payment-frequency.enum';
 import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { CompanySettingsResolver } from '../company/company-settings-resolver.service';
-import { calculateNextDueDate } from '../../common/utils/rent-due-date.util';
+import { UtilityService } from '../utility/utility.service';
+import {
+  calculateNextDueDate,
+  getPeriodsSinceStart,
+} from '../../common/utils/rent-due-date.util';
 
 describe('RentCycleGenerationService', () => {
   let service: RentCycleGenerationService;
@@ -62,6 +66,10 @@ describe('RentCycleGenerationService', () => {
     shouldAutoApplyCredit: jest.fn().mockReturnValue(true),
   };
 
+  const mockUtilityService = {
+    attachUtilityToRentCycle: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -87,6 +95,7 @@ describe('RentCycleGenerationService', () => {
           provide: CompanySettingsResolver,
           useValue: mockCompanySettingsResolver,
         },
+        { provide: UtilityService, useValue: mockUtilityService },
       ],
     }).compile();
 
@@ -287,7 +296,7 @@ describe('RentCycleGenerationService', () => {
       const startDate = new Date('2024-01-01');
       const currentDate = new Date('2024-03-01');
 
-      const result = (service as any).getPeriodsSinceStart(
+      const result = getPeriodsSinceStart(
         startDate,
         currentDate,
         PaymentFrequency.MONTHLY,
@@ -300,7 +309,7 @@ describe('RentCycleGenerationService', () => {
       const startDate = new Date('2024-01-01');
       const currentDate = new Date('2024-01-22'); // 3 weeks later
 
-      const result = (service as any).getPeriodsSinceStart(
+      const result = getPeriodsSinceStart(
         startDate,
         currentDate,
         PaymentFrequency.WEEKLY,
@@ -313,7 +322,7 @@ describe('RentCycleGenerationService', () => {
       const startDate = new Date('2024-01-01');
       const currentDate = new Date('2024-07-01'); // 2 quarters later
 
-      const result = (service as any).getPeriodsSinceStart(
+      const result = getPeriodsSinceStart(
         startDate,
         currentDate,
         PaymentFrequency.QUARTERLY,

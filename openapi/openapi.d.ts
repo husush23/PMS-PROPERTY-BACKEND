@@ -4897,6 +4897,14 @@ export interface components {
              * @enum {string}
              */
             frequency: "MONTHLY" | "WEEKLY" | "BIWEEKLY" | "QUARTERLY" | "YEARLY";
+            /** @description When the next charge is prorated, number of days in that partial period */
+            prorationDays?: number | null;
+            /** @description Human-readable proration line */
+            prorationSummary?: string | null;
+            /** @description First full monthly rent due date (YYYY-MM-DD) after a prorated next charge */
+            nextFullRentDueDate?: string | null;
+            /** @description Human-readable hint for first full rent */
+            nextFullRentSummary?: string | null;
         };
         TenantDashboardRecentPaymentDto: {
             /**

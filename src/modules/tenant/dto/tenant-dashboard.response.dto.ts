@@ -89,6 +89,36 @@ export class TenantDashboardNextRentDto {
     example: PaymentFrequency.MONTHLY,
   })
   frequency: PaymentFrequency;
+
+  @ApiPropertyOptional({
+    description:
+      'When the next charge is prorated (mid-month move-in), number of days in that partial period',
+    example: 17,
+    nullable: true,
+  })
+  prorationDays?: number | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Human-readable proration line, e.g. "Prorated rent for 17 days"',
+    nullable: true,
+  })
+  prorationSummary?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'When next charge is prorated, date (YYYY-MM-DD) of the first full monthly rent after that',
+    example: '2024-04-01',
+    nullable: true,
+  })
+  nextFullRentDueDate?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Human-readable hint for first full rent, e.g. "Next full rent due on 2024-04-01"',
+    nullable: true,
+  })
+  nextFullRentSummary?: string | null;
 }
 
 /**

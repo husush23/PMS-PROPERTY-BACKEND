@@ -25,10 +25,7 @@ import { PaymentStatus } from '../../shared/enums/payment-status.enum';
 import { PaymentType } from '../../shared/enums/payment-type.enum';
 import { PaymentMethod } from '../../shared/enums/payment-method.enum';
 import { PaymentFrequency } from '../../shared/enums/payment-frequency.enum';
-import {
-  calculateNextDueDate,
-  getPeriodsSinceStart,
-} from '../../common/utils/rent-due-date.util';
+import { getNextScheduledDueOnOrAfter } from '../../common/utils/rent-proration.util';
 import { UserRole } from '../../shared/enums/user-role.enum';
 import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { RentCycle } from '../rent-cycle/entities/rent-cycle.entity';
@@ -491,15 +488,12 @@ export class PaymentService {
         lease.billingAnchorDay || billingStart.getUTCDate();
       const paymentFrequency =
         lease.paymentFrequency || PaymentFrequency.MONTHLY;
-      const cyclesAhead = Math.max(
-        0,
-        getPeriodsSinceStart(billingStart, new Date(), paymentFrequency),
-      );
-      dueDate = calculateNextDueDate({
+      dueDate = getNextScheduledDueOnOrAfter({
         billingStartDate: billingStart,
         billingAnchorDay,
+        proratedFirstMonth: lease.proratedFirstMonth ?? false,
         paymentFrequency,
-        cyclesAhead,
+        asOf: new Date(),
       });
     }
     if (!dueDate) {

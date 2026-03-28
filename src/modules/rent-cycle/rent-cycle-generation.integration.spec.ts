@@ -9,6 +9,7 @@ import { Payment } from '../payment/entities/payment.entity';
 import { PaymentFrequency } from '../../shared/enums/payment-frequency.enum';
 import { LeaseStatus } from '../../shared/enums/lease-status.enum';
 import { CompanySettingsResolver } from '../company/company-settings-resolver.service';
+import { UtilityService } from '../utility/utility.service';
 
 describe('RentCycleGenerationService Integration', () => {
   let service: RentCycleGenerationService;
@@ -65,6 +66,10 @@ describe('RentCycleGenerationService Integration', () => {
     shouldAutoApplyCredit: jest.fn().mockReturnValue(true),
   };
 
+  const mockUtilityService = {
+    attachUtilityToRentCycle: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -87,6 +92,7 @@ describe('RentCycleGenerationService Integration', () => {
         },
         { provide: DataSource, useValue: mockDataSource },
         { provide: CompanySettingsResolver, useValue: mockCompanySettingsResolver },
+        { provide: UtilityService, useValue: mockUtilityService },
       ],
     }).compile();
 
@@ -197,8 +203,64 @@ describe('RentCycleGenerationService Integration', () => {
         (item: any) => item.type === 'RENT',
       );
       expect(rentItem).toBeDefined();
-      expect(rentItem.description).toContain('Prorated');
+      expect(rentItem.description).toBe('Prorated rent for 17 days');
       expect(rentItem.amount).toBeLessThan(3000); // Should be less than full amount
+
+      const createPayload = mockRentCycleRepository.create.mock.calls[0][0];
+      expect(createPayload.period).toBe('2024-01');
+      expect(
+        new Date(createPayload.dueDate).toISOString().slice(0, 10),
+      ).toBe('2024-01-31');
+    });
+
+    it('should use month-end due and YYYY-MM period for mid-month move-in with anchor day 1', async () => {
+      const lease = {
+        id: 'lease-eom',
+        companyId: 'company-1',
+        tenantId: 'tenant-1',
+        monthlyRent: 3100,
+        startDate: new Date(Date.UTC(2025, 2, 15)),
+        billingStartDate: new Date(Date.UTC(2025, 2, 15)),
+        endDate: new Date(Date.UTC(2026, 11, 31)),
+        billingAnchorDay: 1,
+        paymentFrequency: PaymentFrequency.MONTHLY,
+        status: LeaseStatus.ACTIVE,
+        isActive: true,
+        proratedFirstMonth: true,
+        utilitiesIncluded: true,
+      } as Lease;
+
+      mockLeaseRepository.findOne.mockResolvedValue(lease);
+      mockRentCycleRepository.findOne.mockResolvedValue(null);
+      mockRentCycleRepository.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      });
+      mockRentCycleRepository.create.mockReturnValue({
+        id: 'cycle-eom',
+        invoiceNumber: 'INV-2025-03-RENT-001',
+      });
+      mockRentCycleRepository.save.mockResolvedValue({
+        id: 'cycle-eom',
+        invoiceNumber: 'INV-2025-03-RENT-001',
+      });
+      mockLineItemRepository.create.mockImplementation((item) => item);
+      mockLineItemRepository.save.mockResolvedValue([{ id: 'item-1' }]);
+
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date(Date.UTC(2025, 2, 20)));
+
+      await service.generateFirstCycle('lease-eom');
+
+      jest.useRealTimers();
+
+      const createPayload = mockRentCycleRepository.create.mock.calls[0][0];
+      expect(createPayload.period).toBe('2025-03');
+      expect(
+        new Date(createPayload.dueDate).toISOString().slice(0, 10),
+      ).toBe('2025-03-31');
     });
 
     it('should generate partial final period invoice when lease ends mid-period', async () => {

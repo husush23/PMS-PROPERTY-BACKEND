@@ -210,10 +210,10 @@ describe('RentCycleGenerationService Integration', () => {
       expect(createPayload.period).toBe('2024-01');
       expect(
         new Date(createPayload.dueDate).toISOString().slice(0, 10),
-      ).toBe('2024-01-31');
+      ).toBe('2024-01-15');
     });
 
-    it('should use month-end due and YYYY-MM period for mid-month move-in with anchor day 1', async () => {
+    it('should use billing-start due and YYYY-MM period for mid-month move-in with anchor day 1', async () => {
       const lease = {
         id: 'lease-eom',
         companyId: 'company-1',
@@ -260,7 +260,7 @@ describe('RentCycleGenerationService Integration', () => {
       expect(createPayload.period).toBe('2025-03');
       expect(
         new Date(createPayload.dueDate).toISOString().slice(0, 10),
-      ).toBe('2025-03-31');
+      ).toBe('2025-03-15');
     });
 
     it('should generate partial final period invoice when lease ends mid-period', async () => {

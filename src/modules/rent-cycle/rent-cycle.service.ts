@@ -25,6 +25,12 @@ import {
   calculateNextDueDate,
   getPeriodsSinceStart,
 } from '../../common/utils/rent-due-date.util';
+import {
+  getLeaseBillingStart,
+  getScheduledMonthlyDueDate,
+  isMidMonthProratedFirstCycle,
+  utcMonthScheduleIndexFromPeriodKey,
+} from '../../common/utils/rent-proration.util';
 import { UtilityService } from '../utility/utility.service';
 import { RentCycleCategory } from '../../shared/enums/rent-cycle-category.enum';
 import {
@@ -1130,13 +1136,30 @@ export class RentCycleService {
   }
 
   private calculateDueDateFromPeriod(lease: Lease, period: string): Date {
-    const billingStart = lease.billingStartDate
-      ? new Date(lease.billingStartDate)
-      : new Date(lease.startDate);
+    const billingStart = getLeaseBillingStart(lease);
     const billingAnchorDay =
       lease.billingAnchorDay || billingStart.getUTCDate();
     const paymentFrequency =
       lease.paymentFrequency || PaymentFrequency.MONTHLY;
+
+    if (
+      paymentFrequency === PaymentFrequency.MONTHLY &&
+      isMidMonthProratedFirstCycle(lease)
+    ) {
+      const scheduleIndex = utcMonthScheduleIndexFromPeriodKey(
+        billingStart,
+        period,
+      );
+      if (scheduleIndex !== null && scheduleIndex >= 0) {
+        return getScheduledMonthlyDueDate({
+          billingStartDate: billingStart,
+          billingAnchorDay,
+          scheduleIndex,
+          proratedMidMonth: true,
+        });
+      }
+    }
+
     const periodStartDate = this.getPeriodStartDate(
       period,
       paymentFrequency,

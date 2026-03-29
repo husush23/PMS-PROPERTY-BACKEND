@@ -32,6 +32,40 @@ export const endOfUtcCalendarMonth = (date: Date): Date => {
 
 export const utcCalendarDay = (date: Date): number => date.getUTCDate();
 
+/**
+ * First day of the UTC calendar month that is `monthOffset` months after the UTC month of `start`
+ * (offset 0 = first day of the same month as `start`).
+ */
+export const startOfUtcCalendarMonthWithOffset = (
+  start: Date,
+  monthOffset: number,
+): Date => {
+  const d = toUtcDateOnly(start);
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth();
+  return new Date(Date.UTC(y, m + monthOffset, 1));
+};
+
+/**
+ * For `YYYY-MM` period keys, 0-based schedule index aligned to the lease billing month's calendar month.
+ * Used to map stored invoice periods to scheduled due dates under mid-month proration policy.
+ */
+export const utcMonthScheduleIndexFromPeriodKey = (
+  billingStartDate: Date,
+  periodKey: string,
+): number | null => {
+  const match = periodKey.match(/^(\d{4})-(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+  const py = Number(match[1]);
+  const pm = Number(match[2]);
+  const start = toUtcDateOnly(billingStartDate);
+  const sy = start.getUTCFullYear();
+  const sm = start.getUTCMonth() + 1;
+  return (py - sy) * 12 + (pm - sm);
+};
+
 export const getLeaseBillingStart = (lease: BillingScheduleLeaseLike): Date =>
   lease.billingStartDate ? new Date(lease.billingStartDate) : new Date(lease.startDate);
 
@@ -81,7 +115,12 @@ export type ScheduledMonthlyDueParams = {
 };
 
 /**
- * Due date for the n-th scheduled rent (0-based). When proratedMidMonth, index 0 is EOM of billing-start month; index n>=1 uses calculateNextDueDate(..., n).
+ * Due date for the n-th scheduled rent (0-based).
+ *
+ * **Mid-month proration policy** (`proratedMidMonth`): immediate first payment on billing start;
+ * thereafter full rent due on the 1st of each calendar month (index 1 = first day of next month, etc.).
+ *
+ * **Standard monthly**: uses `billingAnchorDay` via `calculateNextDueDate` for all indices.
  */
 export const getScheduledMonthlyDueDate = ({
   billingStartDate,
@@ -92,10 +131,14 @@ export const getScheduledMonthlyDueDate = ({
   const start = toUtcDateOnly(billingStartDate);
   const anchor = billingAnchorDay || utcCalendarDay(start);
 
-  if (scheduleIndex === 0) {
-    if (proratedMidMonth) {
-      return endOfUtcCalendarMonth(start);
+  if (proratedMidMonth) {
+    if (scheduleIndex === 0) {
+      return start;
     }
+    return startOfUtcCalendarMonthWithOffset(start, scheduleIndex);
+  }
+
+  if (scheduleIndex === 0) {
     return calculateNextDueDate({
       billingStartDate: start,
       billingAnchorDay: anchor,

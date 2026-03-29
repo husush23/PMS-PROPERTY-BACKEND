@@ -8,6 +8,7 @@ import {
   periodKeyUtcMonth,
   proratedDayCountForFirstMonth,
   toUtcDateOnly,
+  utcMonthScheduleIndexFromPeriodKey,
 } from './rent-proration.util';
 
 describe('rent-proration.util', () => {
@@ -90,14 +91,14 @@ describe('rent-proration.util', () => {
   describe('getScheduledMonthlyDueDate', () => {
     const billingStart = new Date(Date.UTC(2025, 2, 15));
 
-    it('index 0 prorated mid-month is Mar 31', () => {
+    it('index 0 prorated mid-month is billing start (move-in day)', () => {
       const due = getScheduledMonthlyDueDate({
         billingStartDate: billingStart,
         billingAnchorDay: 1,
         scheduleIndex: 0,
         proratedMidMonth: true,
       });
-      expect(toUtcDateOnly(due).toISOString().slice(0, 10)).toBe('2025-03-31');
+      expect(toUtcDateOnly(due).toISOString().slice(0, 10)).toBe('2025-03-15');
     });
 
     it('index 1 with anchor 1 is Apr 1', () => {
@@ -122,7 +123,7 @@ describe('rent-proration.util', () => {
   });
 
   describe('getNextScheduledDueOnOrAfter', () => {
-    it('returns Mar 31 when asOf is Mar 20 mid-month prorated', () => {
+    it('returns Apr 1 when asOf is after first prorated due (Mar 15)', () => {
       const next = getNextScheduledDueOnOrAfter({
         billingStartDate: new Date(Date.UTC(2025, 2, 15)),
         billingAnchorDay: 1,
@@ -130,7 +131,18 @@ describe('rent-proration.util', () => {
         paymentFrequency: PaymentFrequency.MONTHLY,
         asOf: new Date(Date.UTC(2025, 2, 20)),
       });
-      expect(toUtcDateOnly(next).toISOString().slice(0, 10)).toBe('2025-03-31');
+      expect(toUtcDateOnly(next).toISOString().slice(0, 10)).toBe('2025-04-01');
+    });
+
+    it('returns Mar 15 when asOf is before first prorated due', () => {
+      const next = getNextScheduledDueOnOrAfter({
+        billingStartDate: new Date(Date.UTC(2025, 2, 15)),
+        billingAnchorDay: 1,
+        proratedFirstMonth: true,
+        paymentFrequency: PaymentFrequency.MONTHLY,
+        asOf: new Date(Date.UTC(2025, 2, 10)),
+      });
+      expect(toUtcDateOnly(next).toISOString().slice(0, 10)).toBe('2025-03-15');
     });
 
     it('returns Apr 1 when asOf is Apr 1', () => {
@@ -148,6 +160,25 @@ describe('rent-proration.util', () => {
   describe('periodKeyUtcMonth', () => {
     it('formats YYYY-MM in UTC', () => {
       expect(periodKeyUtcMonth(new Date(Date.UTC(2025, 2, 15)))).toBe('2025-03');
+    });
+  });
+
+  describe('utcMonthScheduleIndexFromPeriodKey', () => {
+    it('maps billing month period to index 0', () => {
+      const start = new Date(Date.UTC(2025, 2, 18));
+      expect(utcMonthScheduleIndexFromPeriodKey(start, '2025-03')).toBe(0);
+    });
+
+    it('maps following calendar months to increasing indices', () => {
+      const start = new Date(Date.UTC(2025, 2, 18));
+      expect(utcMonthScheduleIndexFromPeriodKey(start, '2025-04')).toBe(1);
+      expect(utcMonthScheduleIndexFromPeriodKey(start, '2025-05')).toBe(2);
+    });
+
+    it('returns null for non YYYY-MM keys', () => {
+      expect(
+        utcMonthScheduleIndexFromPeriodKey(new Date(), '2025-Q1'),
+      ).toBeNull();
     });
   });
 });

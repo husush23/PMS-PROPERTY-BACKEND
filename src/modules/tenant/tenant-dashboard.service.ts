@@ -17,7 +17,6 @@ import { PaymentFrequency } from '../../shared/enums/payment-frequency.enum';
 import { RentCycleLineItemType } from '../../shared/enums/rent-cycle-line-item-type.enum';
 import {
   calculateProratedMonthlyRentAmount,
-  endOfUtcCalendarMonth,
   getLeaseBillingStart,
   getNextScheduledDueOnOrAfter,
   getScheduledMonthlyDueDate,
@@ -232,10 +231,10 @@ export class TenantDashboardService {
 
     const proratedMid = isMidMonthProratedFirstCycle(lease);
     if (frequency === PaymentFrequency.MONTHLY && proratedMid) {
-      const firstDue = endOfUtcCalendarMonth(billingStart);
+      const firstDue = toUtcDateOnly(billingStart);
       if (
         toUtcDateOnly(nextDueDate).getTime() ===
-        toUtcDateOnly(firstDue).getTime()
+        firstDue.getTime()
       ) {
         amount = calculateProratedMonthlyRentAmount(amount, billingStart);
         prorationDays = proratedDayCountForFirstMonth(billingStart);

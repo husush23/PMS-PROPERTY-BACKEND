@@ -28,6 +28,7 @@ import {
   calculateProratedMonthlyRentAmount,
   endOfUtcCalendarMonth,
   getLeaseBillingStart,
+  getNextScheduledDueOnOrAfter,
   isMidMonthProratedFirstCycle,
   periodKeyUtcMonth,
   proratedDayCountForFirstMonth,
@@ -77,7 +78,7 @@ export class RentCycleGenerationService {
       isMidMonthProratedFirstCycle(lease);
 
     const dueDate = useEomFirstCycle
-      ? endOfUtcCalendarMonth(billingStart)
+      ? toUtcDateOnly(billingStart)
       : calculateNextDueDate({
           billingStartDate: billingStart,
           billingAnchorDay,
@@ -228,20 +229,20 @@ export class RentCycleGenerationService {
         const paymentFrequency =
           lease.paymentFrequency || PaymentFrequency.MONTHLY;
 
-        const periodsSinceStart = getPeriodsSinceStart(
-          billingStart,
-          today,
-          paymentFrequency,
-        );
-        const nextDueDate = calculateNextDueDate({
-          billingStartDate: billingStart,
-          billingAnchorDay,
-          paymentFrequency,
-          cyclesAhead: periodsSinceStart,
-        });
-
-        // Handle final period if lease has ended
+        // Ended leases: use periods-since-start + anchor (not "next due >= today"),
+        // so the final partial period still resolves to the in-term due (e.g. Dec 5 vs Jan 5).
         if (leaseEndDate < today) {
+          const periodsSinceStart = getPeriodsSinceStart(
+            billingStart,
+            today,
+            paymentFrequency,
+          );
+          const nextDueDate = calculateNextDueDate({
+            billingStartDate: billingStart,
+            billingAnchorDay,
+            paymentFrequency,
+            cyclesAhead: periodsSinceStart,
+          });
           // Check if there's an unpaid invoice for final period
           const finalPeriod = this.getPeriodForDate(
             leaseEndDate,
@@ -277,6 +278,14 @@ export class RentCycleGenerationService {
           }
           continue;
         }
+
+        const nextDueDate = getNextScheduledDueOnOrAfter({
+          billingStartDate: billingStart,
+          billingAnchorDay,
+          proratedFirstMonth: lease.proratedFirstMonth ?? false,
+          paymentFrequency,
+          asOf: today,
+        });
 
         // IMPORTANT:
         // Invoices represent real rent obligations only.

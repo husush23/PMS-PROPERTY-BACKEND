@@ -20,11 +20,11 @@ import {
 } from '../../common/utils/rent-due-date.util';
 import {
   calculateProratedMonthlyRentAmount,
-  endOfUtcCalendarMonth,
   getLeaseBillingStart,
   isMidMonthProratedFirstCycle,
   periodKeyUtcMonth,
   proratedDayCountForFirstMonth,
+  toUtcDateOnly,
 } from '../../common/utils/rent-proration.util';
 
 @Injectable()
@@ -88,7 +88,7 @@ export class RentGenerationService {
     const paymentFrequency =
       lease.paymentFrequency || PaymentFrequency.MONTHLY;
     const dueDate = isMidMonthProratedFirstCycle(lease)
-      ? endOfUtcCalendarMonth(billingStart)
+      ? toUtcDateOnly(billingStart)
       : calculateNextDueDate({
           billingStartDate: billingStart,
           billingAnchorDay,

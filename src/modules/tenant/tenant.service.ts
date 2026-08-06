@@ -156,6 +156,7 @@ export class TenantService {
         name: undefined, // Name will be set when tenant accepts invitation
         isActive: false,
         emailVerified: false, // Not verified until invitation accepted
+        phone: inviteDto.phone,
       });
       user = await this.userRepository.save(user);
     }
@@ -169,6 +170,7 @@ export class TenantService {
       userId: user.id,
       companyId,
       status: TenantStatus.PENDING,
+      phone: inviteDto.phone,
       // Company settings = system behavior defaults.
       // Overrides allowed at transaction/lease level only.
       emailNotifications: companySettings.defaultEmailNotifications,
@@ -306,6 +308,7 @@ export class TenantService {
         name: acceptDto.name,
         isActive: true,
         emailVerified: true, // Verified when invitation accepted
+        phone: acceptDto.phone,
       });
       user = await this.userRepository.save(user);
 
@@ -331,6 +334,9 @@ export class TenantService {
       // Update name if provided (tenant may want to update their name)
       if (acceptDto.name) {
         updateData.name = acceptDto.name;
+      }
+      if (acceptDto.phone) {
+        updateData.phone = acceptDto.phone;
       }
       await this.userRepository.update(user.id, updateData);
     }
@@ -482,6 +488,7 @@ export class TenantService {
         name: createDto.name,
         isActive: true, // Active immediately
         emailVerified: true, // Verified when created directly with password
+        phone: createDto.phone,
       });
       user = await this.userRepository.save(user);
     } else {

@@ -40,8 +40,8 @@ export class AuthService {
     private revokedRefreshTokenRepository: Repository<RevokedRefreshToken>,
   ) { }
 
-  async validateUser(email: string, password: string): Promise<User> {
-    const user = await this.userService.findByEmail(email);
+  async validateUser(identifier: string, password: string): Promise<User> {
+    const user = await this.userService.findByIdentifier(identifier);
 
     if (!user) {
       throw new BusinessException(
@@ -75,10 +75,10 @@ export class AuthService {
   async login(
     loginDto: LoginDto,
   ): Promise<LoginResponseDto & { refresh_token: string }> {
-    const user = await this.validateUser(loginDto.email, loginDto.password);
+    const user = await this.validateUser(loginDto.identifier, loginDto.password);
 
-    // Block login if email is not verified
-    if (!user.emailVerified) {
+    // Block login if email exists but is not verified
+    if (user.email && !user.emailVerified) {
       throw new BusinessException(
         ErrorCode.EMAIL_NOT_VERIFIED,
         ERROR_MESSAGES.EMAIL_NOT_VERIFIED,

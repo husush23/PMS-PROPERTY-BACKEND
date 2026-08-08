@@ -33,13 +33,12 @@ export class AcceptTenantInviteDto {
   @MinLength(2, { message: 'Name must be at least 2 characters long' })
   name: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description: 'Primary phone number',
     example: '+1234567890',
   })
-  @IsOptional()
   @IsString()
-  phone?: string;
+  phone: string;
 
   @ApiPropertyOptional({
     description: 'Alternative phone number',

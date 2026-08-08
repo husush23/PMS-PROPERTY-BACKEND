@@ -30,7 +30,7 @@ export class TenantProfile {
   companyId: string;
 
   // Contact Information
-  @Column({ nullable: true })
+  @Column({ nullable: false })
   phone: string;
 
   @Column({ nullable: true })

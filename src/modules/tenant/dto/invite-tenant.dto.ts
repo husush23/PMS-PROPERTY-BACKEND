@@ -2,20 +2,20 @@ import { IsEmail, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class InviteTenantDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Email address of the tenant to invite',
     example: 'tenant@example.com',
   })
+  @IsOptional()
   @IsEmail({}, { message: 'Please provide a valid email address' })
-  email: string;
+  email?: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description: 'Phone number of the tenant to invite',
     example: '+1234567890',
   })
-  @IsOptional()
   @IsString()
-  phone?: string;
+  phone: string;
 }
 
 

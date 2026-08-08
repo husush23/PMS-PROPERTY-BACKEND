@@ -6,6 +6,7 @@ import {
   MinLength,
   IsDateString,
   IsEnum,
+  IsEmail,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { TenantStatus } from '../../../shared/enums/tenant-status.enum';
@@ -21,12 +22,19 @@ export class UpdateTenantDto {
   name?: string;
 
   @ApiPropertyOptional({
+    description: 'Email address',
+    example: 'tenant@example.com',
+  })
+  @IsOptional()
+  @IsEmail({}, { message: 'Please provide a valid email address' })
+  email?: string;
+
+  @ApiPropertyOptional({
     description: 'Primary phone number',
     example: '+1234567890',
   })
-  @IsOptional()
   @IsString()
-  phone?: string;
+  phone: string;
 
   @ApiPropertyOptional({
     description: 'Alternative phone number',

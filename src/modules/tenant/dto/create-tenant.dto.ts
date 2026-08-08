@@ -10,13 +10,14 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateTenantDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
       'Email address (used to create/invite user if user does not exist)',
     example: 'tenant@example.com',
   })
+  @IsOptional()
   @IsEmail({}, { message: 'Please provide a valid email address' })
-  email: string;
+  email?: string;
 
   @ApiProperty({
     description:
@@ -37,13 +38,12 @@ export class CreateTenantDto {
   @MinLength(2, { message: 'Name must be at least 2 characters long' })
   name: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description: 'Primary phone number',
     example: '+1234567890',
   })
-  @IsOptional()
   @IsString()
-  phone?: string;
+  phone: string;
 
   @ApiPropertyOptional({
     description: 'Alternative phone number',

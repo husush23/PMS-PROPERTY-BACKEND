@@ -24,7 +24,7 @@ export class TenantInvitation {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ nullable: true })
   email: string;
 
   @Column('uuid')

@@ -127,10 +127,20 @@ export class TenantService {
       );
     }
 
-    // Check if user exists
-    let user = await this.userRepository.findOne({
-      where: { email: inviteDto.email.toLowerCase() },
-    });
+    // Check if user exists by email or phone
+    let user: User | null = null;
+    
+    if (inviteDto.email) {
+      user = await this.userRepository.findOne({
+        where: { email: inviteDto.email.toLowerCase() },
+      });
+    }
+    
+    if (!user) {
+      user = await this.userRepository.findOne({
+        where: { phone: inviteDto.phone },
+      });
+    }
 
     // Check if user is already a tenant in this company
     if (user) {
@@ -142,7 +152,7 @@ export class TenantService {
           ErrorCode.TENANT_ALREADY_EXISTS,
           ERROR_MESSAGES.TENANT_ALREADY_EXISTS,
           HttpStatus.CONFLICT,
-          { email: inviteDto.email, companyId },
+          { phone: inviteDto.phone, companyId },
         );
       }
     } else {
@@ -151,7 +161,7 @@ export class TenantService {
       const hashedPassword = await PasswordUtil.hash(tempPassword);
 
       user = this.userRepository.create({
-        email: inviteDto.email.toLowerCase(),
+        email: inviteDto.email ? inviteDto.email.toLowerCase() : undefined,
         password: hashedPassword,
         name: undefined, // Name will be set when tenant accepts invitation
         isActive: false,
@@ -214,7 +224,7 @@ export class TenantService {
     expiresAt.setDate(expiresAt.getDate() + 7);
 
     const invitation = this.tenantInvitationRepository.create({
-      email: inviteDto.email.toLowerCase(),
+      email: inviteDto.email ? inviteDto.email.toLowerCase() : undefined,
       companyId,
       tenantProfileId: savedTenantProfile.id,
       token,
@@ -225,10 +235,10 @@ export class TenantService {
 
     await this.tenantInvitationRepository.save(invitation);
 
-    // Send invitation email
-    const inviterName =
-      requesterUser?.name || requesterUser?.email || 'Someone';
-    if (savedTenantProfile.emailNotifications) {
+    // Send invitation email if email is provided
+    if (inviteDto.email) {
+      const inviterName =
+        requesterUser?.name || requesterUser?.email || 'Someone';
       this.notificationService
         .sendTenantInvitationEmail(
           inviteDto.email,
@@ -468,12 +478,22 @@ export class TenantService {
       );
     }
 
-    // Check if user exists - use case-insensitive email lookup for robustness
-    const normalizedEmail = createDto.email.toLowerCase().trim();
-    let user = await this.userRepository
-      .createQueryBuilder('user')
-      .where('LOWER(user.email) = LOWER(:email)', { email: normalizedEmail })
-      .getOne();
+    // Check if user exists by email or phone
+    let user: User | null = null;
+    
+    if (createDto.email) {
+      const normalizedEmail = createDto.email.toLowerCase().trim();
+      user = await this.userRepository
+        .createQueryBuilder('user')
+        .where('LOWER(user.email) = LOWER(:email)', { email: normalizedEmail })
+        .getOne();
+    }
+    
+    if (!user) {
+      user = await this.userRepository.findOne({
+        where: { phone: createDto.phone }
+      });
+    }
 
     let userAlreadyExisted = false;
 
@@ -483,11 +503,11 @@ export class TenantService {
       const hashedPassword = await PasswordUtil.hash(createDto.password);
 
       user = this.userRepository.create({
-        email: normalizedEmail,
+        email: createDto.email ? createDto.email.toLowerCase().trim() : undefined,
         password: hashedPassword,
         name: createDto.name,
         isActive: true, // Active immediately
-        emailVerified: true, // Verified when created directly with password
+        emailVerified: !!createDto.email, // Verified if email exists
         phone: createDto.phone,
       });
       user = await this.userRepository.save(user);
@@ -522,12 +542,13 @@ export class TenantService {
         ],
       });
 
+      const logEmail = createDto.email || createDto.phone;
       if (!refreshedUser) {
         throw new BusinessException(
           ErrorCode.USER_NOT_FOUND,
-          `User with email ${normalizedEmail} was found but could not be reloaded. Please try again.`,
+          `User with email/phone ${logEmail} was found but could not be reloaded. Please try again.`,
           HttpStatus.INTERNAL_SERVER_ERROR,
-          { email: normalizedEmail },
+          { identifier: logEmail },
         );
       }
 
@@ -578,7 +599,7 @@ export class TenantService {
             ErrorCode.USER_NOT_FOUND,
             `User ${user.id} could not be restored after data integrity check.`,
             HttpStatus.INTERNAL_SERVER_ERROR,
-            { userId: user.id, email: normalizedEmail },
+            { userId: user.id, identifier: logEmail },
           );
         }
         user = restoredUser;
@@ -586,7 +607,7 @@ export class TenantService {
 
       // Log successful protection
       this.logger.log(
-        `[TENANT CREATE] Existing user ${user.id} (${normalizedEmail}) data protected: name="${originalUserData.name}", password preserved, isActive=${originalUserData.isActive}, emailVerified=${originalUserData.emailVerified}`,
+        `[TENANT CREATE] Existing user ${user.id} (${logEmail}) data protected: name="${originalUserData.name}", password preserved, isActive=${originalUserData.isActive}, emailVerified=${originalUserData.emailVerified}`,
       );
     }
 
@@ -731,7 +752,7 @@ export class TenantService {
           ErrorCode.USER_NOT_FOUND,
           `User with ID ${user.id} could not be found after tenant profile creation. Data integrity issue.`,
           HttpStatus.INTERNAL_SERVER_ERROR,
-          { userId: user.id, email: normalizedEmail },
+          { userId: user.id, identifier: createDto.email || createDto.phone },
         );
       }
       user = finalUser;
@@ -752,7 +773,7 @@ export class TenantService {
       expiresAt.setDate(expiresAt.getDate() + 7);
 
       const invitation = this.tenantInvitationRepository.create({
-        email: createDto.email.toLowerCase(),
+        email: createDto.email ? createDto.email.toLowerCase() : undefined,
         companyId,
         tenantProfileId: savedTenantProfile.id,
         token,
@@ -763,22 +784,24 @@ export class TenantService {
 
       await this.tenantInvitationRepository.save(invitation);
 
-      // Send invitation email
-      const requesterUser = await this.userRepository.findOne({
-        where: { id: requesterUserId },
-      });
-      const inviterName =
-        requesterUser?.name || requesterUser?.email || 'Someone';
-      this.notificationService
-        .sendTenantInvitationEmail(
-          createDto.email,
-          company.name,
-          token,
-          inviterName,
-        )
-        .catch((error) => {
-          this.logger.error('Failed to send tenant invitation email', error);
+      // Send invitation email if email is provided
+      if (createDto.email) {
+        const requesterUser = await this.userRepository.findOne({
+          where: { id: requesterUserId },
         });
+        const inviterName =
+          requesterUser?.name || requesterUser?.email || 'Someone';
+        this.notificationService
+          .sendTenantInvitationEmail(
+            createDto.email,
+            company.name,
+            token,
+            inviterName,
+          )
+          .catch((error) => {
+            this.logger.error('Failed to send tenant invitation email', error);
+          });
+      }
     }
 
     return {

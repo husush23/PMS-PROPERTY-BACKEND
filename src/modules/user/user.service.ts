@@ -103,7 +103,22 @@ export class UserService {
   }
 
   async findByEmail(email: string): Promise<User | null> {
+    if (!email) return null;
     return this.userRepository.findOne({ where: { email } });
+  }
+
+  async findByIdentifier(identifier: string): Promise<User | null> {
+    if (!identifier) return null;
+    
+    // Normalize identifier to handle case-insensitivity for emails
+    const normalizedIdentifier = identifier.toLowerCase().trim();
+    
+    return this.userRepository.findOne({
+      where: [
+        { email: normalizedIdentifier },
+        { phone: identifier.trim() } // Phone might not be lowercase depending on format, but keep as is
+      ]
+    });
   }
 
   async findByResetToken(token: string): Promise<User | null> {

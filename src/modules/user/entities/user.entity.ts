@@ -13,7 +13,7 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true })
+  @Column({ unique: true, nullable: true })
   email: string;
 
   @Column()
@@ -22,7 +22,7 @@ export class User {
   @Column({ nullable: true })
   name: string;
 
-  @Column({ nullable: true })
+  @Column({ unique: true, nullable: false })
   phone: string;
 
   @Column({ default: true })
